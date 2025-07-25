@@ -56,7 +56,7 @@ class _InputItem():
 
 
 class InputList():
-    def __init__(self, type, optional=False):
+    def __init__(self, type, optional=False, buffer_length=0):
         """
         Wrapper for input lists exchanged by objects. All inputs and outputs
         are managed as lists. Singles values use the InputValue() class below,
@@ -65,10 +65,17 @@ class InputList():
         Each list element is a separate _InputItem instance, which is able to
         perform its own MPI receive if needed. This allows to mix in the same list
         inputs with different sources (useful e.g. in propagation)
+        
+        If buffer_length is set to a value greater than zero, each valid input
+        will be accumulated into a BaseList that will be used as the input value
+        once the buffer length has been reached. This mechanism is implemented
+        in the BaseProcessingObj class and this class only has to store
+        the desired buffer length.
         """
         self.output_ref_type = type
         self.input_values = []
         self.optional = optional
+        self.buffer_length = buffer_length
 
     def get(self, target_device_idx):
         return flatten([v.get(target_device_idx) for v in self.input_values])
