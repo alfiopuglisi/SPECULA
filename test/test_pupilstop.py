@@ -108,3 +108,18 @@ class TestPupilstop(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             Pupilstop.restore(filename, target_device_idx=target_device_idx)
+        
+    
+    @cpu_and_gpu
+    def test_mask_is_converted_to_float(self, target_device_idx, xp):
+
+        pixel_pupil = 20
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        
+        mask = xp.ones((pixel_pupil, pixel_pupil), dtype=int)
+        pupilstop = Pupilstop(simul_params,
+                              input_mask=mask,
+                              target_device_idx=target_device_idx)
+        
+        assert pupilstop.A.dtype == pupilstop.dtype
