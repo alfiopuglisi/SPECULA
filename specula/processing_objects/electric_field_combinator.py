@@ -22,8 +22,8 @@ class ElectricFieldCombinator(BaseProcessingObj):
         self.inputs['in_ef2'] = InputValue(type=ElectricField)
 
         self._out_ef = ElectricField(
-                dimx=self.simul_params.pixel_pupil,
-                dimy=self.simul_params.pixel_pupil,
+                dimx=1,  # Will be replaced in setup()
+                dimy=1,
                 pixel_pitch=self.pixel_pitch,
                 S0=1,
                 target_device_idx=self.target_device_idx,

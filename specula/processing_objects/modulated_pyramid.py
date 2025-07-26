@@ -119,7 +119,11 @@ class ModulatedPyramid(BaseProcessingObj):
         self.tilt_y = self.get_modulation_tilt(fft_sampling, Y=True)
         self.fp_mask = self.get_fp_mask(fft_totsize, fp_masking, obsratio=fp_obsratio)
 
-        self.extended_source_in_on = False
+        self.extended_source_in_on = False  # TODO not used yet
+        if not self.extended_source_in_on:
+            if self.mod_steps < self.xp.around(2 * self.xp.pi * self.mod_amp):
+                raise Exception(f'Number of modulation steps is too small ({self.mod_steps}), it must be at least 2*pi times the modulation amplitude ({self.xp.around(2 * self.xp.pi * self.mod_amp)})!')
+
         iu = 1j  # complex unit
         myexp = self.xp.exp(-2 * self.xp.pi * iu * self.pyr_tlt, dtype=self.complex_dtype)
         self.shifted_masked_exp = self.xp.fft.fftshift(myexp * self.fp_mask)
@@ -233,6 +237,7 @@ class ModulatedPyramid(BaseProcessingObj):
 
         return results
 
+    # TODO not used yet
     def set_extended_source(self, source):
         self.extSource = source
         self.extended_source_in_on = True
@@ -461,15 +466,7 @@ class ModulatedPyramid(BaseProcessingObj):
     
     def setup(self):
         super().setup()
-
         super().build_stream()
-        if not self.extended_source_in_on:
-            if self.mod_steps < self.xp.around(2 * self.xp.pi * self.mod_amp):
-                raise Exception(f'Number of modulation steps is too small ({self.mod_steps}), it must be at least 2*pi times the modulation amplitude ({self.xp.around(2 * self.xp.pi * self.mod_amp)})!')
-
-    def hdr(self, hdr):
-        hdr['MODAMP'] = self.mod_amp
-        hdr['MODSTEPS'] = self.mod_steps
     
     def minmax(self, array):
         return self.xp.min(array), self.xp.max(array)
