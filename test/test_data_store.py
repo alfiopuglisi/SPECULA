@@ -50,3 +50,6 @@ class TestDataStore(unittest.TestCase):
         gen_data = fits.getdata(gen_file)
         np.testing.assert_array_almost_equal(gen_data, np.array([[0], [0.9510565162951535]]))
 
+        # Make sure times are in int64
+        gen_times = fits.getdata(gen_file, ext=1)
+        assert gen_times.dtype == np.uint64
