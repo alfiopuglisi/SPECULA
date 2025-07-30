@@ -178,10 +178,12 @@ class Slopes(BaseDataObj):
     def restore(filename, target_device_idx=None):
         hdr = fits.getheader(filename)
         slopes = Slopes.from_header(hdr, target_device_idx=target_device_idx)
+        slopesdata = fits.getdata(filename, ext=1)
         if hdr['VERSION'] >= 3:
-            slopes.set_value(fits.getdata(filename, ext=1))
+            slopes.set_value(slopesdata)
         else:
-            slopes.slopes = slopes.to_xp(fits.getdata(filename, ext=1), dtype=slopes.dtype)
+            slopes.resize(len(slopesdata))  # version 2 header does not have length information
+            slopes.slopes = slopes.to_xp(slopesdata, dtype=slopes.dtype)
         return slopes
 
     def array_for_display(self):
