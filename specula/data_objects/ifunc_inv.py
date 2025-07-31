@@ -31,8 +31,24 @@ class IFuncInv(BaseDataObj):
         hdul.append(fits.ImageHDU(data=cpuArray(self.mask_inf_func), name='MASK_INF_FUNC'))
         hdul.writeto(filename, overwrite=True)
 
+    @staticmethod
     def restore(filename, target_device_idx=None, exten=1):
         with fits.open(filename) as hdul:
             ifunc_inv = hdul[exten].data.T
             mask = hdul[exten+1].data
         return IFuncInv(ifunc_inv, mask, target_device_idx=target_device_idx)
+
+    def get_value(self):
+        return self.ifunc_inv
+    
+    def set_value(self, v, force_copy=False):
+        '''Set a new influence function.
+        Arrays are not reallocated.'''
+        assert v.shape == self.ifunc_inv.shape, \
+            f"Error: input array shape {v.shape} does not match inverse influence function shape {self.ifunc_inv.shape}"
+
+        self.ifunc_inv[:] = self.to_xp(v, force_copy=force_copy)
+
+    @staticmethod
+    def from_header(hdr):
+        raise NotImplementedError

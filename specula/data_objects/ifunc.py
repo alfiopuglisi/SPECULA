@@ -130,6 +130,21 @@ class IFunc(BaseDataObj):
     def type(self):
         return self._influence_function.dtype
 
+    def get_value(self):
+        return self._influence_function
+    
+    def set_value(self, v, force_copy=False):
+        '''Set a new influence function.
+        Arrays are not reallocated.'''
+        assert v.shape == self._influence_function.shape, \
+            f"Error: input array shape {v.shape} does not match influence function shape {self._influence_function.shape}"
+
+        self._influence_function[:] = self.to_xp(v, force_copy=force_copy)
+
+    @staticmethod
+    def from_header(hdr):
+        raise NotImplementedError
+
     def inverse(self):
         inv = self.xp.linalg.pinv(self._influence_function)
         return IFuncInv(inv, mask=self._mask_inf_func, precision=self.precision, target_device_idx=self.target_device_idx)

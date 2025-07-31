@@ -353,18 +353,7 @@ class ConvolutionKernel(BaseDataObj):
             raise ValueError(f'Unknown version {version}. Only version=1.1 is supported')
 
         if kernel_obj is None:
-            kernel_obj = ConvolutionKernel(
-                dimx=hdr['DIMX'],
-                dimy=hdr['DIMY'],
-                pxscale=hdr['PXSCALE'],
-                pupil_size_m=0.0,
-                dimension=hdr['DIM'],
-                launcher_pos=[0.0, 0.0, 0.0],
-                launcher_size=hdr['SPOTSIZE'],
-                oversampling=hdr['OVERSAMP'],
-                positive_shift_tt=hdr['POSTT'],
-                target_device_idx=target_device_idx)
-            kernel_obj.spot_size = hdr['SPOTSIZE']
+            kernel_obj = ConvolutionKernel.from_header(hdr)
         else:
             # If a kernel object is provided, use it
             # check if the dimensions match
@@ -382,3 +371,35 @@ class ConvolutionKernel(BaseDataObj):
         kernel_obj.real_kernels[:] = data
         kernel_obj.process_kernels(return_fft=return_fft)
         return kernel_obj
+
+    @staticmethod
+    def from_header(hdr, target_device_idx=None):
+        version = hdr['VERSION']
+        if version != 1.1:
+            raise ValueError(f'Unknown version {version}. Only version=1.1 is supported')
+
+        kernel_obj = ConvolutionKernel(
+            dimx=hdr['DIMX'],
+            dimy=hdr['DIMY'],
+            pxscale=hdr['PXSCALE'],
+            pupil_size_m=0.0,
+            dimension=hdr['DIM'],
+            launcher_pos=[0.0, 0.0, 0.0],
+            launcher_size=hdr['SPOTSIZE'],
+            oversampling=hdr['OVERSAMP'],
+            positive_shift_tt=hdr['POSTT'],
+            target_device_idx=target_device_idx)
+
+        kernel_obj.spot_size = hdr['SPOTSIZE']
+        return kernel_obj
+
+    def get_value(self):
+        return self.real_kernels
+    
+    def set_value(self, v, force_copy=False):
+        '''Set new kernels.
+        Arrays are not reallocated.'''
+        assert v.shape == self.real_kernels.shape, \
+            f"Error: input array shape {v.shape} does not match real_kernels shape {self.real_kernels.shape}"
+
+        self.real_kernels[:] = self.to_xp(v, force_copy=force_copy)
