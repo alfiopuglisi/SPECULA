@@ -6,7 +6,6 @@ from specula import show_in_profiler
 from specula import process_comm, process_rank
 from specula.base_time_obj import BaseTimeObj
 from specula.data_objects.layer import Layer
-from specula.base_list import BaseList
 
 
 class BaseProcessingObj(BaseTimeObj):
@@ -36,7 +35,6 @@ class BaseProcessingObj(BaseTimeObj):
         # Will be populated by derived class
         self.inputs = {}
         self.local_inputs = {}
-        self.buffered_inputs = defaultdict(BaseList)
         self.outputs = {}
         self.remote_outputs = defaultdict(list)
         self.sent_valid = {}
@@ -57,28 +55,18 @@ class BaseProcessingObj(BaseTimeObj):
     def addRemoteOutput(self, name, remote_output):
         self.remote_outputs[name].append(remote_output)
 
-    def valid_generation_time(self, data_obj_or_list):
-        '''
-        Returns True if the data object or list of data objects
-        has a generation_time valid for the current iteration
-        '''
-        if not isinstance(data_obj_or_list, list):
-            data_obj_or_list = [data_obj_or_list]
-
-        if len(data_obj_or_list) > 0:
-            most_recent = max([x.generation_time for x in data_obj_or_list if x is not None])
-            if most_recent >= self.current_time:
-                return True
-        
-        return False
-        
     def checkInputTimes(self):
         if len(self.inputs)==0:
             return True
         self.get_all_inputs()
-        for input_obj in self.local_inputs.values():
-            if self.valid_generation_time(input_obj):
-                return True
+        for input_name, input_obj in self.local_inputs.items():
+            if type(input_obj) is not list:
+                input_obj = [input_obj]
+
+            tt_list = [x.generation_time if x is not None else None for x in input_obj]
+            for tt in tt_list:
+                if tt is not None and tt >= self.current_time:
+                    return True
         else:
             return False
 
@@ -93,10 +81,7 @@ class BaseProcessingObj(BaseTimeObj):
 
         for input_name, input_obj in self.inputs.items():
             if MPI_DBG: print(process_rank, 'get_all_inputs(): getting InputValue:', input_name, flush=True)
-            if input_obj.buffer_length > 0:
-                self.buffer_input(input_name, input_obj)
-            else:
-                self.local_inputs[input_name] = input_obj.get(self.target_device_idx)
+            self.local_inputs[input_name] = input_obj.get(self.target_device_idx)
         
         if MPI_DBG:
             print(process_rank, self.name, 'My inputs are:')
@@ -109,22 +94,6 @@ class BaseProcessingObj(BaseTimeObj):
                 else:
                     print(process_rank, in_name, in_value.generation_time if in_value is not None else None, in_value, type(in_value), flush=True)
 
-    def buffer_input(self, input_name, input_obj):
-        '''
-        Append inputs to a BaseList until the buffer length is reached,
-        at that point transfer them to the local_input dictionary.
-        The BaseList has a generation_time equal to the last one in the list
-        '''
-        value = input_obj.get(self.target_device_idx)
-        if not self.valid_generation_time(value):
-            return
-        
-        self.buffered_inputs[input_name].append(value)
-        if len(self.buffered_inputs) == input_obj.buffer_length:
-            # Shallow copy into local_inputs
-            self.local_inputs[input_name] = BaseList(self.buffered_inputs[input_name])
-            self.buffered_inputs[input_name].clear()
-    
     def trigger_code(self):
         '''
         Any code implemented by derived classes must:
