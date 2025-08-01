@@ -225,6 +225,7 @@ class CCD(BaseProcessingObj):
             if self._bg_remove_average and not self._do_not_remove_dark:
                 pixels -= self._background_level
 
+
     def apply_binning(self):
         intensity = self._integrated_i.i
 

@@ -30,10 +30,7 @@ class DistributedSH(SH):
                  fov_ovs_coeff: float = 0,
                  xShiftPhInPixel: float = 0,
                  yShiftPhInPixel: float = 0,
-                 aXShiftPhInPixel: float = 0,
-                 aYShiftPhInPixel: float = 0,
                  rotAnglePhInDeg: float = 0,
-                 aRotAnglePhInDeg: float = 0,
                  do_not_double_fov_ovs: bool = False,
                  set_fov_res_to_turbpxsc: bool = False,
                  laser_launch_tel: LaserLaunchTelescope = None,
@@ -79,7 +76,7 @@ class DistributedSH(SH):
             sh.name = f'subsh{i}'
             for k, v in self.inputs.items():
                 if len(v.input_values) > 0:
-                    sh.inputs[k].set(v.input_values[0].last_value)
+                    sh.inputs[k].set(v.input_values[0].cloned_value)
             sh.setup()
 
     def check_ready(self, t):

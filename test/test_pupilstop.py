@@ -108,3 +108,91 @@ class TestPupilstop(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             Pupilstop.restore(filename, target_device_idx=target_device_idx)
+
+    @cpu_and_gpu
+    def test_set_value(self, target_device_idx, xp):
+        pixel_pupil = 20
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx)
+
+        # Create a new amplitude mask
+        new_mask = xp.ones((pixel_pupil, pixel_pupil), dtype=pupilstop.dtype)
+
+        # Set the new mask
+        pupilstop.set_value(new_mask)
+
+        # Check that the mask was set correctly
+        np.testing.assert_array_equal(cpuArray(pupilstop.A), cpuArray(new_mask))
+        
+    @cpu_and_gpu
+    def test_set_value_shape_mismatch(self, target_device_idx, xp):
+        pixel_pupil = 20
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx)
+
+        # Create a new mask with a different shape
+        new_mask = xp.ones((pixel_pupil + 1, pixel_pupil), dtype=pupilstop.dtype)
+
+        # Expect an assertion error due to shape mismatch
+        with self.assertRaises(AssertionError):
+            pupilstop.set_value(new_mask)
+            
+    @cpu_and_gpu
+    def test_get_value(self, target_device_idx, xp):
+        pixel_pupil = 20
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx)
+
+        # Create a new amplitude mask
+        new_mask = xp.ones((pixel_pupil, pixel_pupil), dtype=pupilstop.dtype)
+        pupilstop.set_value(new_mask)
+
+        # Get the value and check it matches
+        retrieved_mask = pupilstop.get_value()
+        np.testing.assert_array_equal(cpuArray(retrieved_mask), cpuArray(new_mask))
+
+    @cpu_and_gpu
+    def test_float(self, target_device_idx, xp):
+        '''Test that precision=1 results in a single-precision pupilstop'''
+        pixel_pupil = 10
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx, precision=1)
+        assert pupilstop.A.dtype == np.float32
+
+    @cpu_and_gpu
+    def test_double(self, target_device_idx, xp):
+        '''Test that precision=0 results in a double-precision ef'''
+        pixel_pupil = 10
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx, precision=0)
+        assert pupilstop.A.dtype == np.float64
+
+    @cpu_and_gpu
+    def test_float_from_other_types(self, target_device_idx, xp):
+        '''Test that precision=1 results in a single-precision pupilstop,
+        even when a mask of a different dtype is set'''
+        pixel_pupil = 10
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx, precision=1)
+        new_mask = xp.ones((pixel_pupil, pixel_pupil), dtype=xp.float64)
+        pupilstop.set_value(new_mask)
+        assert pupilstop.A.dtype == np.float32
+
+
+    @cpu_and_gpu
+    def test_double_from_other_types(self, target_device_idx, xp):
+        '''Test that precision=1 results in a double-precision pupilstop,
+        even when a mask of a different dtype is set'''
+        pixel_pupil = 10
+        pixel_pitch = 0.1
+        simul_params = SimulParams(pixel_pupil, pixel_pitch)
+        pupilstop = Pupilstop(simul_params, target_device_idx=target_device_idx, precision=0)
+        new_mask = xp.ones((pixel_pupil, pixel_pupil), dtype=xp.float32)
+        pupilstop.set_value(new_mask)
+        assert pupilstop.A.dtype == np.float64
