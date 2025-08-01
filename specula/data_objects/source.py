@@ -33,6 +33,27 @@ class Source(BaseDataObj):
         self.band = band
         self.verbose = verbose
 
+    def get_fits_header(self):
+        hdr = fits.Header()
+        hdr['VERSION'] = 1
+        hdr['PCOORD0'] = self.polar_coordinates[0]
+        hdr['PCOORD1'] = self.polar_coordinates[1]
+        hdr['MAGNITUD'] = self.magnitude
+        hdr['WAVELENG'] = self.wavelengthInNm
+        hdr['HEIGHT'] = self.height
+        hdr['BAND'] = self.band
+        hdr['ZEROPNT'] = self.zeroPoint
+        hdr['ERR_CRD0'] = self.error_coord[0]
+        hdr['ERR_CRD1'] = self.error_coord[1]
+        return hdr
+
+    # There is no value to get/set
+    def get_value(self):
+        raise NotImplementedError
+
+    def set_value(self, v, force_copy=True):
+        raise NotImplementedError
+
     @property
     def polar_coordinates(self):
         return self._polar_coordinates
@@ -83,3 +104,35 @@ class Source(BaseDataObj):
         if self.verbose:
             print(f'source.phot_density: magnitude is {self.magnitude}, and flux (output of n_phot with width=1e-9, surf=1) is {res[0]}')
         return res[0]
+
+    def save(self, filename, hdr):
+        hdr = self.get_fits_header()
+        fits.writeto(filename, np.zeros(2), hdr, overwrite=overwrite)
+
+    @staticmethod
+    def from_header(hdr, target_device_idx=None):
+        version = hdr['VERSION']
+        if version != 1:
+            raise ValueError(f'Error: unknown version {version} in header')
+        hdr['PCOORD0'] = self.polar_coordinates[0]
+        hdr['PCOORD1'] = self.polar_coordinates[1]
+        hdr['MAGNITUD'] = self.magnitude
+        hdr['WAVELENG'] = self.wavelengthInNm
+        hdr['HEIGHT'] = self.height
+        hdr['BAND'] = self.band
+        hdr['ZEROPNT'] = self.zeroPoint
+        hdr['ERR_CRD0'] = self.error_coord[0]
+        hdr['ERR_CRD1'] = self.error_coord[1]
+        return Source(polar_coordinates=[ hdr['PCOORD0'], hdr['PCOORD1']],
+                 magnitude=hdr['MAGNITUD'],
+                 wavelengthInNm=hdr['WAVELENG'],
+                 height=hdr['HEIGHT'],
+                 band=hdr['BAND'],
+                 zeroPoint=hdr['ZEROPNT'],
+                 error_coord=[ hdr['ERR_CRD0'], hdr['ERR_CRD1']],
+                 target_device_idx=target_device_idx)
+
+    @staticmethod
+    def restore(filename, target_device_idx=None):
+        hdr = fits.getheader(filename)
+        return Source.from_header(hdr, target_device_idx=target_device_idx)

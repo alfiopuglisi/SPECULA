@@ -49,6 +49,19 @@ class PupData(BaseDataObj):
         else:
             self.framesize = np.zeros(2, dtype=int)
 
+    def get_value(self):
+        '''Get the pixel values as a numpy/cupy array'''
+        return self.ind_pup
+    
+    def set_value(self, v, force_copy=False):
+        '''Set new ind_pup values.
+        Arrays are not reallocated.
+        '''
+        assert v.shape == self.ind_pup.shape, \
+            f"Error: input array shape {v.shape} does not match ind_pup shape {self.ind_pup.shape}"
+
+        self.ind_pup[:] = self.to_xp(v, force_copy=force_copy)
+
     @property
     def n_subap(self):
         return self.ind_pup.shape[1] // 4
@@ -107,3 +120,7 @@ class PupData(BaseDataObj):
 
         return PupData(ind_pup=ind_pup, radius=radius, cx=cx, cy=cy, framesize=framesize,
                 target_device_idx=target_device_idx)
+
+    @staticmethod
+    def from_header(filename, target_device_idx=None):
+        raise NotImplementedError
