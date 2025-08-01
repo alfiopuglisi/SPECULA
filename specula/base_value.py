@@ -1,6 +1,7 @@
 
 from astropy.io import fits
 from specula.base_data_obj import BaseDataObj
+from specula import process_rank
 
 class BaseValue(BaseDataObj):
     def __init__(self, description='', value=None, target_device_idx=None):
@@ -15,9 +16,14 @@ class BaseValue(BaseDataObj):
         self._description = description
         self._value = value
         
-    
-    def set_value(self, val):
-        self._value = val
+    def get_value(self):
+        return self._value
+
+    def set_value(self, val, force_copy=False):
+        if not self._value is None and not force_copy:
+            self._value[:] = self.to_xp(val)
+        else:
+            self._value = self.to_xp(val)
 
     @property
     def value(self):
