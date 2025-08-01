@@ -143,16 +143,9 @@ class CCD(BaseProcessingObj):
         self._excess_seed = excess_seed
 
         self._excess_delta = excess_delta
-        self._keep_ADU_bias = False  # TODO not used yet
-        self._bg_remove_average = False  # TODO not used yet
-        self._do_not_remove_dark = False  # TODO not used yet
         self._ADU_bias = ADU_bias
         self._bandw = bandw
         self._pixelGains = pixelGains
-        self._notUniformQeMatrix = None  # TODO not used yet
-        self._one_over_notUniformQeMatrix = None  # TODO not used yet
-        self._notUniformQe = False  # TODO not used yet
-        self._normNotUniformQe = False  # TODO not used yet
         self._photon_rng = self.xp.random.default_rng(self._photon_seed)
         self._readout_rng = self.xp.random.default_rng(self._readout_seed)
         self._excess_rng = self.xp.random.default_rng(self._excess_seed)
@@ -160,6 +153,15 @@ class CCD(BaseProcessingObj):
         self.inputs['in_i'] = InputValue(type=Intensity, buffer_length=nframes)
         self.outputs['out_pixels'] = self._pixels
         self.outputs['integrated_i'] = self._integrated_i
+
+        # TODO not used yet
+        self._keep_ADU_bias = False
+        self._bg_remove_average = False
+        self._do_not_remove_dark = False
+        self._notUniformQeMatrix = None
+        self._one_over_notUniformQeMatrix = None
+        self._notUniformQe = False
+        self._normNotUniformQe = False
 
     def trigger_code(self):
         if self._start_time > 0 and self.current_time < self._start_time:
@@ -202,12 +204,6 @@ class CCD(BaseProcessingObj):
         if self._pixelGains is not None:
             pixels *= self._pixelGains
 
-        # TODO not used yet
-        if self._notUniformQe and self._normNotUniformQe:
-            if self._one_over_notUniformQeMatrix is None:
-                self._one_over_notUniformQeMatrix = 1 / self._notUniformQeMatrix
-            pixels *= self._one_over_notUniformQeMatrix
-
         if self._photon_noise:
             pixels[:] = self.xp.round(pixels * self._ADU_gain) + self._ADU_bias
             clamp_generic(0, 0, pixels, xp=self.xp)
@@ -224,6 +220,12 @@ class CCD(BaseProcessingObj):
             # TODO not used yet
             if self._bg_remove_average and not self._do_not_remove_dark:
                 pixels -= self._background_level
+
+        # TODO not used yet
+        if self._notUniformQe and self._normNotUniformQe:
+            if self._one_over_notUniformQeMatrix is None:
+                self._one_over_notUniformQeMatrix = 1 / self._notUniformQeMatrix
+            pixels *= self._one_over_notUniformQeMatrix
 
 
     def apply_binning(self):
