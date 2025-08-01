@@ -12,7 +12,11 @@ from specula.base_data_obj import BaseDataObj
 class TestDataObjects(unittest.TestCase):
 
     def test_all_data_objects(self):
-
+        '''
+        Test that all data objects have the mandatory methods
+        
+        get_value, set_value, save, restore, from_header and get_fits_header
+        '''
         def generate_data_classes():
             # Iterate over all modules in the package path
             for finder, name, ispkg in pkgutil.iter_modules(specula.data_objects.__path__):
