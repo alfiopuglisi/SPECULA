@@ -415,23 +415,3 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
             self.layer_list[ii].generation_time = self.current_time
         self.last_position = new_position
         self.last_t = self.current_time
-
-    def save(self, filename):
-        hdr = fits.Header()
-        hdr['VERSION'] = 1
-        hdr['INTRLVD'] = int(self.interleave)
-        hdr['PUPD_TAG'] = self.pupdata_tag
-        super().save(filename, hdr)
-
-        with fits.open(filename, mode='append') as hdul:
-            hdul.append(fits.ImageHDU(data=self.infinite_phasescreens))
-
-    def read(self, filename):
-        super().read(filename)
-        self.infinite_phasescreens = fits.getdata(filename, ext=1)
-
-    def set_last_position(self, last_position):
-        self.last_position = last_position
-
-    def set_last_t(self, last_t):
-        self.last_t = last_t
