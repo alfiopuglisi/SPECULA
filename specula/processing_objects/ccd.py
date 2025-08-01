@@ -54,10 +54,9 @@ class CCD(BaseProcessingObj):
         if dt % simul_params.time_step != 0:
             raise ValueError(f'integration time dt={dt} must be a multiple of the basic simulation time_step={simul_params.time_step}')
 
-        loop_dt = self.seconds_to_t(simul_params.time_step)
-        dt = self.seconds_to_t(dt)
-        nframes = dt // loop_dt
-        self.dt = dt
+        self.dt = self.seconds_to_t(dt)
+        self.loop_dt = self.seconds_to_t(simul_params.time_step)
+        self.start_time = self.seconds_to_t(start_time)
 
         # TODO: move this code inside the wfs
         # if wfs and background_level:
@@ -132,12 +131,12 @@ class CCD(BaseProcessingObj):
         self._cic_level = cic_level
 
         self._binning = binning
-        self._start_time = self.seconds_to_t(start_time)
         self._cte_mat = cte_mat if cte_mat is not None else self.xp.zeros((size[0], size[1], 2), dtype=self.dtype)
         self._qe = quantum_eff
 
         self._pixels = Pixels(size[0] // binning, size[1] // binning, target_device_idx=target_device_idx)
         self._integrated_i = Intensity(size[0], size[1], target_device_idx=target_device_idx, precision=precision)
+        self._output_integrated_i = Intensity(size[0], size[1], target_device_idx=target_device_idx, precision=precision)
         self._photon_seed = photon_seed
         self._readout_seed = readout_seed
         self._excess_seed = excess_seed
@@ -150,9 +149,9 @@ class CCD(BaseProcessingObj):
         self._readout_rng = self.xp.random.default_rng(self._readout_seed)
         self._excess_rng = self.xp.random.default_rng(self._excess_seed)
 
-        self.inputs['in_i'] = InputValue(type=Intensity, buffer_length=nframes)
+        self.inputs['in_i'] = InputValue(type=Intensity)
         self.outputs['out_pixels'] = self._pixels
-        self.outputs['integrated_i'] = self._integrated_i
+        self.outputs['integrated_i'] = self._output_integrated_i
 
         # TODO not used yet
         self._keep_ADU_bias = False
@@ -164,18 +163,22 @@ class CCD(BaseProcessingObj):
         self._normNotUniformQe = False
 
     def trigger_code(self):
-        if self._start_time > 0 and self.current_time < self._start_time:
+        if self.start_time > 0 and self.current_time < self.start_time:
             return
-        
-        self._integrated_i.i[:] = sum(intensity.i for intensity in self.local_inputs['in_i'])
-        self._integrated_i.i *= self.t_to_seconds(self.dt) * self._bandw
 
-        self.apply_binning()
-        self.apply_qe()
-        self.apply_noise()
+        self._integrated_i.sum(self.local_inputs['in_i'],
+                               factor=self.t_to_seconds(self.loop_dt) * self._bandw)
 
-        self._pixels.generation_time = self.current_time
-        self._integrated_i.generation_time = self.current_time
+        if (self.current_time + self.loop_dt - self.dt - self.start_time) % self.dt == 0:
+            self.apply_binning()
+            self.apply_qe()
+            self.apply_noise()
+            self._pixels.generation_time = self.current_time
+
+            # Copy integrated intensity into output and then reset it.
+            self._output_integrated_i.i[:] = self._integrated_i.i
+            self._output_integrated_i.generation_time = self.current_time
+            self._integrated_i.i *= 0.0
 
     def apply_noise(self):
         pixels = self._pixels.pixels  # Name change, same reference
@@ -198,7 +201,7 @@ class CCD(BaseProcessingObj):
             pixels[:] = 1.0 / self._excess_delta * self._excess_rng.gamma(shape=ex_ccd_frame, scale=self._emccd_gain)
 
         if self._readout_noise:
-            ron_vector = self._readout_rng.standard_normal(size=ccd_frame.size)
+            ron_vector = self._readout_rng.standard_normal(size=pixels.size)
             pixels += (ron_vector.reshape(pixels.shape) * self._readout_level)
 
         if self._pixelGains is not None:
@@ -209,7 +212,7 @@ class CCD(BaseProcessingObj):
             clamp_generic(0, 0, pixels, xp=self.xp)
 
             if not self._keep_ADU_bias:
-                ccd_frame -= self._ADU_bias
+                pixels -= self._ADU_bias
 
             pixels[:] = (pixels / self._ADU_gain)
             if self._excess_noise:
