@@ -107,6 +107,9 @@ class ModulatedPyramid(BaseProcessingObj):
         self._do_pup_shift = False
         self._pup_pyr_interpolated = None
 
+        if mod_step is not None and int(mod_step) != mod_step:
+            raise ValueError('Modulation step number is not an integer')
+
         min_mod_step = round(max([1., mod_amp / 2. * 8.])) * 2.
         if mod_step is None:
             mod_step = min_mod_step
@@ -136,6 +139,9 @@ class ModulatedPyramid(BaseProcessingObj):
         self.tilt_y = self.get_modulation_tilt(fft_sampling, Y=True)
         self.fp_mask = self.get_fp_mask(fft_totsize, fp_masking, obsratio=fp_obsratio)
 
+        self.mod_amp = mod_amp
+        self.mod_steps = int(mod_step)
+
         self.extended_source_in_on = False  # TODO not used yet
         if not self.extended_source_in_on:
             if self.mod_steps < self.xp.around(2 * self.xp.pi * self.mod_amp):
@@ -145,15 +151,9 @@ class ModulatedPyramid(BaseProcessingObj):
         myexp = self.xp.exp(-2 * self.xp.pi * iu * self.pyr_tlt, dtype=self.complex_dtype)
         self.shifted_masked_exp = self.xp.fft.fftshift(myexp * self.fp_mask)
 
-        # Pre-computation of ttexp will be done when mod_steps will be set or re-set
-        if int(mod_step) != mod_step:
-            raise ValueError('Modulation step number is not an integer')
-
         self.pup_pyr_tot = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
         self.psf_bfm_arr = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
         self.psf_tot_arr = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
-        self.mod_amp = mod_amp
-        self.mod_steps = int(mod_step)
         self.ttexp = None
         self.ttexp_shape = None
         self.cache_ttexp()
