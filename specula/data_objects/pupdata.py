@@ -2,6 +2,7 @@ import numpy as np
 from astropy.io import fits
 
 from specula.base_data_obj import BaseDataObj
+from specula import cpuArray
 
 class PupData(BaseDataObj):
     '''
@@ -74,18 +75,18 @@ class PupData(BaseDataObj):
             f.flat[self.ind_pup[:, i]] = 1
         return f
 
-    def save(self, filename, hdr=None):
+    def save(self, filename, hdr=None, overwrite=False):
         if hdr is None:
             hdr = fits.Header()
         hdr['VERSION'] = 2
         hdr['FSIZEX'] = self.framesize[0]
         hdr['FSIZEY'] = self.framesize[1]
 
-        fits.writeto(filename, np.zeros(2), hdr)
-        fits.append(filename, self.ind_pup.T)
-        fits.append(filename, self.radius)
-        fits.append(filename, self.cx)
-        fits.append(filename, self.cy)
+        fits.writeto(filename, np.zeros(2), hdr, overwrite=overwrite)
+        fits.append(filename, cpuArray(self.ind_pup.T))
+        fits.append(filename, cpuArray(self.radius))
+        fits.append(filename, cpuArray(self.cx))
+        fits.append(filename, cpuArray(self.cy))
 
     @staticmethod
     def restore(filename, target_device_idx=None):
@@ -102,7 +103,11 @@ class PupData(BaseDataObj):
             ind_pup = hdul[1].data
             radius = hdul[2].data
             cx = hdul[3].data
-            cy = hdul[4].data
+            # Workaround for ANDES pupil files missing the last HDU
+            if len(hdul) >= 5:
+                cy = hdul[4].data
+            else:
+                cy = None
 
         return PupData(ind_pup=ind_pup, radius=radius, cx=cx, cy=cy, framesize=framesize,
                 target_device_idx=target_device_idx)
