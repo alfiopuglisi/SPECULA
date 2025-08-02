@@ -42,8 +42,10 @@ class ElectricFieldCombinator(BaseProcessingObj):
         if in_ef1.A.shape != in_ef2.A.shape:
             raise ValueError(f"Input electric field no. 1 shape {in_ef1.A.shape} does not match electric field no. 2 shape {in_ef2.A.shape}")
 
-        self._out_ef.phaseInNm = in_ef1.phaseInNm*0.
-        self._out_ef.A = in_ef1.A*0.
+        self._out_ef.resize(
+            dimx=in_ef1.A.shape[0],
+            dimy=in_ef1.A.shape[1],
+        )
 
     def trigger(self):
         # Get the input electric fields
