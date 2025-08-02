@@ -1,8 +1,6 @@
-import math
 import warnings
-from scipy.ndimage import convolve
 
-from specula import fuse, process_rank
+from specula import fuse
 from specula.base_processing_obj import BaseProcessingObj
 from specula.connections import InputValue
 from specula.data_objects.pixels import Pixels

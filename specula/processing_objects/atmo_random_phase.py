@@ -1,5 +1,4 @@
 import numpy as np
-from astropy.io import fits
 
 from specula.base_processing_obj import BaseProcessingObj
 from specula.data_objects.electric_field import ElectricField
