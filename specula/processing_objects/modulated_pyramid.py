@@ -571,10 +571,6 @@ class ModulatedPyramid(BaseProcessingObj):
             self.phase_extrapolated = in_ef.phaseInNm.copy()
 
         super().build_stream()
-
-        if not self.extended_source_in_on:
-            if self.mod_steps < self.xp.around(2 * self.xp.pi * self.mod_amp):
-                raise Exception(f'Number of modulation steps is too small ({self.mod_steps}), it must be at least 2*pi times the modulation amplitude ({self.xp.around(2 * self.xp.pi * self.mod_amp)})!')
  
     def minmax(self, array):
         return self.xp.min(array), self.xp.max(array)
