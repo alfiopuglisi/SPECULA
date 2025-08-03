@@ -412,3 +412,7 @@ class ShSlopec(Slopec):
         x, y = np.meshgrid(x, y)
         gaussian = np.exp(-4 * np.log(2) * (x ** 2 + y ** 2) / fwhm[0] ** 2, dtype=self.dtype)
         return gaussian
+
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_subapdata'].set_refreshed(self.current_time)

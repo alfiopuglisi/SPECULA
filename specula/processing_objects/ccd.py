@@ -214,6 +214,9 @@ class CCD(BaseProcessingObj):
         if self.refresh_outputs:
             self.outputs['out_pixels'].set_refreshed(self.current_time)
             self.outputs['out_integrated_i'].set_refreshed(self.current_time)
+        else:
+            self.outputs['out_pixels'].set_not_refreshed()
+            self.outputs['out_integrated_i'].set_not_refreshed()
 
     def apply_noise(self):
         ccd_frame = self._pixels.pixels

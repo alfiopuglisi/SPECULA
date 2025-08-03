@@ -176,7 +176,6 @@ class Modalrec(BaseProcessingObj):
 
             comm_slopes = self.intmat.intmat @ commands
             self.pseudo_ol_modes.value = self.recmat.recmat @ (self.slopes + comm_slopes)
-            self.pseudo_ol_modes.generation_time = self.current_time
             if self.projmat is None:
                 output_modes = self.pseudo_ol_modes.value
             else:
@@ -187,7 +186,14 @@ class Modalrec(BaseProcessingObj):
             output_modes = self.recmat.recmat @ self.slopes
 
         self.modes.value = output_modes[self.output_slice]
-        self.modes.generation_time = self.current_time
+
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_modes'].set_refreshed(self.current_time)
+        if self.polc:
+            self.outputs['out_pseudo_ol_modes'].set_refreshed(self.current_time)
+        else:
+            self.outputs['out_pseudo_ol_modes'].set_not_refreshed()
 
     def setup(self):
         super().setup()

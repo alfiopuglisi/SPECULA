@@ -53,3 +53,6 @@ class WindowedIntegration(BaseProcessingObj):
                 self.output.generation_time = self.current_time
                 self.output_value *= 0.0
                 
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['output'].set_refreshed(self.current_time)

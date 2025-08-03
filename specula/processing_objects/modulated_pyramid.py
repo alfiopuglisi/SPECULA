@@ -122,7 +122,7 @@ class ModulatedPyramid(BaseProcessingObj):
         self.out_i = Intensity(final_ccd_side, final_ccd_side, precision=self.precision, target_device_idx=self.target_device_idx)
         self.psf_tot = BaseValue(self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
         self.psf_bfm = BaseValue(self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
-        self.out_transmission = BaseValue(0, target_device_idx=self.target_device_idx)
+        self.out_transmission = BaseValue(self.xp.zeros(1), target_device_idx=self.target_device_idx)
 
         self.inputs['in_ef'] = InputValue(type=ElectricField)
         self.outputs['out_i'] = self.out_i
@@ -481,21 +481,22 @@ class ModulatedPyramid(BaseProcessingObj):
 
         if self.final_ccd_side > self.toccd_side:
             delta = (self.final_ccd_side - self.toccd_side) // 2
-            ccd = self.xp.zeros((self.final_ccd_side, self.final_ccd_side), dtype=self.dtype)
-            ccd[delta:delta + ccd_internal.shape[0], delta:delta + ccd_internal.shape[1]] = ccd_internal
+            self.out_i.i[delta:delta + ccd_internal.shape[0], delta:delta + ccd_internal.shape[1]] = ccd_internal
+
         elif self.final_ccd_side < self.toccd_side:
             delta = (self.toccd_side - self.final_ccd_side) // 2
-            ccd = ccd_internal[delta:delta + self.final_ccd_side, delta:delta + self.final_ccd_side]
+            self.out_i.i[:] = ccd_internal[delta:delta + self.final_ccd_side, delta:delta + self.final_ccd_side]
         else:
-            ccd = ccd_internal
-        self.out_i.i = ccd
-        self.out_i.generation_time = self.current_time
+            self.out_i.i[:] = ccd_internal
+
         self.psf_tot.value = self.psf_tot_arr
-        self.psf_tot.generation_time = self.current_time
         self.psf_bfm.value = self.psf_bfm_arr
-        self.psf_bfm.generation_time = self.current_time
-        self.out_transmission.value = self.transmission
-        self.out_transmission.generation_time = self.current_time
+        self.out_transmission.value[0] = self.transmission
+
+        self.outputs['out_i'].set_refreshed(self.current_time)
+        self.outputs['out_psf_tot'].set_refreshed(self.current_time)
+        self.outputs['out_psf_bfm'].set_refreshed(self.current_time)
+        self.outputs['out_transmission'].set_refreshed(self.current_time)
 
     def setup(self):
         super().setup()

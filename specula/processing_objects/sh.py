@@ -469,9 +469,10 @@ class SH(BaseProcessingObj):
        # print(self.name, f'{in_ef.S0=} {self._out_i.i.sum()=}')
         self._out_i.i *= phot / self._out_i.i.sum()
         # self._out_i.i = self.xp.nan_to_num(self._out_i.i, copy=False)
-        self._out_i.generation_time = self.current_time
         self.outputs['wf1'].value = toccd(self._wf1.phaseInNm, (100, 100), xp=self.xp)
-        self.outputs['wf1'].generation_time = self.current_time
+
+        self.outputs['out_i'].set_refreshed(self.current_time)
+        self.outputs['wf1'].set_refreshed(self.current_time)
 
         debug_figures = False
         if debug_figures:

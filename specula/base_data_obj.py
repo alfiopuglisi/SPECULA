@@ -44,7 +44,6 @@ class BaseDataObj(BaseTimeObj):
         Parameters:
         t (int): The time at which the object was refreshed.
         """
-        print(f'Setting {id(self)=} as valid at time {t}')
         self.valid = True
         self.generation_time = t
 

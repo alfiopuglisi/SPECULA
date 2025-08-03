@@ -134,7 +134,4 @@ class DistributedSH(SH):
         in_ef = self.local_inputs['in_ef']
         phot = in_ef.S0 * in_ef.masked_area()
         self._out_i.i *= phot / self._out_i.i.sum()
-
-    def post_trigger(self):
-        super().post_trigger()
         self.outputs['out_i'].set_refreshed(self.current_time)

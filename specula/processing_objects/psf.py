@@ -219,17 +219,20 @@ class PSF(BaseProcessingObj):
 
     def post_trigger(self):
         super().post_trigger()
+        self.outputs['out_sr'].set_refreshed(self.current_time)
+        self.outputs['out_psf'].set_refreshed(self.current_time)
+        self.outputs['out_int_sr'].set_not_refreshed()
+        self.outputs['out_int_psf'].set_not_refreshed()
+
         if self.current_time_seconds >= self.start_time:
             self.count += 1
             self.int_sr.value += self.sr.value
             self.int_psf.value += self.psf.value
-        self.psf.generation_time = self.current_time
-        self.sr.generation_time = self.current_time
 
     def finalize(self):
         if self.count > 0:
             self.int_psf.value /= self.count
             self.int_sr.value /= self.count
+            self.outputs['out_int_sr'].set_refreshed(self.current_time)
+            self.outputs['out_int_psf'].set_refreshed(self.current_time)
 
-        self.int_psf.generation_time = self.current_time
-        self.int_sr.generation_time = self.current_time

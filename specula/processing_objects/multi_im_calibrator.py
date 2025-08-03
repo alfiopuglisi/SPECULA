@@ -75,7 +75,11 @@ class MultiImCalibrator(BaseProcessingObj):
                 mode = int(idx[0])
                 if mode < self._nmodes:
                     im.value[mode] += ss / cc[idx]
-            im.generation_time = self.current_time
+
+    def post_trigger(self):
+        super().post_trigger()
+        for output in self.outputs['out_intmat_list']:
+            output.set_refreshed(self.current_time)
 
     def finalize(self):
         os.makedirs(self._data_dir, exist_ok=True)
@@ -84,7 +88,7 @@ class MultiImCalibrator(BaseProcessingObj):
             intmat = Intmat(im.value, target_device_idx=self.target_device_idx, precision=self.precision)
             if self.im_path(i):
                 intmat.save(os.path.join(self._data_dir, self.im_path(i)), overwrite=self._overwrite)
-            im.generation_time = self.current_time
+            im.set_refreshed(self.current_time)
 
         full_im_path = self.full_im_path()
         if full_im_path:
@@ -97,7 +101,7 @@ class MultiImCalibrator(BaseProcessingObj):
                 full_intmat.save(os.path.join(self._data_dir, full_im_path), overwrite=self._overwrite)
 
             self.outputs['out_intmat_full'].value = full_im
-            self.outputs['out_intmat_full'].generation_time = self.current_time
+            self.outputs['out_intmat_full'].set_refreshed(self.current_time)
 
     def setup(self):
         super().setup()

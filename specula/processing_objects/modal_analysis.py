@@ -127,7 +127,6 @@ class ModalAnalysis(BaseProcessingObj):
             m = self.xp.dot(ph, self.phase2modes.ifunc_inv)
 
         self.out_modes.value[:] = m
-        self.out_modes.generation_time = self.current_time
 
         for li, current_ef in enumerate(ef_list):
             if self.phase2modes._doZeroPad:
@@ -145,13 +144,21 @@ class ModalAnalysis(BaseProcessingObj):
                 m = self.xp.dot(ph, self.phase2modes.ifunc_inv)
 
             output_list[li].value[:] = m
-            output_list[li].generation_time = self.current_time
 
         if self.dorms:
             self.rms.value[:] = self.xp.std(ph)
-            self.rms.generation_time = self.current_time
 
         if self.verbose:
             print(f"First residual values: {m[:min(6, len(m))]}")
             if self.dorms:
                 print(f"Phase RMS: {self.rms.value}")
+
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_modes'].set_refreshed(self.current_time)
+        for output in self.outputs['out_modes_list']:
+            output.set_refreshed(self.current_time)
+        if self.dorms:
+            self.outputs['rms'].set_refreshed(self.current_time)
+        else:
+            self.outputs['rms'].set_not_refreshed()

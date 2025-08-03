@@ -99,7 +99,6 @@ class ModalrecImplicitPolc(Modalrec):
         output_modes = self.comm_mat.recmat @ self.slopes - self.h_mat.recmat @ commands
 
         self.modes.value = output_modes[self.output_slice]
-        self.modes.generation_time = self.current_time
 
     def setup(self):
         super().setup()

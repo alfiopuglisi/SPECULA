@@ -63,6 +63,7 @@ class OpticalGainEstimator(BaseProcessingObj):
 
     def trigger_code(self):
         t = self.current_time
+        self.optical_gain_refreshed = False
 
         # Update optical gain if both inputs are ready
         if (self.current_demod_delta_cmd.generation_time == t and
@@ -88,7 +89,7 @@ class OpticalGainEstimator(BaseProcessingObj):
             updated_gain = current_gain - (1.0 - ratio) * self.gain * current_gain
 
             self.optical_gain.value = updated_gain
-            self.optical_gain.generation_time = self.current_time
+            self.optical_gain_refreshed = True
 
             if self.verbose:
                 print(f"Optical gain updated: {float(current_gain):.6f} -> {float(updated_gain):.6f}")
@@ -119,7 +120,6 @@ class OpticalGainEstimator(BaseProcessingObj):
             output = float(output[0])
 
         self.output.value = output
-        self.output.generation_time = t
 
         if self.verbose:
             print(f'Optical gain output: {output}')
@@ -152,3 +152,9 @@ class OpticalGainEstimator(BaseProcessingObj):
 
     def post_trigger(self):
         super().post_trigger()
+        # Output is always refreshed, optical gain only if it was recalculated.
+        self.outputs['output'].set_refreshed(self.current_time)
+        if self.optical_gain_refreshed:
+            self.outputs['optical_gain'].set_refreshed(self.current_time)
+        else:
+            self.outputs['optical_gain'].set_not_refreshed()

@@ -192,7 +192,7 @@ class Demodulator(BaseProcessingObj):
 
         # Initialize output
         if len(self.mode_numbers) == 1:
-            self.output.value = self.dtype(0.0)
+            self.output.value = self.xp.zeros(1, dtype=self.dtype)
         else:
             self.output.value = self.xp.zeros(len(self.mode_numbers), dtype=self.dtype)
 

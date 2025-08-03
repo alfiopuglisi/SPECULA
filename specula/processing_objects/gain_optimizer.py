@@ -335,7 +335,7 @@ class GainOptimizer(BaseProcessingObj):
     def post_trigger(self):
         super().post_trigger()
         # Always refresh output, even when the gains were not updated
-        self.outputs['out_optgain'].set_refreshed(self.current_time)
+        self.outputs['optgain'].set_refreshed(self.current_time)
 
     def setup(self):
         """
