@@ -118,7 +118,10 @@ class DM(BaseProcessingObj):
         else:
             self.layer.phaseInNm[self._ifunc.idx_inf_func] = \
                 self.if_commands[self.if_commands_selector] @ self._ifunc.influence_function[self._valid_modes, :]
-        self.layer.generation_time = self.current_time
+
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_layer'].set_refreshed(self.current_time)
 
     # Getters and Setters for the attributes
     @property

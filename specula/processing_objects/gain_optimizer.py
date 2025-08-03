@@ -154,7 +154,6 @@ class GainOptimizer(BaseProcessingObj):
         # Store results
         self.prev_optgain = opt_gains.copy()
         self.optgain.value = opt_gains
-        self.optgain.generation_time = self.current_time
 
         if self.verbose:
             print(f"Optimized gains at t={self.t_to_seconds(t):.3f}s: "
@@ -335,10 +334,8 @@ class GainOptimizer(BaseProcessingObj):
 
     def post_trigger(self):
         super().post_trigger()
-
-        # Ensure output generation time is set
-        if hasattr(self.optgain, 'generation_time'):
-            self.optgain.generation_time = self.current_time
+        # Always refresh output, even when the gains were not updated
+        self.outputs['out_optgain'].set_refreshed(self.current_time)
 
     def setup(self):
         """

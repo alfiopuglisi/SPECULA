@@ -75,6 +75,12 @@ class ImCalibrator(BaseProcessingObj):
 
         self._im.generation_time = self.current_time
 
+    def post_trigger(self):
+        super().post_trigger()
+        for i in range(self._nmodes):
+            self.output_im[i].set_refreshed(self.current_time)
+        self._im.set_refreshed(self.current_time)
+    
     def finalize(self):
         im = Intmat(self._im.value, pupdata_tag = self.pupdata_tag,
                     target_device_idx=self.target_device_idx, precision=self.precision)

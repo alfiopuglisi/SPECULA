@@ -60,5 +60,6 @@ class ElectricFieldCombinator(BaseProcessingObj):
         # Combine S0 values
         self._out_ef.S0 = in_ef1.S0 + in_ef2.S0
 
-        # Set the generation time to the current time
-        self._out_ef.generation_time = self.current_time
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_ef'].set_refreshed(self.current_time)

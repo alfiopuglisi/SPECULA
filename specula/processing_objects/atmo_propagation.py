@@ -143,7 +143,7 @@ class AtmoPropagation(BaseProcessingObj):
         super().post_trigger()
 
         for source_name in self.source_dict.keys():
-            self.outputs['out_'+source_name+'_ef'].generation_time = self.current_time
+            self.outputs['out_'+source_name+'_ef'].set_refreshed(self.current_time)
 
     def setup_interpolators(self):
         

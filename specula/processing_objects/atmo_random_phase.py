@@ -126,10 +126,15 @@ class AtmoRandomPhase(BaseProcessingObj):
         for name, source in self.source_dict.items():
             self.outputs['out_'+name+'_ef'].phaseInNm = self.phasescreens[new_position,:,:] * scale_coeff
             self.outputs['out_'+name+'_ef'].A = self.pupilstop.A
-            self.outputs['out_'+name+'_ef'].generation_time = self.current_time
 
         # Update position output
         self.last_position = new_position + 1
+        
+    def post_trigger(self):
+        super().post_trigger()
+        
+        for output in self.outputs.values():
+            output.set_refreshed(self.current_time)
         
     def save(self, filename):
         hdr = fits.Header()

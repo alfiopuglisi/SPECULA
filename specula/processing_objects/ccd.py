@@ -157,7 +157,7 @@ class CCD(BaseProcessingObj):
 
         self.inputs['in_i'] = InputValue(type=Intensity)
         self.outputs['out_pixels'] = self._pixels
-        self.outputs['integrated_i'] = self._integrated_i
+        self.outputs['out_integrated_i'] = self._integrated_i
 
 
     @property
@@ -205,6 +205,15 @@ class CCD(BaseProcessingObj):
 
                 self._pixels.generation_time = self.current_time
                 self._integrated_i.i *= 0.0
+                self.refresh_outputs = True
+            else:
+                self.refresh_outputs = False
+
+    def post_trigger(self):
+        super().post_trigger()
+        if self.refresh_outputs:
+            self.outputs['out_pixels'].set_refreshed(self.current_time)
+            self.outputs['out_integrated_i'].set_refreshed(self.current_time)
 
     def apply_noise(self):
         ccd_frame = self._pixels.pixels

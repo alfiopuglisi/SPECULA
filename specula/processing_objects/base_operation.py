@@ -120,5 +120,6 @@ class BaseOperation(BaseProcessingObj):
             else:
                 raise ValueError('No operation defined')
 
-        self.out_value.generation_time = self.current_time
-
+    def post_trigger(self):
+        super().post_trigger()
+        self.outputs['out_value'].set_refreshed(self.current_time)

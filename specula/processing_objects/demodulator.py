@@ -90,7 +90,6 @@ class Demodulator(BaseProcessingObj):
 
         # Set output
         self.output.value = values
-        self.output.generation_time = t
 
         if self.verbose:
             print(f"Demodulated value at t={self.t_to_seconds(t):.3f}s: {values}")
@@ -199,3 +198,4 @@ class Demodulator(BaseProcessingObj):
 
     def post_trigger(self):
         super().post_trigger()
+        self.outputs['output'].set_refreshed(self.current_time)

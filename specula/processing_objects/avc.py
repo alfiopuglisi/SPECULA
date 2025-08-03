@@ -14,3 +14,4 @@ class AVC(BaseProcessingObj):
         self._out_comm = BaseValue(target_device_idx=self.target_device_idx)
         self.inputs['in_measurement'] = InputValue(type=BaseValue)
         self.outputs['out_comm'] = self._out_comm
+        

@@ -207,4 +207,4 @@ class IirFilter(BaseProcessingObj):
             output[:self._offset.shape[0]] += self._offset
 
         self.out_comm.value = output
-        self.out_comm.generation_time = self.current_time
+        self.outputs['out_comm'].set_refreshed(self.current_time)
