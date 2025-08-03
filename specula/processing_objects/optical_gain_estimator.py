@@ -54,16 +54,17 @@ class OpticalGainEstimator(BaseProcessingObj):
         self.outputs['output'] = self.output
 
         self.verbose = False
+        self.optical_gain_refreshed = False
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
 
         self.current_demod_delta_cmd = self.local_inputs['in_demod_delta_command']
         self.current_demod_cmd = self.local_inputs['in_demod_command']
+        self.optical_gain_refreshed = False
 
     def trigger_code(self):
         t = self.current_time
-        self.optical_gain_refreshed = False
 
         # Update optical gain if both inputs are ready
         if (self.current_demod_delta_cmd.generation_time == t and
@@ -88,7 +89,7 @@ class OpticalGainEstimator(BaseProcessingObj):
             # Update formula from IDL code
             updated_gain = current_gain - (1.0 - ratio) * self.gain * current_gain
 
-            self.optical_gain.value = updated_gain
+            self.optical_gain.value[:] = updated_gain
             self.optical_gain_refreshed = True
 
             if self.verbose:
@@ -119,7 +120,7 @@ class OpticalGainEstimator(BaseProcessingObj):
         if hasattr(output, '__len__') and len(output) == 1:
             output = float(output[0])
 
-        self.output.value = output
+        self.output.value[:] = output
 
         if self.verbose:
             print(f'Optical gain output: {output}')
@@ -131,8 +132,8 @@ class OpticalGainEstimator(BaseProcessingObj):
         super().setup()
 
         # Initialize values
-        self.optical_gain.value = self.dtype(self.initial_optical_gain)
-        self.output.value = self.dtype(self.initial_optical_gain)
+        self.optical_gain.value = self.xp.array([self.initial_optical_gain], dtype=self.dtype)
+        self.output.value = self.xp.array([self.initial_optical_gain], dtype=self.dtype)
 
     def reset_optical_gain(self, value=None):
         """
@@ -141,8 +142,8 @@ class OpticalGainEstimator(BaseProcessingObj):
         if value is None:
             value = self.initial_optical_gain
 
-        self.optical_gain.value = self.dtype(value)
-        self.output.value = self.dtype(value)
+        self.optical_gain.value = self.xp.array([value], dtype=self.dtype)
+        self.output.value = self.xp.array([value], dtype=self.dtype)
 
     def get_current_optical_gain(self):
         """

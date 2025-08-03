@@ -120,9 +120,9 @@ class ModulatedPyramid(BaseProcessingObj):
                     mod_step = min_mod_step
 
         self.out_i = Intensity(final_ccd_side, final_ccd_side, precision=self.precision, target_device_idx=self.target_device_idx)
-        self.psf_tot = BaseValue(self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
-        self.psf_bfm = BaseValue(self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
-        self.out_transmission = BaseValue(self.xp.zeros(1), target_device_idx=self.target_device_idx)
+        self.psf_tot = BaseValue(value=self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
+        self.psf_bfm = BaseValue(value=self.xp.zeros((fft_totsize, fft_totsize), dtype=self.dtype), target_device_idx=self.target_device_idx)
+        self.out_transmission = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
 
         self.inputs['in_ef'] = InputValue(type=ElectricField)
         self.outputs['out_i'] = self.out_i
@@ -146,8 +146,8 @@ class ModulatedPyramid(BaseProcessingObj):
             raise ValueError('Modulation step number is not an integer')
 
         self.pup_pyr_tot = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
-        self.psf_bfm_arr = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
-        self.psf_tot_arr = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
+        self.psf_bfm_arr = self.psf_bfm.value
+        self.psf_tot_arr = self.psf_tot.value
         self.mod_amp = mod_amp
         self.mod_steps = int(mod_step)
         self.ttexp = None
@@ -476,6 +476,8 @@ class ModulatedPyramid(BaseProcessingObj):
         # Note: this is a static shift, not a time-varying one as in PASSATA
         if self._do_pup_shift:
             self.pup_shift_interp.interpolate(self.pup_pyr_tot, out=self._pup_pyr_interpolated)
+        else:
+            self._pup_pyr_interpolated = self.pup_pyr_tot
 
         ccd_internal = toccd(self._pup_pyr_interpolated, (self.toccd_side, self.toccd_side), xp=self.xp)
 
@@ -489,8 +491,6 @@ class ModulatedPyramid(BaseProcessingObj):
         else:
             self.out_i.i[:] = ccd_internal
 
-        self.psf_tot.value = self.psf_tot_arr
-        self.psf_bfm.value = self.psf_bfm_arr
         self.out_transmission.value[0] = self.transmission
 
         self.outputs['out_i'].set_refreshed(self.current_time)
@@ -558,8 +558,6 @@ class ModulatedPyramid(BaseProcessingObj):
             self._do_pup_shift = True
         else:
             self._do_pup_shift = False
-            # Use the original pupil pyramid array directly
-            self._pup_pyr_interpolated = self.pup_pyr_tot
 
         # Store reference to input field (like SH does)
         self.in_ef = in_ef

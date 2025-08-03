@@ -39,13 +39,17 @@ class ImCalibrator(BaseProcessingObj):
         self.outputs['out_im'] = self.output_im
         self._im = BaseValue('intmat', target_device_idx=self.target_device_idx)
         self.outputs['out_intmat'] = self._im
+        self.refresh_outputs = True
 
     def trigger_code(self):
 
         # Slopes *must* have been refreshed. We could have been triggered
         # just by the commands, but we need to skip it
         if self.local_inputs['in_slopes'].generation_time != self.current_time:
+            self.refresh_outputs = False
             return
+        else:
+            self.refresh_outputs = True
 
         slopes = self.local_inputs['in_slopes'].slopes
         commands = self.local_inputs['in_commands'].value
@@ -71,15 +75,13 @@ class ImCalibrator(BaseProcessingObj):
             self.output_im[i].slopes[:] = self._im.value[i].copy()
             self.output_im[i].single_mask = in_slopes_object.single_mask
             self.output_im[i].display_map = in_slopes_object.display_map
-            self.output_im[i].generation_time = self.current_time
-
-        self._im.generation_time = self.current_time
 
     def post_trigger(self):
         super().post_trigger()
-        for i in range(self._nmodes):
-            self.output_im[i].set_refreshed(self.current_time)
-        self._im.set_refreshed(self.current_time)
+        if self.refresh_outputs:
+            for i in range(self._nmodes):
+                self.output_im[i].set_refreshed(self.current_time)
+            self._im.set_refreshed(self.current_time)
     
     def finalize(self):
         im = Intmat(self._im.value, pupdata_tag = self.pupdata_tag,

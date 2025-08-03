@@ -34,6 +34,10 @@ class Demodulator(BaseProcessingObj):
 
         # Outputs
         self.output = BaseValue(target_device_idx=target_device_idx)
+        if len(self.mode_numbers) == 1:
+            self.output.value = self.xp.zeros(1, dtype=self.dtype)
+        else:
+            self.output.value = self.xp.zeros(len(self.mode_numbers), dtype=self.dtype)
 
         # Inputs
         self.inputs['in_data'] = InputValue(type=BaseValue)
@@ -46,6 +50,7 @@ class Demodulator(BaseProcessingObj):
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
         self.input = self.local_inputs['in_data']
+        self.demodulation_performed = False
 
     def trigger_code(self):
         t = self.current_time
@@ -89,7 +94,8 @@ class Demodulator(BaseProcessingObj):
         self.time_history = []
 
         # Set output
-        self.output.value = values
+        self.output.value[:] = values
+        self.demodulation_performed = True
 
         if self.verbose:
             print(f"Demodulated value at t={self.t_to_seconds(t):.3f}s: {values}")
@@ -184,18 +190,10 @@ class Demodulator(BaseProcessingObj):
 
         return value
 
-    def setup(self):
-        """
-        Setup the demodulator.
-        """
-        super().setup()
-
-        # Initialize output
-        if len(self.mode_numbers) == 1:
-            self.output.value = self.xp.zeros(1, dtype=self.dtype)
-        else:
-            self.output.value = self.xp.zeros(len(self.mode_numbers), dtype=self.dtype)
-
     def post_trigger(self):
         super().post_trigger()
-        self.outputs['output'].set_refreshed(self.current_time)
+        if self.demodulation_performed:
+            self.outputs['output'].set_refreshed(self.current_time)
+        else:
+            self.outputs['output'].set_not_refreshed()
+
