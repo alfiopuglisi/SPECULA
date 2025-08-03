@@ -29,7 +29,32 @@ class BaseDataObj(BaseTimeObj):
         """
         super().__init__(target_device_idx, precision)
         self._generation_time = -1
+        self.valid = True  # Start with a valid object for the setup phase
+    
+    def set_not_valid(self):
+        """
+        Set the object as not valid. To set it as valid,
+        use set_refreshed() or set_not_refreshed().
+        """
+        self.valid = False
+        
+    def set_refreshed(self, t):
+        """
+        Set the object as valid and refreshed at time t.
+        Parameters:
+        t (int): The time at which the object was refreshed.
+        """
+        print(f'Setting {id(self)=} as valid at time {t}')
+        self.valid = True
+        self.generation_time = t
 
+    def set_not_refreshed(self):
+        """
+        Set the object as not refreshed:
+        output is valid but generation time is left to the previous value.
+        """
+        self.valid = True
+        
     @property
     def generation_time(self):
         return self._generation_time

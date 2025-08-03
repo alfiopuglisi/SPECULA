@@ -369,7 +369,7 @@ class FuncGenerator(BaseProcessingObj):
     def post_trigger(self):
         super().post_trigger()
 
-        self.output.generation_time = self.current_time
+        self.output.set_refreshed(self.current_time)
         self.iter_counter += 1
 
     def get_time_hist_at_current_time(self):

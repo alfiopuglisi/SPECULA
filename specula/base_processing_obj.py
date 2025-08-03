@@ -52,6 +52,11 @@ class BaseProcessingObj(BaseTimeObj):
         self.current_time_seconds = self.t_to_seconds(self.current_time)
         if self.target_device_idx >= 0:
             self._target_device.use()
+        # Invalidate all outputs
+        for _, output_obj in self.outputs.items():
+            outlist = output_obj if isinstance(output_obj, list) else [output_obj]
+            for output in outlist:
+                output.set_not_valid()
 
     def addRemoteOutput(self, name, remote_output):
         self.remote_outputs[name].append(remote_output)
@@ -153,6 +158,13 @@ class BaseProcessingObj(BaseTimeObj):
             Used while setting up the simulation, to initialize outputs
             that are delayed and thus would not be received otherwise.
         '''
+        # Check that all outputs are valid
+        for output_name, output_obj in self.outputs.items():
+            outlist = output_obj if isinstance(output_obj, list) else [output_obj]
+            for output in outlist:
+                if not output.valid:
+                    raise ValueError(f'Output "{output_name}" for object {self} is not valid ({id(output)=})')
+            
         if MPI_DBG:
             print(process_rank, self.name, 'My outputs are:')
             for out_name, out_value in self.outputs.items():

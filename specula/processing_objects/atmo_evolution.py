@@ -254,13 +254,17 @@ class AtmoEvolution(BaseProcessingObj):
             if not wdf_full[ii]==0:
                 layer_phase = self.rotate(layer_phase, wdf_full[ii], reshape=False, order=1)
             self.layer_list[ii].phaseInNm[:] = layer_phase * scale_coeff
-            self.layer_list[ii].generation_time = self.current_time
 
         # print(f'Phasescreen_shift: {new_position=}') # Verbose?
         # Update position output
         self.last_position = new_position
         self.last_t = self.current_time
         
+    def post_trigger(self):
+        super().post_trigger()
+        for layer in self.outputs['layer_list']:
+            layer.set_refreshed(self.current_time)
+    
     def save(self, filename):
         hdr = fits.Header()
         hdr['VERSION'] = 1

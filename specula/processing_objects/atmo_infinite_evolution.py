@@ -411,9 +411,13 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
             self.layer_list[ii].field[:] = self.xp.stack((layer_phase, layer_phase))
             self.layer_list[ii].phaseInNm *= scale_coeff
             self.layer_list[ii].A = 1
-            self.layer_list[ii].generation_time = self.current_time
         self.last_position = new_position
         self.last_t = self.current_time
+
+    def post_trigger(self):
+        super().post_trigger()
+        for layer in self.outputs['layer_list']:
+            layer.set_refreshed(self.current_time)
 
     def save(self, filename):
         hdr = fits.Header()
