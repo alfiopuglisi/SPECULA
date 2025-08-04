@@ -87,7 +87,7 @@ class TestExtendedSource(unittest.TestCase):
         if self.debug_plot:
             src.plot_source()
         self.assertGreater(src.npoints, 1)
-        self.assertAlmostEqual(np.sum(src.coeff_flux), 1.0, places=6)
+        self.assertAlmostEqual(float(np.sum(src.coeff_flux)), 1.0, places=6)
 
     @cpu_and_gpu   
     def test_extended_source_in_pyramid(self, target_device_idx, xp):
@@ -176,8 +176,8 @@ class TestExtendedSource(unittest.TestCase):
 
         # Create a new PSF to update with
         new_psf = BaseValue(target_device_idx=target_device_idx)
-        new_psf.value = np.random.random((64, 64))
-        new_psf.value /= np.sum(new_psf.value)
+        new_psf.value = xp.random.random((64, 64))
+        new_psf.value /= xp.sum(new_psf.value)
         new_psf.generation_time = 1
 
         # Connect PSF input

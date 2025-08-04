@@ -1,5 +1,7 @@
 import numpy as np
 from typing import Optional, Union, Tuple, List
+
+from specula import cpuArray
 from specula.base_processing_obj import BaseProcessingObj
 from specula.data_objects.simul_params import SimulParams
 from specula.base_value import BaseValue
@@ -501,7 +503,7 @@ class ExtendedSource(BaseProcessingObj):
             # Create interpolation function
             x_psf = np.arange(sPSF[1])
             y_psf = np.arange(sPSF[0])
-            interp_func = RectBivariateSpline(y_psf, x_psf, psf, kx=1, ky=1)
+            interp_func = RectBivariateSpline(y_psf, x_psf, cpuArray(psf), kx=1, ky=1)
 
             # Interpolate at desired points (with boundary check)
             flux_percent = []
@@ -694,10 +696,9 @@ class ExtendedSource(BaseProcessingObj):
         # Check if PSF input is available and updated
         if self.source_type == 'FROM_PSF':
             psf = self.local_inputs.get('psf')
-            if psf is not None and psf.generation_time == self.current_time:
-                if np.sum(self.xp.abs(psf.value)) > 0:
-                    self.psf = psf
-                    self.compute()  # Recompute all coefficients with new PSF
+            if np.sum(self.xp.abs(psf.value)) > 0:
+                self.psf = psf
+                self.compute()  # Recompute all coefficients with new PSF
 
     def plot_source(self):
         """Plot the extended source distribution"""
