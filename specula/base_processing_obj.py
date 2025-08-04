@@ -6,7 +6,6 @@ from specula import show_in_profiler
 from specula import process_comm, process_rank
 from specula.base_time_obj import BaseTimeObj
 from specula.data_objects.layer import Layer
-from specula.data_objects.electric_field import ElectricField
 
 
 class BaseProcessingObj(BaseTimeObj):
