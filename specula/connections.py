@@ -45,8 +45,7 @@ class _InputItem():
             process_comm.Recv(buffer, source=self.remote_rank, tag=self.tag)
             if MPI_SEND_DBG:  print(process_rank, self.tag+1, 'RECV .bufftimeer')
             gen_time = process_comm.recv(source=self.remote_rank, tag=self.tag+1)
-            self.cloned_value.generation_time = gen_time
-            self.cloned_value.set_value(buffer)
+            self.cloned_value.set_value(buffer, t=gen_time)
 
         return new_value        
 

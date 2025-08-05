@@ -54,8 +54,7 @@ class DataBuffer(BaseProcessingObj):
             output_name = f"{input_name}_buffered"
             values = self.xp.array(list(data_dict.values()))
             if output_name in self.buffered_outputs:
-                self.buffered_outputs[output_name].value = values
-                self.buffered_outputs[output_name].generation_time = self.current_time
+                self.buffered_outputs[output_name].set_value(values, t = self.current_time)
                 if self.verbose:
                     print(f"DataBuffer: emitted {len(values)} samples for {input_name}")
 

@@ -19,11 +19,12 @@ class BaseValue(BaseDataObj):
     def get_value(self):
         return self._value
 
-    def set_value(self, val, force_copy=False):
+    def set_value(self, val, t, force_copy=False):
         if not self._value is None and not force_copy:
             self._value[:] = self.to_xp(val)
         else:
             self._value = self.to_xp(val)
+        self.generation_time = t
 
     @property
     def value(self):

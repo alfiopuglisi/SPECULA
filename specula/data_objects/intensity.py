@@ -21,7 +21,7 @@ class Intensity(BaseDataObj):
         '''
         return self.i
 
-    def set_value(self, v, force_copy=True):
+    def set_value(self, v, t, force_copy=True):
         '''
         Set new values for the intensity field    
         Arrays are not reallocated
@@ -29,6 +29,7 @@ class Intensity(BaseDataObj):
         assert v.shape == self.i.shape, \
             f"Error: input array shape {v.shape} does not match intensity field shape {self.i.shape}"
         self.i[:]= self.to_xp(v, dtype=self.dtype, force_copy=force_copy)
+        self.generation_time = t
 
     def sum(self, i2, factor=1.0):
         self.i += i2.i * factor

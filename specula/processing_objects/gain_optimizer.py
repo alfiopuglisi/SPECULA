@@ -155,7 +155,7 @@ class GainOptimizer(BaseProcessingObj):
 
         # Store results
         self.prev_optgain = opt_gains.copy()
-        self.optgain.value[:] = opt_gains
+        self.optgain.value.set_value(opt_gains, t=self.current_time)
 
         if self.verbose:
             print(f"Optimized gains at t={self.t_to_seconds(t):.3f}s: "

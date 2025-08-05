@@ -93,8 +93,7 @@ class Demodulator(BaseProcessingObj):
         self.time_history = []
 
         # Set output
-        self.output.value = values
-        self.output.generation_time = t
+        self.output.set_value(values, generation_time)
 
         if self.verbose:
             print(f"Demodulated value at t={self.t_to_seconds(t):.3f}s: {values}")

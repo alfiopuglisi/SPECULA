@@ -42,7 +42,7 @@ class Pixels(BaseDataObj):
         '''Get the pixel values as a numpy/cupy array'''
         return self.pixels
     
-    def set_value(self, v, force_copy=False):
+    def set_value(self, v, t, force_copy=False):
         '''Set new pixel values.
         Arrays are not reallocated.
         '''
@@ -50,6 +50,7 @@ class Pixels(BaseDataObj):
             f"Error: input array shape {v.shape} does not match pixel shape {self.pixels.shape}"
 
         self.pixels[:] = self.to_xp(v, force_copy=force_copy)
+        self.generation_time = t
 
     @property
     def size(self):
@@ -98,7 +99,7 @@ class Pixels(BaseDataObj):
     def restore(filename, target_device_idx=None):
         hdr = fits.getheader(filename)
         pixels = Pixels.from_header(hdr, target_device_idx=target_device_idx)
-        pixels.set_value(fits.getdata(filename, ext=1))
+        pixels.set_value(fits.getdata(filename, ext=1), t=0)
         return pixels
 
     def array_for_display(self):

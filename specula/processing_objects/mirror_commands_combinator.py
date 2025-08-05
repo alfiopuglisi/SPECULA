@@ -85,9 +85,9 @@ class MirrorCommandsCombinator(BaseProcessingObj):
         y3 = self.xp.concatenate( ( x_LO3, x_HO3 ) )
 
         #print(f'{len(y1)=}, {len(y2)=}, {len(y3)=}')
-        self.result_commands1.value[:] = y1
-        self.result_commands2.value[:] = y2
-        self.result_commands3.value[:] = y3
+        self.result_commands1.value.set_value(y1, t=self.current_time)
+        self.result_commands2.value.set_value(y2, t=self.current_time)
+        self.result_commands3.value.set_value(y3, t=self.current_time)
 
 
     def post_trigger(self):

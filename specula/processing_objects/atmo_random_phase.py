@@ -110,7 +110,6 @@ class AtmoRandomPhase(BaseProcessingObj):
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
-        self.pupilstop = self.local_inputs['pupilstop']
     
     def trigger_code(self):
         r0 = 0.9759 * 0.5 / (self.local_inputs['seeing'].value * 4.848) * self.airmass**(-3./5.) # if seeing > 0 else 0.0
@@ -124,13 +123,17 @@ class AtmoRandomPhase(BaseProcessingObj):
             new_position = 0
 
         for name, source in self.source_dict.items():
-            self.outputs['out_'+name+'_ef'].phaseInNm = self.phasescreens[new_position,:,:] * scale_coeff
-            self.outputs['out_'+name+'_ef'].A = self.pupilstop.A
-            self.outputs['out_'+name+'_ef'].generation_time = self.current_time
+            self.outputs['out_'+name+'_ef'].set_phase(self.phasescreens[new_position,:,:] * scale_coeff,
+                                                      t=self.current_time)
 
         # Update position output
         self.last_position = new_position + 1
-        
+
+    def setup(self):
+        pupilstop = self.local_inputs['pupilstop']
+        for output in self.outputs:
+            output.A = pupilstop.A
+
     def save(self, filename):
         hdr = fits.Header()
         hdr['VERSION'] = 1

@@ -206,5 +206,4 @@ class IirFilter(BaseProcessingObj):
         if self._offset is not None and self.xp.all(output == 0):
             output[:self._offset.shape[0]] += self._offset
 
-        self.out_comm.value = output
-        self.out_comm.generation_time = self.current_time
+        self.out_comm.set_value(output, t=self.current_time)
