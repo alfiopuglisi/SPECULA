@@ -35,15 +35,18 @@ class OpticalGainEstimator(BaseProcessingObj):
 
         # Internal optical gain storage
         self.optical_gain = BaseValue(
-            value=self.dtype(initial_optical_gain),
+            value=self.xp.zeros(1, dtype=self.dtype),
             target_device_idx=target_device_idx
         )
 
         # Output value (can be different from internal optical_gain if using expressions)
         self.output = BaseValue(
-            value=self.dtype(initial_optical_gain),
+            value=self.xp.zeros(1, dtype=self.dtype),
             target_device_idx=target_device_idx
         )
+
+        self.optical_gain.value[0] = initial_optical_gain
+        self.output.value[0] = initial_optical_gain
 
         # Inputs
         self.inputs['in_demod_delta_command'] = InputValue(type=BaseValue)
@@ -89,7 +92,7 @@ class OpticalGainEstimator(BaseProcessingObj):
             # Update formula from IDL code
             updated_gain = current_gain - (1.0 - ratio) * self.gain * current_gain
 
-            self.optical_gain.value[:] = updated_gain
+            self.optical_gain.value[0] = updated_gain
             self.optical_gain_refreshed = True
 
             if self.verbose:
@@ -111,16 +114,7 @@ class OpticalGainEstimator(BaseProcessingObj):
             output = self.optical_gain.value
 
         # Ensure output doesn't exceed 1.0 (as in IDL code)
-        if hasattr(output, '__iter__'):
-            output = self.xp.minimum(output, 1.0)
-        else:
-            output = min(float(output), 1.0)
-
-        # Handle scalar case
-        if hasattr(output, '__len__') and len(output) == 1:
-            output = float(output[0])
-
-        self.output.value[:] = output
+        self.output.value[0] = self.xp.minimum(output, 1.0)
 
         if self.verbose:
             print(f'Optical gain output: {output}')

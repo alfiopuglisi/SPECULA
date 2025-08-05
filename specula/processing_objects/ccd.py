@@ -137,6 +137,8 @@ class CCD(BaseProcessingObj):
         self._pixels = Pixels(size[0] // binning, size[1] // binning, target_device_idx=target_device_idx)
         self._integrated_i = Intensity(size[0], size[1], target_device_idx=target_device_idx, precision=precision)
         self._output_integrated_i = Intensity(size[0], size[1], target_device_idx=target_device_idx, precision=precision)
+        self.refresh_outputs = False
+
         self._photon_seed = photon_seed
         self._readout_seed = readout_seed
         self._excess_seed = excess_seed
@@ -151,7 +153,7 @@ class CCD(BaseProcessingObj):
 
         self.inputs['in_i'] = InputValue(type=Intensity)
         self.outputs['out_pixels'] = self._pixels
-        self.outputs['integrated_i'] = self._output_integrated_i
+        self.outputs['out_integrated_i'] = self._output_integrated_i
 
         # TODO not used yet
         self._keep_ADU_bias = False
@@ -162,6 +164,10 @@ class CCD(BaseProcessingObj):
         self._notUniformQe = False
         self._normNotUniformQe = False
         self._gaussian_noise = None
+
+    def prepare_trigger(self, t):
+        super().prepare_trigger(t)
+        self.refresh_outputs = False
 
     def trigger_code(self):
         if self.start_time > 0 and self.current_time < self.start_time:
@@ -178,6 +184,7 @@ class CCD(BaseProcessingObj):
             # Copy integrated intensity into output and then reset it.
             self._output_integrated_i.i[:] = self._integrated_i.i
             self._integrated_i.i *= 0.0
+            self.refresh_outputs = True
 
     def post_trigger(self):
         super().post_trigger()
