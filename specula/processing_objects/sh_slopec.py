@@ -33,12 +33,14 @@ class ShSlopec(Slopec):
                  window_int_pixel: bool=False,
                  target_device_idx: int = None,
                  precision: int = None):
+
+        # Set subaperture data before initializing base class
+        self.subapdata = subapdata
+
         super().__init__(sn=sn, filtmat=filtmat, weight_int_pixel_dt=weight_int_pixel_dt,
                          target_device_idx=target_device_idx, precision=precision)
         self.thr_value = thr_value
         self.thr_mask_cube = BaseValue(target_device_idx=self.target_device_idx)
-        self.exp_weight = None
-        self.subapdata = None
         self.xweights = None
         self.yweights = None
         self.xcweights = None
@@ -53,20 +55,21 @@ class ShSlopec(Slopec):
         self.quadcell_mode = False
         self.two_steps_cog = False
         self.cog_2ndstep_size = 0
-        self.store_thr_mask_cube = False
+        self.store_thr_mask_cube = False   # Todo should it become a parameter?
 
         self.exp_weight = exp_weight
-        self.subapdata = subapdata
         self.window_int_pixel = window_int_pixel
         self.int_pixels_weight = None
 
-        self.accumulated_slopes = Slopes(subapdata.n_subaps * 2, target_device_idx=self.target_device_idx)
+        self.accumulated_slopes = Slopes(self.nslopes(), target_device_idx=self.target_device_idx)
         self.set_xy_weights()
         self.outputs['out_subapdata'] = self.subapdata
 
-    def resize_slopes_and_flux_per_subaperture_vector(self):
-        self.slopes.resize(self.subapdata.n_subaps * 2)
-        self.flux_per_subaperture_vector.value = self.xp.zeros(self.subapdata.n_subaps, dtype=self.dtype)
+    def nsubaps(self):
+        return self.subapdata.n_subaps
+
+    def nslopes(self):
+        return self.subapdata.n_subaps * 2
 
     @property
     def subap_idx(self):

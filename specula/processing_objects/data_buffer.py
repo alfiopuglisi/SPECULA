@@ -18,6 +18,7 @@ class DataBuffer(BaseProcessingObj):
         self.storage = defaultdict(OrderedDict)
         self.step_counter = 0
         self.buffered_outputs = {}
+        self.outputs_refreshed = False
 
     def setup(self):
         super().setup()
@@ -30,6 +31,10 @@ class DataBuffer(BaseProcessingObj):
                 output_obj = BaseValue(target_device_idx=self.target_device_idx)
                 self.buffered_outputs[output_name] = output_obj
                 self.outputs[output_name] = output_obj
+
+    def prepare_trigger(self, t):
+        super().prepare_trigger(t)
+        self.outputs_refreshed = False
 
     def trigger_code(self):
         # Accumulate data (same logic as DataStore)
@@ -57,12 +62,17 @@ class DataBuffer(BaseProcessingObj):
                 self.buffered_outputs[output_name].value = values
                 if self.verbose:
                     print(f"DataBuffer: emitted {len(values)} samples for {input_name}")
+        self.outputs_refreshed = True
+
 
     def post_trigger(self):
         super().post_trigger()
-        
-        for output in self.outputs.values():
-            output.set_refreshed(self.current_time)
+        if self.outputs_refreshed:
+            for output in self.outputs.values():
+                output.set_refreshed(self.current_time)
+        else:
+            for output in self.outputs.values():
+                output.set_not_refreshed()
 
     def reset_buffers(self):
         """Clear all buffers and reset counter"""
@@ -78,5 +88,7 @@ class DataBuffer(BaseProcessingObj):
         if self.step_counter > 0:
             self.emit_buffered_data()
             self.reset_buffers()
+            for output in self.outputs.values():
+                output.set_refreshed(self.current_time)
         
         super().finalize()

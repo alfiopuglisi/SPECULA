@@ -23,11 +23,9 @@ class Slopec(BaseProcessingObj):
         super().__init__(target_device_idx=target_device_idx, precision=precision)
 
         self.sn = sn
-
-        # These two arrays will be resized in the derived class (either PyrSlopec or ShSlopec)
-        # once the subaperture data is known
-        self.slopes = Slopes(2, target_device_idx=self.target_device_idx) 
-        self.flux_per_subaperture_vector = BaseValue(value=None, target_device_idx=self.target_device_idx)
+        self.slopes = Slopes(self.nslopes(), target_device_idx=self.target_device_idx) 
+        self.flux_per_subaperture_vector = BaseValue(value=self.xp.zeros(self.nsubaps(), dtype=self.dtype),
+                                                     target_device_idx=self.target_device_idx)
 
         self.total_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
         self.subap_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
@@ -59,16 +57,16 @@ class Slopec(BaseProcessingObj):
         self.outputs['out_total_counts'] = self.total_counts
         self.outputs['out_subap_counts'] = self.subap_counts
 
-    # Derived classes must implement this method to resize self.slopes and self.flux_per_subaperture_vector
-    def resize_slopes_and_flux_per_subaperture_vector(self):
+    # Derived classes must implement this method
+    def nsubaps(self):
         raise NotImplementedError
 
-    def prepare_trigger(self, t):
-        if self.flux_per_subaperture_vector.value is None:
-            self.resize_slopes_and_flux_per_subaperture_vector()
+    # Derived classes must implement this method
+    def nslopes(self):
+        raise NotImplementedError
 
-    # TODO not used. Remove?
     def build_and_save_filtmat(self, intmat, recmat, nmodes, filename):
+        # TODO not used. Remove?
         im = intmat[:nmodes, :]
         rm = recmat[:, :nmodes]
 

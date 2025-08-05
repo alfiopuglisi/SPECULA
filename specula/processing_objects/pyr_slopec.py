@@ -35,6 +35,11 @@ class PyrSlopec(Slopec):
                  target_device_idx: int=None,
                  precision: int=None,
                 **kwargs): # is this needed??
+
+        # Set subaperture data before initializing base class
+        self.pupdata = pupdata
+        self.slopes_from_intensity = slopes_from_intensity
+
         super().__init__(sn=sn, target_device_idx=target_device_idx, precision=precision, **kwargs)
 
         if shlike and slopes_from_intensity:
@@ -46,8 +51,6 @@ class PyrSlopec(Slopec):
         self.shlike = shlike
         self.norm_factor = norm_factor
         self.threshold = thr_value
-        self.slopes_from_intensity = slopes_from_intensity
-        self.pupdata = pupdata  # Property set
         ind_pup = self.pupdata.ind_pup
         self.pup_idx  = ind_pup.flatten().astype(self.xp.int64)[ind_pup.flatten() >= 0] # Exclude -1 padding
         self.pup_idx0 = ind_pup[:, 0][ind_pup[:, 0] >= 0]  # Exclude -1 padding
@@ -58,12 +61,14 @@ class PyrSlopec(Slopec):
         self.n_subap = self.pupdata.ind_pup.shape[0]
         self.outputs['out_pupdata'] = self.pupdata
 
-    def resize_slopes_and_flux_per_subaperture_vector(self):
+    def nsubaps(self):
+        return self.pupdata.ind_pup.shape[0]
+
+    def nslopes(self):
         if self.slopes_from_intensity:
-            self.slopes.resize(self.n_subap * 4)
+            return self.pupdata.ind_pup.shape[0] * 4
         else:
-            self.slopes.resize(self.n_subap * 2)
-        self.flux_per_subaperture_vector.value =self.xp.zeros(self.n_subap, dtype=self.dtype)
+            return self.pupdata.ind_pup.shape[0] * 2
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)

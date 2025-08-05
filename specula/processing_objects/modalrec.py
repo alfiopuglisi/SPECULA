@@ -148,11 +148,10 @@ class Modalrec(BaseProcessingObj):
             print("WARNING: modalrec skipping reconstruction because recmat is NULL")
             return
 
-        # In the polc case, commands may be *alwats* refreshed if they are set with -1
+        # In the polc case, commands may be *always* refreshed if they are set with a -1 delay
         # (it might result in a kind of loop in the yml file)
-        # Therefor we check the slopes input time and only run when they have been refreshed.
+        # Therefore we check the slopes input time and only run when slopes have been refreshed.
         if self.polc:
-
             slopes = self.local_inputs['in_slopes']
             slopes_list = self.local_inputs['in_slopes_list']
 
@@ -163,7 +162,6 @@ class Modalrec(BaseProcessingObj):
 
             if slopes_time != self.current_time:
                 return
-
 
         if self.polc:
    

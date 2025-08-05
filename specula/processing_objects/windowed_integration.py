@@ -49,7 +49,7 @@ class WindowedIntegration(BaseProcessingObj):
                 self.output_value += input.value * self.loop_dt / self._dt
 
             if (self.current_time + self.loop_dt - self._dt - self._start_time) % self._dt == 0:
-                self.output.value = self.output_value.copy()
+                self.output.value = self.output_value.copy()   # TODO ??
                 self.output.generation_time = self.current_time
                 self.output_value *= 0.0
                 
