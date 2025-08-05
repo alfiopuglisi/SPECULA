@@ -28,36 +28,7 @@ class BaseDataObj(BaseTimeObj):
         precision (int, optional):if None will use the global_precision, otherwise pass 0 for double, 1 for single
         """
         super().__init__(target_device_idx, precision)
-        self._generation_time = -1
-
-    @property
-    def generation_time(self):
-        return self._generation_time
-
-    @generation_time.setter
-    def generation_time(self, value):
-        self._generation_time = value
-
-    def get_fits_header(self):
-        hdr = fits.Header()
-        hdr['VERSION'] = 1
-        hdr['OBJ_TYPE'] = 'BaseDataObj'
-        return hdr
-
-    def save(self, filename):
-        hdr = fits.Header()
-        hdr['GEN_TIME'] = self._generation_time
-        hdr['TIME_RES'] = self._time_resolution
-
-        primary_hdu = fits.PrimaryHDU(header=hdr)
-        hdul = fits.HDUList([primary_hdu])
-        hdul.writeto(filename, overwrite=True)
-
-    def read(self, filename):
-        with fits.open(filename) as hdul:
-            hdr = hdul[0].header
-            self._generation_time = int(hdr.get('GEN_TIME', 0))
-            self._time_resolution = int(hdr.get('TIME_RES', 0))
+        self.generation_time = -1
 
     def transferDataTo(self, destobj, force_reallocation=False):
         '''
