@@ -150,6 +150,7 @@ class TestDataBuffer(unittest.TestCase):
         buffer.inputs['gen'] = InputValue(type=BaseValue)
         # Connect generator output to buffer input
         buffer.inputs['gen'].set(generator.outputs['output'])
+        buffer.setOutputs()
         buffer.setup()
 
         # Track emissions manually

@@ -1,3 +1,4 @@
+import array
 import numpy as np
 from astropy.io import fits
 
@@ -86,7 +87,8 @@ class AtmoRandomPhase(BaseProcessingObj):
 
     def initScreens(self):
         # Seed
-        self.seed = np.array([self.seed])
+        if type(self.seed) is not np.ndarray:
+            self.seed = np.array([self.seed])
         # Square phasescreens
         square_phasescreens = phasescreens_manager(np.array([self.L0]), self.pixel_square_phasescreens,
                                                     self.pixel_pitch, self.data_dir,

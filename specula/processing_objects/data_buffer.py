@@ -19,11 +19,9 @@ class DataBuffer(BaseProcessingObj):
         self.step_counter = 0
         self.buffered_outputs = {}
 
-    def setup(self):
-        super().setup()
-
+    def setOutputs(self):
         # Create output objects for each input (like DataStore does)
-        for input_name, input_obj in self.local_inputs.items():
+        for input_name, input_obj in self.inputs.items():
             if input_obj is not None:
                 # Create output name and object
                 output_name = f"{input_name}_buffered"
@@ -38,8 +36,8 @@ class DataBuffer(BaseProcessingObj):
                 if hasattr(item, 'get_value'):
                     v = item.get_value()
                 else:
-                    raise TypeError(f"Error: don't know how to buffer an object of type {type(item)}")
-                self.storage[k][self.current_time] = v
+                    raise TypeError(f"Error: don't know how to buffer an object of type {type(item)}")                
+                self.storage[k][self.step_counter] = v.copy()
 
         self.step_counter += 1
 
@@ -68,8 +66,7 @@ class DataBuffer(BaseProcessingObj):
             print(f"DataBuffer: reset buffers at time {self.current_time}")
 
     def finalize(self):
-        """Emit any remaining data in buffers"""
-        self.trigger_code()
+        """Emit any remaining data in buffers"""        
         if self.step_counter > 0:
             self.emit_buffered_data()
             self.reset_buffers()
