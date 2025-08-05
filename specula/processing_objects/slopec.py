@@ -22,10 +22,15 @@ class Slopec(BaseProcessingObj):
                 ):
         super().__init__(target_device_idx=target_device_idx, precision=precision)
 
-        self.slopes = Slopes(2, target_device_idx=self.target_device_idx) # TODO resized in derived class
         self.sn = sn
-        self.flux_per_subaperture_vector = BaseValue(target_device_idx=self.target_device_idx)
-        self.max_flux_per_subaperture_vector = BaseValue(target_device_idx=self.target_device_idx)
+
+        # These two arrays will be resized in the derived class (either PyrSlopec or ShSlopec)
+        # once the subaperture data is known
+        self.slopes = Slopes(2, target_device_idx=self.target_device_idx) 
+        self.flux_per_subaperture_vector = BaseValue(value=None, target_device_idx=self.target_device_idx)
+
+        self.total_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
+        self.subap_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
         self.recmat = recmat
         if filtmat is not None:
             if filt_intmat:
@@ -50,7 +55,19 @@ class Slopec(BaseProcessingObj):
 
         self.inputs['in_pixels'] = InputValue(type=Pixels)
         self.outputs['out_slopes'] = self.slopes
+        self.outputs['out_flux_per_subaperture'] = self.flux_per_subaperture_vector
+        self.outputs['out_total_counts'] = self.total_counts
+        self.outputs['out_subap_counts'] = self.subap_counts
 
+    # Derived classes must implement this method to resize self.slopes and self.flux_per_subaperture_vector
+    def resize_slopes_and_flux_per_subaperture_vector(self):
+        raise NotImplementedError
+
+    def prepare_trigger(self, t):
+        if self.flux_per_subaperture_vector.value is None:
+            self.resize_slopes_and_flux_per_subaperture_vector()
+
+    # TODO not used. Remove?
     def build_and_save_filtmat(self, intmat, recmat, nmodes, filename):
         im = intmat[:nmodes, :]
         rm = recmat[:, :nmodes]
@@ -129,6 +146,9 @@ class Slopec(BaseProcessingObj):
             self.slopes.slopes -= sl0
 
         self.outputs['out_slopes'].set_refreshed(self.current_time)
+        self.outputs['out_flux_per_subaperture'].set_refreshed(self.current_time)
+        self.outputs['out_total_counts'].set_refreshed(self.current_time)
+        self.outputs['out_subap_counts'].set_refreshed(self.current_time)
 
         #rms = self.xp.sqrt(self.xp.mean(self.slopes.slopes**2))
         #print('Slopes have been filtered. '

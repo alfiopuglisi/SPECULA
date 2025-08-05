@@ -37,8 +37,6 @@ class ShSlopec(Slopec):
                          target_device_idx=target_device_idx, precision=precision)
         self.thr_value = thr_value
         self.thr_mask_cube = BaseValue(target_device_idx=self.target_device_idx)
-        self.total_counts = BaseValue(target_device_idx=self.target_device_idx)
-        self.subap_counts = BaseValue(target_device_idx=self.target_device_idx)
         self.exp_weight = None
         self.subapdata = None
         self.xweights = None
@@ -62,11 +60,13 @@ class ShSlopec(Slopec):
         self.window_int_pixel = window_int_pixel
         self.int_pixels_weight = None
 
-        # TODO replace this resize with an earlier initialization
-        self.slopes.resize(subapdata.n_subaps * 2)
         self.accumulated_slopes = Slopes(subapdata.n_subaps * 2, target_device_idx=self.target_device_idx)
         self.set_xy_weights()
         self.outputs['out_subapdata'] = self.subapdata
+
+    def resize_slopes_and_flux_per_subaperture_vector(self):
+        self.slopes.resize(self.subapdata.n_subaps * 2)
+        self.flux_per_subaperture_vector.value = self.xp.zeros(self.subapdata.n_subaps, dtype=self.dtype)
 
     @property
     def subap_idx(self):
@@ -266,14 +266,10 @@ class ShSlopec(Slopec):
         self.slopes.yslopes = sy
         self.slopes.single_mask = self.subapdata.single_mask()
         self.slopes.display_map = self.subapdata.display_map
-        self.slopes.generation_time = self.current_time
 
-        self.flux_per_subaperture_vector.value = flux_per_subaperture
-        self.flux_per_subaperture_vector.generation_time = self.current_time
-        self.total_counts.value = self.xp.sum(self.flux_per_subaperture_vector.value)
-        self.total_counts.generation_time = self.current_time
-        self.subap_counts.value = self.xp.mean(self.flux_per_subaperture_vector.value)
-        self.subap_counts.generation_time = self.current_time
+        self.flux_per_subaperture_vector.value[:] = flux_per_subaperture
+        self.total_counts.value[0] = self.xp.sum(flux_per_subaperture)
+        self.subap_counts.value[0] = self.xp.mean(flux_per_subaperture)
 
         if self.verbose:
             print(f"Slopes min, max and rms : {self.xp.min(sx)}, {self.xp.max(sx)}, {self.xp.sqrt(self.xp.mean(sx ** 2))}")
@@ -396,12 +392,9 @@ class ShSlopec(Slopec):
         self.slopes.display_map = self.subapdata.display_map
         self.slopes.generation_time = self.current_time
 
-        self.flux_per_subaperture_vector.value = flux_per_subaperture_vector
-        self.flux_per_subaperture_vector.generation_time = self.current_time
-        self.total_counts.value = self.xp.sum(self.flux_per_subaperture_vector.value)
-        self.total_counts.generation_time = self.current_time
-        self.subap_counts.value = self.xp.mean(self.flux_per_subaperture_vector.value)
-        self.subap_counts.generation_time = self.current_time
+        self.flux_per_subaperture_vector.value[:] = flux_per_subaperture_vector
+        self.total_counts.value[0] = self.xp.sum(flux_per_subaperture_vector)
+        self.subap_counts.value[0] = self.xp.mean(flux_per_subaperture_vector)
 
         if self.verbose:
             print(f"Slopes min, max and rms : {self.xp.min(sx)}, {self.xp.max(sx)}, {self.xp.sqrt(self.xp.mean(sx ** 2))}")

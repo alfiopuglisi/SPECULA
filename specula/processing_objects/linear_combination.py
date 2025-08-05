@@ -30,7 +30,6 @@ class LinearCombination(BaseProcessingObj):
 
         self.out_vector.value *= 0.0
         self.out_vector.value[:len(lgs)] = lgs
-        self.out_vector.generation_time = self.current_time
 
     def post_trigger(self):
         super().post_trigger()

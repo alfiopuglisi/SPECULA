@@ -56,43 +56,23 @@ class PyrSlopec(Slopec):
         self.pup_idx3 = ind_pup[:, 3][ind_pup[:, 3] >= 0]  # Exclude -1 padding
         self.n_pup = self.pupdata.ind_pup.shape[1]
         self.n_subap = self.pupdata.ind_pup.shape[0]
-
-        self.total_counts = BaseValue(target_device_idx=self.target_device_idx)
-        self.subap_counts = BaseValue(target_device_idx=self.target_device_idx)
         self.outputs['out_pupdata'] = self.pupdata
-        self.outputs['total_counts'] = self.total_counts
-        self.outputs['subap_counts'] = self.subap_counts
 
-    @property
-    def pupdata(self):
-        return self._pupdata
-
-    @pupdata.setter
-    def pupdata(self, p):
-        if p is not None:
-            self._pupdata = p
-            # TODO replace this resize with an earlier initialization
-            if self.slopes_from_intensity:
-                self.slopes.resize(len(self.pupdata.ind_pup) * 4)
-            else:
-                self.slopes.resize(len(self.pupdata.ind_pup) * 2)
+    def resize_slopes_and_flux_per_subaperture_vector(self):
+        if self.slopes_from_intensity:
+            self.slopes.resize(self.n_subap * 4)
+        else:
+            self.slopes.resize(self.n_subap * 2)
+        self.flux_per_subaperture_vector.value =self.xp.zeros(self.n_subap, dtype=self.dtype)
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
         self.flat_pixels = self.local_inputs['in_pixels'].pixels.flatten()
 
     def trigger_code(self):
-        # outpus:
-        # total_counts : computed here
-        # subap_counts : computed in post_trigger
-        # slopes : computed here
 
-#        if not self.pupdata:
-#            return
-#        if self.verbose:
-#            print('Average pixel counts:', self.xp.sum(pixels) / len(self.pupdata.ind_pup))
-
-        self.total_counts.value = self.xp.sum(self.flat_pixels[self.pup_idx])
+        self.total_counts.value[0] = self.xp.sum(self.flat_pixels[self.pup_idx])
+        self.subap_counts.value[0] = self.total_counts.value[0] / self.pupdata.n_subap
 
         self.flat_pixels -= self.threshold
 
@@ -134,15 +114,10 @@ class PyrSlopec(Slopec):
         self.slopes.xslopes = self.sx
         self.slopes.yslopes = self.sy
 
-
     def post_trigger(self):
         super().post_trigger()
 
-        self.subap_counts.value = self.total_counts.value / self.pupdata.n_subap
         self.outputs['out_pupdata'].set_refreshed(self.current_time)
-        self.outputs['total_counts'].set_refreshed(self.current_time)
-        self.outputs['subap_counts'].set_refreshed(self.current_time)
-
         self.slopes.single_mask = self.pupdata.single_mask()
         self.slopes.display_map = self.pupdata.display_map
 
