@@ -238,6 +238,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
                  zenithAngleInDeg: float=0.0,
                  fov: float=0.0,
                  seed: int=1,
+                 extra_delta_time: float=0,
                  verbose: bool=False,
                  fov_in_m: float=None,
                  pupil_position:list =[0,0],
@@ -254,14 +255,13 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         self.n_infinite_phasescreens = len(heights)
         self.last_position = np.zeros(self.n_infinite_phasescreens)
         self.last_t = 0
-        self.delta_time = 1
+        self.delta_time = None
         # fixed at generation time, then is a input -> rescales the screen?
         self.seeing = 0.8
         self.l0 = 0.005
-        self.wind_speed = 1
-        self.wind_direction = 1
         self.airmass = 1
         self.ref_wavelengthInNm = 500
+        self.extra_delta_time = extra_delta_time
 
         self.inputs['seeing'] = InputValue(type=BaseValue)
         self.inputs['wind_speed'] = InputValue(type=BaseValue)
@@ -297,9 +297,6 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
             raise ValueError(f"L0 must have the same length as heights ({len(self.heights)}), got {len(self.L0)}")
 
         self.Cn2 = np.array(Cn2, dtype=self.dtype)
-        self.wind_speed = None
-        self.wind_direction = None
-
         self.verbose = verbose if verbose is not None else False
 
         # Initialize layer list with correct heights
@@ -347,14 +344,25 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
                                                        precision=self.precision )
             self.infinite_phasescreens.append(temp_infinite_screen)
 
+    def setup(self):
+        super().setup()
+        # check that seeing is a 1-element array
+        if len(self.local_inputs['seeing'].value) != 1:
+            raise ValueError('Seeing input must be a 1-element array')
+        
+        # Check that wind speed and direction have the correct length
+        if len(self.local_inputs['wind_speed'].value) != self.n_infinite_phasescreens:
+            raise ValueError('Wind speed input must be a {self.n_infinite_phasescreens}-elements array')
+        if len(self.local_inputs['wind_direction'].value) != self.n_infinite_phasescreens:
+            raise ValueError('Wind direction input must be a {self.n_infinite_phasescreens}-elements array')
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
-        self.delta_time = self.t_to_seconds(self.current_time - self.last_t)
+        self.delta_time = self.t_to_seconds(self.current_time - self.last_t) + self.extra_delta_time
 
     @show_in_profiler('atmo_evolution.trigger_code')
     def trigger_code(self):
-        seeing = float(cpuArray(self.local_inputs['seeing'].value))
+        seeing = float(cpuArray(self.local_inputs['seeing'].value[0]))
         wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
 

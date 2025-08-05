@@ -125,32 +125,6 @@ class OpticalGainEstimator(BaseProcessingObj):
         if self.verbose:
             print(f'Optical gain output: {output}')
 
-    def setup(self):
-        """
-        Setup the optical gain estimator.
-        """
-        super().setup()
-
-        # Initialize values
-        self.optical_gain.value = self.xp.array([self.initial_optical_gain], dtype=self.dtype)
-        self.output.value = self.xp.array([self.initial_optical_gain], dtype=self.dtype)
-
-    def reset_optical_gain(self, value=None):
-        """
-        Reset the optical gain to initial value or specified value.
-        """
-        if value is None:
-            value = self.initial_optical_gain
-
-        self.optical_gain.value = self.xp.array([value], dtype=self.dtype)
-        self.output.value = self.xp.array([value], dtype=self.dtype)
-
-    def get_current_optical_gain(self):
-        """
-        Get the current optical gain value.
-        """
-        return float(self.optical_gain.value)
-
     def post_trigger(self):
         super().post_trigger()
         # Output is always refreshed, optical gain only if it was recalculated.

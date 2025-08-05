@@ -64,7 +64,7 @@ class GainOptimizer(BaseProcessingObj):
             value=self.xp.ones(self.nmodes, dtype=self.dtype),
             target_device_idx=target_device_idx
         )
-
+        
         # Inputs
         self.inputs['delta_comm'] = InputValue(type=BaseValue)
         self.inputs['out_comm'] = InputValue(type=BaseValue)
@@ -153,7 +153,7 @@ class GainOptimizer(BaseProcessingObj):
 
         # Store results
         self.prev_optgain = opt_gains.copy()
-        self.optgain.value = opt_gains
+        self.optgain.value[:] = opt_gains
 
         if self.verbose:
             print(f"Optimized gains at t={self.t_to_seconds(t):.3f}s: "
@@ -337,18 +337,5 @@ class GainOptimizer(BaseProcessingObj):
         # Always refresh output, even when the gains were not updated
         self.outputs['optgain'].set_refreshed(self.current_time)
 
-    def setup(self):
-        """
-        Setup the gain optimizer.
-        """
-        super().setup()
 
-        # Initialize optimal gain to ones
-        self.optgain.value = self.xp.ones(self.nmodes, dtype=self.dtype)
-        self.optgain.generation_time = 0
 
-    def get_current_gains(self):
-        """
-        Get current optimized gains.
-        """
-        return self.optgain.value.copy()
