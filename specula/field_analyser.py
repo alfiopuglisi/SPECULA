@@ -106,18 +106,7 @@ class FieldAnalyser:
         Returns:
             Tuple of (r, theta) in polar coordinates
         """
-        if len(self.polar_coordinates.shape) == 2:
-            if self.polar_coordinates.shape[0] == 2:
-                # Format: [[r1, r2, ...], [theta1, theta2, ...]]
-                r, theta = self.polar_coordinates[0, source_idx], self.polar_coordinates[1, source_idx]
-            else:
-                # Format: [[r1, theta1], [r2, theta2], ...]
-                r, theta = self.polar_coordinates[source_idx, 0], self.polar_coordinates[source_idx, 1]
-        else:
-            # 1D array case
-            r, theta = self.polar_coordinates[source_idx]
-
-        return float(r), float(theta)
+        return self.sources[source_idx]['polar_coordinates']
 
     def _get_psf_filenames(self, source_idx: int) -> Tuple[str, str]:
         """
