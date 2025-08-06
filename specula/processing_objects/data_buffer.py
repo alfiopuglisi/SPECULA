@@ -1,13 +1,9 @@
-import numpy as np
 
 from collections import OrderedDict, defaultdict
 
 from specula.base_processing_obj import BaseProcessingObj
 from specula.base_value import BaseValue
-from specula.data_objects.electric_field import ElectricField
-from specula.data_objects.pixels import Pixels
-from specula.data_objects.slopes import Slopes
-from specula.data_objects.intensity import Intensity
+
 
 class DataBuffer(BaseProcessingObj):
     '''Data buffering object - accumulates data and outputs it every N steps'''

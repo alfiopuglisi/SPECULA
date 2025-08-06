@@ -1,6 +1,5 @@
 import array
 import numpy as np
-from astropy.io import fits
 
 from specula.base_processing_obj import BaseProcessingObj
 from specula.data_objects.electric_field import ElectricField
@@ -132,26 +131,7 @@ class AtmoRandomPhase(BaseProcessingObj):
 
         # Update position output
         self.last_position = new_position + 1
-        
-    def save(self, filename):
-        hdr = fits.Header()
-        hdr['VERSION'] = 1
-        hdr['INTRLVD'] = int(self.interleave)
-        hdr['PUPD_TAG'] = self.pupdata_tag
-        super().save(filename, hdr)
 
-        with fits.open(filename, mode='append') as hdul:
-            hdul.append(fits.ImageHDU(data=self.phasescreens))
-
-    def read(self, filename):
-        super().read(filename)
-        self.phasescreens = fits.getdata(filename, ext=1)
-
-    def set_last_position(self, last_position):
-        self.last_position = last_position
-
-    def set_last_t(self, last_t):
-        self.last_t = last_t
 
                 
 
