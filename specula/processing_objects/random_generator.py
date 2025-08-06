@@ -30,6 +30,9 @@ class RandomGenerator(BaseGenerator):
         )
 
         self.distribution = distribution.upper()
+        if distribution not in ['NORMAL', 'UNIFORM']:
+            raise ValueError(f"Unknown distribution: {self.distribution}")
+
         self.amp = self.to_xp(amp, dtype=self.dtype)
         self.constant = self.to_xp(constant, dtype=self.dtype)
 
@@ -38,17 +41,13 @@ class RandomGenerator(BaseGenerator):
 
         # Setup random number generator
         if seed is not None:
-            self.seed = int(seed)
+            seed = int(seed)
         else:
-            self.seed = int(self.xp.around(self.xp.random.random() * 1e4))
+            seed = int(self.xp.around(self.xp.random.random() * 1e4))
 
-        if hasattr(self.xp.random, "default_rng"):
-            self.rng = self.xp.random.default_rng(self.seed)
-        else:
-            self.rng = self.xp.random
-
-        # Create vsize_array like in original
+        self.rng = self.xp.random.default_rng(seed)
         self.vsize_array = self.xp.ones(vsize, dtype=self.dtype)
+        self.output_size = output_size
 
     def trigger_code(self):
         if self.distribution == 'NORMAL':
@@ -61,5 +60,3 @@ class RandomGenerator(BaseGenerator):
             self.output.value[:] = (
                 self.rng.uniform(low=lowv, high=highv, size=self.output_size) * self.vsize_array
             )
-        else:
-            raise ValueError(f"Unknown distribution: {self.distribution}")

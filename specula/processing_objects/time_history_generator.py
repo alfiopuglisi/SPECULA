@@ -24,14 +24,9 @@ class TimeHistoryGenerator(BaseGenerator):
         self.time_hist = self.to_xp(time_history_array)
 
     def trigger_code(self):
+        # time_hist might be either 1d or 2d, indexing syntax is the same.
         if self.iter_counter < self.time_hist.shape[0]:
-            if self.time_hist.ndim == 1:
-                self.output.value[:] = self.time_hist[self.iter_counter]
-            else:
-                self.output.value[:] = self.time_hist[self.iter_counter, :]
+            self.output.value[:] = self.time_hist[self.iter_counter]
         else:
             # Beyond available data, use last values
-            if self.time_hist.ndim == 1:
-                self.output.value[:] = self.time_hist[-1]
-            else:
-                self.output.value[:] = self.time_hist[-1, :]
+            self.output.value[:] = self.time_hist[-1]

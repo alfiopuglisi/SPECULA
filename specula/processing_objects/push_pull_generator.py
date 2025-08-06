@@ -20,8 +20,10 @@ class PushPullGenerator(BaseGenerator):
                  target_device_idx: int = None,
                  precision: int = None):
 
+        push_pull_type = push_pull_type.upper()
+
         if amp is None and vect_amplitude is None:
-            raise ValueError('AMP or VECT_AMPLITUDE keyword is mandatory for type PUSH/PUSHPULL')
+            raise ValueError('Either "amp" or "vect_amplitude" parameters is mandatory for type PUSH/PUSHPULL')
 
         if nsamples != 1 and push_pull_type != 'PUSHPULL':
             raise ValueError('nsamples can only be used with PUSHPULL type')
@@ -32,19 +34,17 @@ class PushPullGenerator(BaseGenerator):
             precision=precision
         )
 
-        self.push_pull_type = push_pull_type.upper()
-
         # Generate the time history using modal_pushpull_signal (from original)
-        if self.push_pull_type == 'PUSH':
-            self.time_hist = modal_pushpull_signal(
+        if push_pull_type == 'PUSH':
+            time_hist = modal_pushpull_signal(
                 nmodes,
                 amplitude=amp,
                 vect_amplitude=vect_amplitude,
                 only_push=True,
                 ncycles=ncycles
             )
-        elif self.push_pull_type == 'PUSHPULL':
-            self.time_hist = modal_pushpull_signal(
+        elif push_pull_type == 'PUSHPULL':
+            time_hist = modal_pushpull_signal(
                 nmodes,
                 amplitude=amp,
                 vect_amplitude=vect_amplitude,
@@ -53,12 +53,10 @@ class PushPullGenerator(BaseGenerator):
                 nsamples=nsamples
             )
         else:
-            raise ValueError(f'Unknown push_pull_type: {self.push_pull_type}')
+            raise ValueError(f'Unknown push_pull_type: {push_pull_type}')
+        
+        self.time_hist = self.to_xp(time_hist)
 
     def trigger_code(self):
-        """From original: VIB_HIST, VIB_PSD, PUSH, PUSHPULL, TIME_HIST case"""
-        self.output.value[:] = self.get_time_hist_at_current_time()
+        self.output.value[:] = self.time_hist[self.iter_counter]
 
-    def get_time_hist_at_current_time(self):
-        """From original BaseGenerator"""
-        return self.to_xp(self.time_hist[self.iter_counter])
