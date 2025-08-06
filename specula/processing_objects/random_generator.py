@@ -30,8 +30,8 @@ class RandomGenerator(BaseGenerator):
         )
 
         self.distribution = distribution.upper()
-        if distribution not in ['NORMAL', 'UNIFORM']:
-            raise ValueError(f"Unknown distribution: {self.distribution}")
+        if self.distribution not in ['NORMAL', 'UNIFORM']:
+            raise ValueError(f"Unknown distribution: {distribution}")
 
         self.amp = self.to_xp(amp, dtype=self.dtype)
         self.constant = self.to_xp(constant, dtype=self.dtype)
