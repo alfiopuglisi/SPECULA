@@ -20,7 +20,7 @@ class WaveGenerator(BaseGenerator):
 
         self.wave_type = wave_type.upper()
         if self.wave_type not in ['SIN', 'SQUARE', 'TRIANGLE']:
-            raise ValueError(f"Unknown wave type: {self.wave_type}")
+            raise ValueError(f"Unknown wave type: {wave_type}")
 
         # Determine output size from arrays
         arrays = [np.atleast_1d(x) if not np.isscalar(x) else np.array([x])
