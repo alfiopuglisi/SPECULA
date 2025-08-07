@@ -1,7 +1,6 @@
 import typing
 import inspect
 import itertools
-from copy import deepcopy
 from pathlib import Path
 from collections import Counter
 from specula import process_rank, MPI_DBG
@@ -11,7 +10,7 @@ from specula.base_data_obj import BaseDataObj
 from specula.loop_control import LoopControl
 from specula.lib.utils import import_class, get_type_hints
 from specula.calib_manager import CalibManager
-from specula.param_dict import ParamDict, split_output, output_owner
+from specula.param_dict import ParamDict, split_output
 from specula.processing_objects.data_store import DataStore
 from specula.connections import InputList, InputValue
 
@@ -108,7 +107,7 @@ class Simul():
                     continue
                 order.append(leaf)
                 order_index.append(index)
-                params.pop(leaf)
+                del params[leaf]
                 params.remove_inputs(leaf)
             end = len(params)
             if start == end:
@@ -164,7 +163,7 @@ class Simul():
 
         if MPI_DBG: print(process_rank, 'building objects')
 
-        for key in self.build_order(params):
+        for key in params.build_order():
 
             pars = params[key]
             try:
@@ -403,7 +402,7 @@ class Simul():
                     self.connections.append(a_connection)
 
     def build_replay(self, params):
-        replay_params = deepcopy(params)
+        replay_params = params.copy()
         obj_to_remove = []
         data_source_outputs = {}
         key, pars = params.get_by_class('DataStore')  # It also checks that only one is present
