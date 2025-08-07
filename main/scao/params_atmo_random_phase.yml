@@ -83,7 +83,6 @@ detector:
 slopec:
   class:             'PyrSlopec'
   pupdata_object:    'scao_40x40_pupdata'            # tag of the pyramid WFS pupils
-  use_sn:            False
   inputs:
     in_pixels:        'detector.out_pixels'
   outputs:  ['out_slopes', 'out_pupdata', 'total_counts', 'subap_counts']
