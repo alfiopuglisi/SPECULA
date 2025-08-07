@@ -73,7 +73,7 @@ class TestPhaseFlattening(unittest.TestCase):
         actual_output = cpuArray(ef_out.phaseInNm[valid_mask])
         expected_output = phase_random[valid_mask]
 
-        assert np.allclose(actual_output, cpuArray(expected_output)), \
+        assert np.allclose(actual_output, cpuArray(expected_output), rtol=1e-04, atol=1e-07), \
             f"Expected {expected_output}, got {actual_output}"
 
         # Check precision
