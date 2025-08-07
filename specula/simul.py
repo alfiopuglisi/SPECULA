@@ -1,25 +1,21 @@
-import sys
 import typing
 import inspect
 import itertools
 from copy import deepcopy
 from pathlib import Path
-from collections import Counter, namedtuple
-from specula import process_comm, process_rank, MPI_DBG
+from collections import Counter
+from specula import process_rank, MPI_DBG
 from specula.base_processing_obj import BaseProcessingObj
 from specula.base_data_obj import BaseDataObj
 
 from specula.loop_control import LoopControl
 from specula.lib.utils import import_class, get_type_hints
 from specula.calib_manager import CalibManager
+from specula.param_dict import ParamDict, split_output, output_owner
 from specula.processing_objects.data_store import DataStore
 from specula.connections import InputList, InputValue
 
-import yaml
 import hashlib
-
-
-Output = namedtuple('Output', 'obj_name output_key delay ref input_name')
 
 
 def computeTag(output_obj_name, dest_object, output_attr_name, input_attr_name):
@@ -57,125 +53,39 @@ class Simul():
         self.diagram = diagram
         self.diagram_title = diagram_title
         self.diagram_filename = diagram_filename
-    
-    def split_output(self, output_name, get_ref=False, use_inputs=False):
-        '''
-        Split the output name into object name and output key.
-        '''
-        if ':' in output_name:
-            output_name, delay = output_name.split(':')
-            delay = int(delay)
-        else:
-            delay = 0
-        if '-' in output_name:
-            input_name, output_name = output_name.split('-')
-        else:
-            input_name = None
-
-        if '.' in output_name:
-            obj_name, output_key = output_name.split('.')
-        else:
-            obj_name = output_name
-            output_key = None
-
-        # Get a reference to the output if possible
-        if get_ref:
-
-            if not obj_name in self.objs:
-                if obj_name in self.remote_objs_ranks:
-                    ref = None
-                else:
-                    raise ValueError(f'Object {obj_name} does not exist anywhere')
-            elif output_key is None:
-                ref = self.objs[obj_name]
-            else:
-                if use_inputs:
-                    array_to_check, display_str = self.objs[obj_name].local_inputs, 'input'
-                else:
-                    array_to_check, display_str = self.objs[obj_name].outputs, 'output'
-                if not output_key in array_to_check:
-                    raise ValueError(f'Object {obj_name} does not define an {display_str} with name {output_key}')
-                else:
-                    ref = array_to_check[output_key]
-        else:
-            ref = None
-
-        return Output(obj_name, output_key, delay, ref, input_name)
-            
-    def output_owner(self, output_name):
-        output = self.split_output(output_name)
-        return output.obj_name
-
-    def output_key(self, output_name):
-        output = self.split_output(output_name)
-        return output.output_key
-
-    def output_ref(self, output_name):
-        '''
-        return a tuple with:
-           - reference to the output, or None if the object is remote.
-           - name of the object that defines the output
-        '''
-        output = self.split_output(output_name, get_ref=True)
-        return output.ref
 
     def input_ref(self, input_name):
         '''
-        return a tuple with:
-           - reference to the input, or None if the object is remote.
-           - name of the object that defines the input
+        return reference to the input, or None if the object is remote.
         '''
-        output = self.split_output(input_name, get_ref=True, use_inputs=True)
-        return output.ref
+        return self.get_ref(input_name, use_inputs=True)
         
-    def output_delay(self, output_name):
-        return self.split_output(output_name).delay
-
-    def is_leaf(self, p):
+    def get_ref(self, output_name, use_inputs=False):
         '''
-        Returns True if the passed object parameter dictionary
-        does not specify any inputs for the current iterations.
-        Inputs coming from previous iterations (:-1 syntax) are ignored.
+        return reference to the output, or None if the object is remote.
         '''
-        if 'inputs' not in p:
-            return True
+        output = split_output(output_name)
+        obj_name = output.obj_name
+        output_key = output.output_key
 
-        for input_name, output_name in p['inputs'].items():
-            if isinstance(output_name, str):
-                maxdelay = self.output_delay(output_name)
-            elif isinstance(output_name, list):
-                maxdelay = -1
-                if len(output_name) > 0:
-                    maxdelay = max([self.output_delay(x) for x in output_name])
-            if maxdelay == 0:
-                return False
-        return True
-    
-    def has_delayed_output(self, obj_name, params):
-        '''
-        Find out if an object has an output
-        that is used as a delayed input for another
-        object in the pars dictionary
-        '''
-        for name, pars in params.items():
-            if 'inputs' not in pars:
-                continue
-            for input_name, output_name in pars['inputs'].items():
-                if isinstance(output_name, str):
-                    outputs_list = [output_name]
-                elif isinstance(output_name, list):
-                    outputs_list = output_name
-                else:
-                    raise ValueError('Malformed output: must be either str or list')
-
-                for x in outputs_list:
-                    owner = self.output_owner(x)
-                    delay = self.output_delay(x)
-                    if owner == obj_name and delay < 0:
-                        # Delayed input detected
-                        return True
-        return False
-
+        if not obj_name in self.objs:
+            if obj_name in self.remote_objs_ranks:
+                ref = None
+            else:
+                raise ValueError(f'Object {obj_name} does not exist anywhere')
+        elif output_key is None:
+            ref = self.objs[obj_name]
+        else:
+            if use_inputs:
+                array_to_check, display_str = self.objs[obj_name].local_inputs, 'input'
+            else:
+                array_to_check, display_str = self.objs[obj_name].outputs, 'output'
+            if not output_key in array_to_check:
+                raise ValueError(f'Object {obj_name} does not define an {display_str} with name {output_key}')
+            else:
+                ref = array_to_check[output_key]
+        return ref
+  
     def trigger_order(self, params_orig):
         '''
         Work on a copy of the parameter file.
@@ -187,19 +97,19 @@ class Simul():
         '''
         order = []
         order_index = []
-        params = deepcopy(params_orig)
+        params = params_orig.copy()
         for index in itertools.count():
-            leaves = [name for name, pars in params.items() if self.is_leaf(pars)]
+            leaves = [name for name, pars in params.items() if params.is_leaf(pars)]
             if len(leaves) == 0:
                 break
             start = len(params)
             for leaf in leaves:
-                if self.has_delayed_output(leaf, params):
+                if params.has_delayed_output(leaf):
                     continue
                 order.append(leaf)
                 order_index.append(index)
-                del params[leaf]
-                self.remove_inputs(params, leaf)
+                params.pop(leaf)
+                params.remove_inputs(leaf)
             end = len(params)
             if start == end:
                 raise ValueError('Cannot determine trigger order: circular loop detected in {leaves}')
@@ -213,55 +123,34 @@ class Simul():
             if classname == 'SimulParams':
                 self.mainParams = pars
 
-    def build_order(self, params):
-        '''
-        Return the correct object build order, taking into account
-        dependencies specified by _ref and _dict_ref parameters
-        '''
-        build_order = []
-
-        def add_to_build_order(key):
-            if key in build_order:
-                return
-
-            pars = params[key]
-            for name, value in pars.items():
-                if name.endswith('_ref'):
-                    objlist = value if type(value) is list else [value]
-                    for output in objlist:
-                        owner = self.output_owner(output)
-                        if owner not in build_order:
-                            add_to_build_order(owner)
-
-            build_order.append(key)
-
-        for key in params.keys():
-            add_to_build_order(key)
-
-        return build_order
-
     def create_input_list_inputs(self, params):
         '''
         Create inputs for objects that use input_list parameter.
         Currently supported: DataStore, DataBuffer
+        
+        TODO the modifications of param dict done here should be
+        somehow moved to ParamDict
         '''
-        supported_classes = ['DataBuffer','DataStore']
+        supported_classes = ['DataBuffer', 'DataStore']
 
-        for key, pars in params.items():
-            if ('class' in pars and 
-                pars['class'] in supported_classes and
-                'inputs' in pars and 
-                'input_list' in pars['inputs']):
+        for key, pars in params.filter_by_class(*supported_classes):
+            if key not in self.objs:
+                continue
 
-                for single_output_name in pars['inputs']['input_list']:
-                    output = self.split_output(single_output_name, get_ref=True)
-                    if key in self.objs:
-                        if type(output.ref) is list:
-                            self.objs[key].inputs[output.input_name] = InputList(type=type(output.ref[0]))
-                        else:
-                            self.objs[key].inputs[output.input_name] = InputValue(type=type(output.ref))
-                    params[key]['inputs'][output.input_name] = single_output_name
-                del params[key]['inputs']['input_list']
+            try:
+                input_list = pars['inputs']['input_list']
+            except KeyError:
+                continue
+               
+            for single_output in input_list:
+                output = split_output(single_output)
+                ref = self.get_ref(single_output)
+                if type(ref) is list:
+                    self.objs[key].inputs[output.input_name] = InputList(type=type(ref[0]))
+                else:
+                    self.objs[key].inputs[output.input_name] = InputValue(type=type(ref))
+                params[key]['inputs'][output.input_name] = single_output
+            del params[key]['inputs']['input_list']
 
             if pars['class'] == 'DataBuffer':
                 self.objs[key].setOutputs()
@@ -394,7 +283,7 @@ class Simul():
                 my_params['input_ref_getter'] = self.input_ref
 
             if 'output_ref_getter' in args:
-                my_params['output_ref_getter'] = self.output_ref
+                my_params['output_ref_getter'] = self.get_ref
 
             if 'info_getter' in args:
                 my_params['info_getter'] = self.get_info
@@ -416,21 +305,21 @@ class Simul():
 
     def connect(self, output_name, input_name, dest_object):
         '''
-        Connect the output *output_name*, defined by object *output_obj_name*,
-        and whose reference is *output_ref*, which might be None if the object is remote,
-        to the input *input_name* of the object *dest_object*, which might be local or remote.
+        Connect the output *output_name* to the input *input_name*
+        of the object *dest_object*, which might be local or remote.
 
         This routine handles the three cases:
         1. local output to local input - use Python references
         2. local output to remote input - use addRemoteOutput() to send the output to the remote object
         3. remote output to local input - use set_remote_rank() to set the remote rank of the input
         '''
-        output = self.split_output(output_name, get_ref=True)
+        output = split_output(output_name)
+        ref = self.get_ref(output_name)
         local_dest_object = dest_object in self.objs.keys()
 
-        send = output.ref is not None and local_dest_object is False
-        recv = output.ref is None and local_dest_object is True
-        local = output.ref is not None and local_dest_object is True
+        send = ref is not None and local_dest_object is False
+        recv = ref is None and local_dest_object is True
+        local = ref is not None and local_dest_object is True
         if send or recv:
             tag = computeTag(output.obj_name, dest_object, output.output_key, input_name)
 
@@ -443,7 +332,7 @@ class Simul():
                                                             tag=tag)
         if local:
             if MPI_DBG: print(process_rank, f'CONNECT Connecting local output {output.obj_name}.{output.output_key} to local input {dest_object}.{input_name}')
-            self.objs[dest_object].inputs[input_name].append(output.ref)
+            self.objs[dest_object].inputs[input_name].append(ref)
 
         if send:
             self.objs[output.obj_name].addRemoteOutput(output.output_key, (self.remote_objs_ranks[dest_object], 
@@ -492,10 +381,11 @@ class Simul():
                 for single_output_name in output_name if isinstance(output_name, list) else [output_name]:
                     if MPI_DBG: print(process_rank, 'List input', flush=True)
 
-                    output = self.split_output(single_output_name, get_ref=True)
+                    output = split_output(single_output_name)
+                    ref = self.get_ref(single_output_name)
 
                     # Remote-to-remote: nothing to do
-                    if not local_dest_object and output.ref is None:
+                    if not local_dest_object and ref is None:
                         continue
                     
                     try:
@@ -513,125 +403,48 @@ class Simul():
                     self.connections.append(a_connection)
 
     def build_replay(self, params):
-        self.replay_params = deepcopy(params)
+        replay_params = deepcopy(params)
         obj_to_remove = []
         data_source_outputs = {}
-        for key, pars in params.items():
-            try:
-                classname = pars['class']
-            except KeyError:
-                raise KeyError(f'Object {key} does not define the "class" parameter')
+        key, pars = params.get_by_class('DataStore')  # It also checks that only one is present
+        
+        # Build a new DataSource parameter dict based
+        # on the old DataStore one
+        data_source_pars = pars.copy()
+        data_source_pars['class'] = 'DataSource'
+        del data_source_pars['inputs']
+        data_source_pars['outputs'] = []
 
-            if classname=='DataStore':
-                self.replay_params['data_source'] = self.replay_params[key]
-                self.replay_params['data_source']['class'] = 'DataSource'
-                del self.replay_params[key]
-                for output_name_full in pars['inputs']['input_list']:
-                    input_name, output_name = output_name_full.split('-')
-                    output_obj, output_name_small = output_name.split('.')                     
-                    data_source_outputs[output_name] = 'data_source.' + input_name # 'source.' + output_obj + '-' + output_name_small                    
-                    obj_to_remove.append(output_obj)
+        for name in pars['inputs']['input_list']:
+            output = split_output(name)
+            data_source_outputs[name] = 'data_source.' + output.input_name
+            obj_to_remove.append(output.obj_name)
+            data_source_pars['outputs'].append(output.input_name)
 
+        # Remove DataStore and add DataSource
+        del replay_params[key]
+        replay_params['data_source'] = data_source_pars
+    
+        # Remove objects whose outputs have been saved and will
+        # be replayed by DataSource
         for obj_name in set(obj_to_remove):
-            del self.replay_params[obj_name]
+            del replay_params[obj_name]
 
-        for key, pars in self.replay_params.items():
-            if not key=='data_source':
-                if 'inputs' in pars.keys():
-                    for input_name, output_name_full in pars['inputs'].items():
-                        if type(output_name_full) is list:
-                            print('TODO: list of inputs is not handled in output replay')
-                            continue
-                        if output_name_full in data_source_outputs.keys():
-                            self.replay_params[key]['inputs'][input_name] = data_source_outputs[output_name_full]
-
-            if key=='data_source':
-                self.replay_params[key]['outputs'] = []
-                for v in self.replay_params[key]['inputs']['input_list']:
-                    kk, vv = v.split('-')
-                    self.replay_params[key]['outputs'].append(kk)
-                del self.replay_params[key]['inputs']
+        # Replace inputs whose data has been saved so that
+        # they are now references to DataSource
+        for key, pars in replay_params.filter_by_class(exclude='DataSource'):
+            if 'inputs' in pars.keys():
+                for input_name, output_name in pars['inputs'].items():
+                    if type(output_name) is list:
+                        print('TODO: list of inputs is not handled in output replay')
+                        continue
+                    if output_name in data_source_outputs.keys():
+                        pars['inputs'][input_name] = data_source_outputs[output_name]
 
         for obj in self.objs.values():
             if type(obj) is DataStore:
-                obj.setReplayParams(self.replay_params)
-
-    def remove_inputs(self, params, obj_to_remove):
-        '''
-        Modify params removing all references to the specificed object name
-        '''
-        for objname, obj in params.items():
-            for key in ['inputs']:
-                if key not in obj:
-                    continue
-                obj_inputs_copy = deepcopy(obj[key])
-                for input_name, output_name in obj[key].items():
-                    if isinstance(output_name, str):
-                        owner = self.output_owner(output_name)
-                        if owner == obj_to_remove:
-                            del obj_inputs_copy[input_name]
-                            if self.verbose:
-                                print(f'Deleted {input_name} from {obj[key]}')
-                    elif isinstance(output_name, list):
-                        newlist = [x for x in output_name if self.output_owner(x) != obj_to_remove]
-                        diff = set(output_name).difference(set(newlist))
-                        obj_inputs_copy[input_name] = newlist
-                        if len(diff) > 0:
-                            if self.verbose:
-                                print(f'Deleted {diff} from {obj[key]}')
-                obj[key] = obj_inputs_copy
-        return params
-
-    def combine_params(self, params, additional_params):
-        '''
-        Add/update/remove params with additional_params
-        '''
-        for name, values in additional_params.items():
-            doRemoveIdx = False            
-            if '_' in name:
-                ri = name.split('_')
-                # check for a remove (with simulation index) list, something of the form:  remove_3: ['atmo', 'rec', 'dm2']                
-                if len(ri) == 2:
-                    if ri[0] == 'remove':
-                        if int(ri[1]) == self.simul_idx:
-                            doRemoveIdx = True
-                        else:
-                            continue
-                # check for a override (with simulation index) parameters structure, something of the form:  dm_override_2: { ... }                
-                if ri[-1].isnumeric() and ri[-2] == 'override':
-                    if int(ri[-1]) == self.simul_idx:
-                        separator = "_"
-                        objname = separator.join(ri[:-2])                        
-                        if objname not in params:
-                            raise ValueError(f'Parameter file has no object named {objname}')
-                        params[objname].update(values)
-                    continue
-
-            if name == 'remove' or doRemoveIdx:
-                for objname in values:
-                    if objname not in params:
-                        raise ValueError(f'Parameter file has no object named {objname}')
-                    del params[objname]
-                    print(f'Removed {objname}')
-                    # Remove corresponding inputs
-                    params = self.remove_inputs(params, objname)
-            elif name.endswith('_override'):
-                objname = name[:-9]
-                if objname not in params:
-                    raise ValueError(f'Parameter file has no object named {objname}')
-                params[objname].update(values)
-            else:
-                if name in params:
-                    raise ValueError(f'Parameter file already has an object named {name}')
-                params[name] = values
-
-    def apply_overrides(self, params):
-        print('overrides:', self.overrides)
-        if len(self.overrides) > 0:
-            for k, v in yaml.full_load(self.overrides).items():
-                obj_name, param_name = k.split('.')
-                params[obj_name][param_name] = v
-                print(obj_name, param_name, v)
+                obj.setReplayParams(replay_params)
+        return replay_params
 
     def arrangeInGrid(self, trigger_order, trigger_order_idx):
         rows = []
@@ -674,20 +487,10 @@ class Simul():
         print('Diagram saved.')
 
     def run(self):
-        params = {}
-        # Read YAML file(s)
-        print('Reading parameters from', self.param_files[0])
-        with open(self.param_files[0], 'r') as stream:
-            params = yaml.safe_load(stream)
+        params = ParamDict()
+        params.load(*self.param_files)
+        params.apply_overrides(self.overrides)
 
-        for filename in self.param_files[1:]:
-            print('Reading additional parameters from', filename)
-            with open(filename, 'r') as stream:
-                additional_params = yaml.safe_load(stream)                
-                self.combine_params(params, additional_params)
-
-        # Actual creation code
-        self.apply_overrides(params)
         self.setSimulParams(params)
 
         self.trigger_order, self.trigger_order_idx = self.trigger_order(params)
@@ -724,7 +527,7 @@ class Simul():
         # Default display web server
         if 'display_server' in self.mainParams and self.mainParams['display_server'] and process_rank in [0, None]:
             from specula.processing_objects.display_server import DisplayServer
-            disp = DisplayServer(params, self.input_ref, self.output_ref, self.get_info)
+            disp = DisplayServer(params, self.input_ref, self.get_ref, self.get_info)
             self.objs['display_server'] = disp
             self.loop.add(disp, idx+1)
             disp.name = 'display_server'
