@@ -1,7 +1,5 @@
 import numpy as np
 
-from astropy.io import fits
-
 from specula.base_processing_obj import BaseProcessingObj
 from specula.base_value import BaseValue
 from specula.data_objects.layer import Layer

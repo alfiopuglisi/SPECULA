@@ -1,7 +1,6 @@
 
 from astropy.io import fits
 from specula.base_data_obj import BaseDataObj
-from specula import process_rank
 
 class BaseValue(BaseDataObj):
     def __init__(self, description='', value=None, target_device_idx=None):

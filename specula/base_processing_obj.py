@@ -1,5 +1,4 @@
 from collections import defaultdict
-from astropy.io import fits
 
 from specula import cpuArray, default_target_device, cp, MPI_DBG, MPI_SEND_DBG
 from specula import show_in_profiler
