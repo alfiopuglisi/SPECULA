@@ -405,25 +405,18 @@ class Simul():
         replay_params = params.copy()
         obj_to_remove = []
         data_source_outputs = {}
-        key, pars = params.get_by_class('DataStore')  # It also checks that only one is present
-        
-        # Build a new DataSource parameter dict based
-        # on the old DataStore one
-        data_source_pars = pars.copy()
-        data_source_pars['class'] = 'DataSource'
-        del data_source_pars['inputs']
-        data_source_pars['outputs'] = []
+        try:
+            replay_params.data_store_to_data_source()
+        except ValueError:
+            print('Warning: no DataStore found, replay_params is identical to params')
+            return replay_params
 
+        _, pars = params.get_by_class('DataStore')  # It also checks that only one is present
+        
         for name in pars['inputs']['input_list']:
             output = split_output(name)
-            data_source_outputs[name] = 'data_source.' + output.input_name
             obj_to_remove.append(output.obj_name)
-            data_source_pars['outputs'].append(output.input_name)
 
-        # Remove DataStore and add DataSource
-        del replay_params[key]
-        replay_params['data_source'] = data_source_pars
-    
         # Remove objects whose outputs have been saved and will
         # be replayed by DataSource
         for obj_name in set(obj_to_remove):
@@ -431,7 +424,7 @@ class Simul():
 
         # Replace inputs whose data has been saved so that
         # they are now references to DataSource
-        for key, pars in replay_params.filter_by_class(exclude='DataSource'):
+        for _, pars in replay_params.filter_by_class(exclude='DataSource'):
             if 'inputs' in pars.keys():
                 for input_name, output_name in pars['inputs'].items():
                     if type(output_name) is list:

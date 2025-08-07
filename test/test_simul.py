@@ -1,6 +1,7 @@
 
 
 import specula
+from specula.param_dict import ParamDict
 specula.init(0)  # Default target device
 
 import unittest
@@ -161,10 +162,11 @@ class TestSimul(unittest.TestCase):
                 }
             }      
         }
-
-        simul = Simul([])
-        assert simul.has_delayed_output('obj1', pars) == True
-        assert simul.has_delayed_output('obj2', pars) == False
+        params = ParamDict()
+        params.load(pars)
+        
+        assert params.has_delayed_output('obj1') == True
+        assert params.has_delayed_output('obj2') == False
 
     def test_delayed_input_detects_circular_loop(self):
 
@@ -186,10 +188,11 @@ class TestSimul(unittest.TestCase):
                 }
             }      
         }
-        simul = Simul([])
-
+        params = ParamDict()
+        
+        simul = Simul([], overrides=pars)
         # Does not raise
-        _ = simul.trigger_order(pars)
+        _ = simul.trigger_order(simul.params)
 
         # These outputs depend on each other
         pars = {

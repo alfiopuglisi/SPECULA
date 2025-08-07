@@ -123,7 +123,7 @@ class ParamDict():
                     del self.params[objname]
                     print(f'Removed {objname}')
                     # Remove corresponding inputs
-                    self.params = self.remove_inputs(self.params, objname)
+                    self.remove_inputs(objname)
             elif name.endswith('_override'):
                 objname = name[:-9]
                 if objname not in self.params:
@@ -241,6 +241,26 @@ class ParamDict():
             raise ValueError(f'Multiple objects with {classname=} found instead of one (found N={len(parlist)})')
         return parlist[0]
     
+    def iterate_inputs(self, key):
+        '''
+        Iterate over all inputs of key
+        '''
+        if key not in self.params:
+            return
+        if 'inputs' not in self.params[key]:
+            return
+        inputs = self.params[key]['inputs']
+        if 'input_list' in inputs:
+            for x in inputs['input_list']:
+                yield ('input_list', x)
+        else:
+            for k, v in inputs.items():
+                if type(v) is list:
+                    for xx in v:
+                        yield (k, xx)
+                else:
+                    yield (k, v)
+        
     def build_order(self):
         '''
         Return the correct object build order, taking into account
@@ -267,3 +287,67 @@ class ParamDict():
             add_to_build_order(key)
 
         return build_order
+    
+    def data_store_to_data_source(self):
+        '''
+        Convert data store parameters to data source'''
+        key, pars = self.get_by_class('DataStore')  # It also checks that only one is present
+        
+        # Build a new DataSource parameter dict based
+        # on the old DataStore one
+        data_source_pars = pars.copy()
+        data_source_pars['class'] = 'DataSource'
+        del data_source_pars['inputs']
+        data_source_pars['outputs'] = []
+
+        for name in pars['inputs']['input_list']:
+            output = split_output(name)
+            data_source_pars['outputs'].append(output.input_name)
+
+        # Remove DataStore and add DataSource
+        del self.params[key]
+        self.params['data_source'] = data_source_pars
+    
+    def build_targeted_replay(self, *target_keys):
+        '''
+        # Or is a target class better than some keys?
+        
+        Build a replay file making sure that the target parameter key
+        still exist, and therefore all its inputs are either loaded
+        from disk or computed, recursively.
+        
+        SimulParams parameters are replicated as-is
+        DataStore parameters are converted to DataSource
+        '''
+        # Create new parameter dict and copy SimulParams without changes
+        replay_params = ParamDict()
+        main_key, main_pars = self.get_by_class('SimulParams')
+        replay_params[main_key] = main_pars.copy()
+
+        # Copy DataStore params and convert it to DataSource
+        datastore_key, datastore_pars = self.get_by_class('DataStore')
+        replay_params[datastore_key] = datastore_pars.copy()
+        replay_params.data_store_to_data_source()
+
+        # Remember all datastore outputs
+        datastore_outputs = {}
+        for k, v in self.iterate_inputs(datastore_key):
+            output = split_output(v)
+            datastore_outputs[output.output_key] = output.input_name
+    
+        def add_key(key):
+            if key in replay_params.params:
+                return
+            replay_params[key] = self.params[key].copy()  
+            for k, _input in self.iterate_inputs(key):
+                desc = split_output(_input)
+                if desc.output_key in datastore_outputs:
+                    replay_params[key]['inputs'][k] = 'data_source.' + datastore_outputs[desc.output_key]
+                    continue
+                else:
+                    add_key(desc.obj_name)
+
+        for key in target_keys:
+            add_key(key)
+            
+        return replay_params
