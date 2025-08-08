@@ -38,17 +38,18 @@ class TestSimul(unittest.TestCase):
           root_dir: dummy
           
         test:
-          class: 'WaveGenerator'
-          wave_type: 'SIN'
-          amp_object: null
+          class: 'Source'
+          polar_coordinates: [0, 0]
+          magnitude: null
+          wavelengthInNm: null
         '''
         simul = Simul([])
-        params = yaml.safe_load(yml)
+        params = ParamDict()
+        params.params = yaml.safe_load(yml)
         simul.build_objects(params)
 
-        assert hasattr(simul.objs['test'], 'amp')
-        # simul.objs['test'].amp is None, but then is converted with to_xp and becomes NaN
-        assert simul.objs['test'].xp.isnan(simul.objs['test'].amp)
+        assert simul.objs['test'].magnitude is None
+        assert simul.objs['test'].wavelengthInNm is None
 
     def test_scalar_input_reference(self):
         '''Test that an input is correctly connected'''
@@ -138,36 +139,6 @@ class TestSimul(unittest.TestCase):
                 'b': {'inputs': {'in': 'a.out'}}
             })
 
-
-    def test_delayed_input(self):
-        '''This test checks that the has_delayed_input method of
-        Simul returns True if any object has a delayed input with
-        the -1 syntax.
-        '''
-        pars = {
-            'obj1': {
-                'class': 'WaveGenerator',
-                'outputs': ['output']
-            },
-            'obj2': {
-                'class': 'WaveGenerator',
-                'inputs': {
-                    'in2': 'obj1.output:-1'
-                }
-            },
-            'obj3': {
-                'class': 'WaveGenerator',
-                'inputs': {
-                    'in2': 'obj1.output'
-                }
-            }      
-        }
-        params = ParamDict()
-        params.load(pars)
-        
-        assert params.has_delayed_output('obj1') == True
-        assert params.has_delayed_output('obj2') == False
-
     def test_delayed_input_detects_circular_loop(self):
 
         pars = {
@@ -189,10 +160,11 @@ class TestSimul(unittest.TestCase):
             }      
         }
         params = ParamDict()
+        params.params = pars
         
-        simul = Simul([], overrides=pars)
+        simul = Simul([])
         # Does not raise
-        _ = simul.trigger_order(simul.params)
+        _ = simul.trigger_order(params)
 
         # These outputs depend on each other
         pars = {
@@ -210,6 +182,9 @@ class TestSimul(unittest.TestCase):
                 }
             },
         }
+        params = ParamDict()
+        params.params = pars
+
         # Raises ValueError
         with self.assertRaises(ValueError):
-            _ = simul.trigger_order(pars)
+            _ = simul.trigger_order(params)

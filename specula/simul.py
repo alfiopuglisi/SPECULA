@@ -94,6 +94,8 @@ class Simul():
         3. Repeat from step 1. until there is no change
         4. Check if any objects have been skipped
         '''
+        assert isinstance(params_orig, ParamDict), \
+            "input params must be an instance of ParamDict class"
         order = []
         order_index = []
         params = params_orig.copy()
@@ -155,6 +157,9 @@ class Simul():
                 self.objs[key].setOutputs()
    
     def build_objects(self, params):
+
+        assert isinstance(params, ParamDict), \
+            "input params must be an instance of ParamDict class"
 
         self.setSimulParams(params)
 
@@ -300,7 +305,7 @@ class Simul():
 
             # TODO this could be more general like the getters above
             if type(self.objs[key]) is DataStore:
-                self.objs[key].setParams(params)
+                self.objs[key].setParams(params.params)
 
     def connect(self, output_name, input_name, dest_object):
         '''
@@ -416,6 +421,8 @@ class Simul():
         for name in pars['inputs']['input_list']:
             output = split_output(name)
             obj_to_remove.append(output.obj_name)
+            output_name = f'{output.obj_name}.{output.output_key}'
+            data_source_outputs[output_name] = 'data_source.' + output.input_name
 
         # Remove objects whose outputs have been saved and will
         # be replayed by DataSource

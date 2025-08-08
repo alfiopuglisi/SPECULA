@@ -1,10 +1,9 @@
 import unittest
 import os
-import yaml
 import specula
+from specula.param_dict import ParamDict
 specula.init(-1,precision=1)  # Default target device
 
-from specula import np
 from specula.simul import Simul
 from specula.lib.platescale_coeff import platescale_coeff
 
@@ -20,8 +19,8 @@ class TestPlateScale(unittest.TestCase):
         yml_files = ['params_platescale_test.yml']
         simul = Simul(*yml_files)
 
-        with open(yml_files[0], 'r') as stream:
-            params = yaml.safe_load(stream)
+        params = ParamDict()
+        params.load(*yml_files)
 
         # start_modes values are extracted from the params dictionary
         start_modes = []

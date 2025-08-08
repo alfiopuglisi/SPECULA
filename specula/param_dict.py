@@ -65,13 +65,19 @@ class ParamDict():
         return len(self.params)
 
     def __getitem__(self, k):
-        return self.params[k]
+        return self.params.__getitem__(k)
 
     def __setitem__(self, k, v):
-        self.params[k] = v
+        self.params.__setitem__(k, v)
 
     def __delitem__(self, k):
         del self.params[k]
+    
+    def __contains__(self, k):
+        return self.params.__contains__(k)
+
+    def get(self, key, default=None):
+        return self.params.get(key, default)
 
     def pop(self, k):
         self.params.pop(k)

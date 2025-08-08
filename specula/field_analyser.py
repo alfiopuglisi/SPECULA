@@ -7,6 +7,7 @@ import yaml
 from astropy.io import fits
 from copy import deepcopy
 
+from specula.param_dict import ParamDict
 from specula.simul import Simul
 from specula.data_objects.simul_params import SimulParams
 from specula.processing_objects.psf import PSF
@@ -72,8 +73,8 @@ class FieldAnalyser:
         if not params_file.exists():
             raise FileNotFoundError(f"Parameters file not found: {params_file}")
 
-        with open(params_file, 'r') as f:
-            self.params = yaml.safe_load(f)
+        self.params = ParamDict()
+        self.params.load(params_file)
 
     def _setup_sources(self):
         """Setup field sources"""
@@ -241,15 +242,15 @@ class FieldAnalyser:
         temp_simul.replay_params = {}
 
         # Build objects and connections (needed for build_replay)
-        temp_simul.build_replay(modified_params)
+        replay_params = temp_simul.build_replay(modified_params)
 
         # Update DataSource store_dir to point to correct tracking number directory
-        if 'data_source' in temp_simul.replay_params:
-            temp_simul.replay_params['data_source']['store_dir'] = str(self.tn_dir)
+        if 'data_source' in replay_params:
+            replay_params['data_source']['store_dir'] = str(self.tn_dir)
             if self.verbose:
                 print(f"Updated DataSource store_dir to: {self.tn_dir}")
 
-        return temp_simul.replay_params
+        return replay_params
 
     def _find_dm_input_sources(self, params: dict) -> set:
         """
@@ -579,6 +580,9 @@ class FieldAnalyser:
         """
         import tempfile
         import os
+
+        if isinstance(params_dict, ParamDict):
+            params_dict = params_dict.params
 
         output_dir.mkdir(parents=True, exist_ok=True)
 

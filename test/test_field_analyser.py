@@ -10,6 +10,7 @@ specula.init(-1,precision=1)  # Default target device
 
 from specula import np
 from specula.simul import Simul
+from specula.param_dict import ParamDict
 from specula.field_analyser import FieldAnalyser
 from astropy.io import fits
 
