@@ -5,6 +5,7 @@ from astropy.modeling import models, fitting
 from specula import cpuArray
 from specula.data_objects.convolution_kernel import lgs_map_sh
 
+# TODO this function is unused apart from its test.
 
 def calc_noise_cov_elong(diameter_in_m, zenith_angle_in_deg, na_thickness_in_m, launcher_coord_in_m,
                          sub_aps_index, n_sub_aps, sub_aps_fov, sh_spot_fwhm, sigma_noise2,

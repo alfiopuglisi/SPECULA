@@ -5,6 +5,9 @@ import numpy as np
 
 from specula import float_dtype
 
+# TODO not used anywhere
+
+
 def cv_coord(from_rect=None, from_polar=None, from_cylin=None, from_sphere=None,
              to_rect=False, to_polar=False, to_cylin=False, to_sphere=False,
              degrees=False, double=False, xp=np):

@@ -42,4 +42,6 @@ def calc_loop_delay(fs, dm_set=1e-3, type=None, emccd=False, bin=1, comp_time=0.
     # Calculate total delay
     delay = T / 2.0 + CCD_speed + comp_time + dm_set / 2.0 + T / 2.0
 
+    # TODO this looks wrong, the only user of this function
+    # only gets a scalar. calc_detector_noise() is unused otherwise
     return delay, RON, dark
