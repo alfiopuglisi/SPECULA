@@ -71,7 +71,10 @@ class DataSource(BaseProcessingObj):
 
     def trigger_code(self):
         for k in self.storage.keys():            
-            self.outputs[k].set_value(self.outputs[k].xp.array(self.storage[k][self.current_time]))
+            value = self.storage[k][self.current_time]
+            if value.ndim == 0:
+                value = self.xp.array([value])
+            self.outputs[k].set_value(self.outputs[k].xp.array(value))
             self.outputs[k].generation_time = self.current_time
 
         

@@ -294,7 +294,7 @@ class ParamDict():
 
         return build_order
     
-    def data_store_to_data_source(self):
+    def data_store_to_data_source(self, set_store_dir=None):
         '''
         Convert data store parameters to data source'''
         key, pars = self.get_by_class('DataStore')  # It also checks that only one is present
@@ -305,16 +305,19 @@ class ParamDict():
         data_source_pars['class'] = 'DataSource'
         del data_source_pars['inputs']
         data_source_pars['outputs'] = []
+        if set_store_dir:
+            data_source_pars['store_dir'] = set_store_dir
 
-        for name in pars['inputs']['input_list']:
-            output = split_output(name)
+        for k, fullname in self.iterate_inputs(key):
+            output = split_output(fullname)
+            print(f'{fullname=} {output=}')
             data_source_pars['outputs'].append(output.input_name)
 
         # Remove DataStore and add DataSource
         del self.params[key]
         self.params['data_source'] = data_source_pars
     
-    def build_targeted_replay(self, *target_keys):
+    def build_targeted_replay(self, *target_keys, set_store_dir=None):
         '''
         # Or is a target class better than some keys?
         
@@ -333,7 +336,7 @@ class ParamDict():
         # Copy DataStore params and convert it to DataSource
         datastore_key, datastore_pars = self.get_by_class('DataStore')
         replay_params[datastore_key] = datastore_pars.copy()
-        replay_params.data_store_to_data_source()
+        replay_params.data_store_to_data_source(set_store_dir=set_store_dir)
 
         # Remember all datastore outputs
         datastore_outputs = {}
