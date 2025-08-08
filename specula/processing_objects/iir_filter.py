@@ -26,7 +26,7 @@ class IirFilter(BaseProcessingObj):
 
         self.time_step = simul_params.time_step
 
-        self._verbose = True
+        self.verbose = True
         self.iir_filter_data = iir_filter_data
 
         self.integration = integration

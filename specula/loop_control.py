@@ -11,7 +11,7 @@ class LoopControl(BaseTimeObj):
     def __init__(self, verbose=False):
         super().__init__(target_device_idx=-1, precision=1)
         self._trigger_lists = defaultdict(list)
-        self._verbose = verbose
+        self.verbose = verbose
         self._run_time = None
         self._dt = None
         self._t0 = None

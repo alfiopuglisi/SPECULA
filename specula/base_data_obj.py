@@ -26,15 +26,7 @@ class BaseDataObj(BaseTimeObj):
         precision (int, optional):if None will use the global_precision, otherwise pass 0 for double, 1 for single
         """
         super().__init__(target_device_idx, precision)
-        self._generation_time = -1
-
-    @property
-    def generation_time(self):
-        return self._generation_time
-
-    @generation_time.setter
-    def generation_time(self, value):
-        self._generation_time = value
+        self.generation_time = -1
 
     def transferDataTo(self, destobj, force_reallocation=False):
         '''
