@@ -69,6 +69,7 @@ class IirFilter(BaseProcessingObj):
         if self._n is not None and self._type is not None:
             self.state = self.xp.zeros((self._n, self._total_length), dtype=self.dtype)
 
+    # TODO not used
     def auto_params_management(self, control_params, detector_params, dm_params, slopec_params):
         result = control_params.copy()
 
@@ -83,10 +84,12 @@ class IirFilter(BaseProcessingObj):
 
         return result
 
+    # TODO not used
     @property
     def last_state(self):
         return self.state[:, 0]
 
+    # TODO not used
     def set_modal_start_time(self, modal_start_time):
         modal_start_time_ = self.to_xp(modal_start_time, dtype=self.dtype)
         for i in range(len(modal_start_time)):
