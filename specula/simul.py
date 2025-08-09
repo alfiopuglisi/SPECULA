@@ -268,8 +268,6 @@ class Simul():
    
     def build_objects(self, params):
 
-        self.setSimulParams(params)
-
         cm = CalibManager(self.mainParams['root_dir'])
         skip_pars = 'class inputs outputs'.split()
 
@@ -304,7 +302,6 @@ class Simul():
             build_this_object = (process_rank == target_rank) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == None)) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == process_rank)) or \
-                                (classname=='SimulParams') or \
                                 (process_rank == None)
 
             # If not build, remember the remote rank of this object (needed for connections setup)
