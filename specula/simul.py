@@ -1,4 +1,4 @@
-import sys
+import re
 import typing
 import inspect
 import itertools
@@ -587,27 +587,18 @@ class Simul():
         Add/update/remove params with additional_params
         '''
         for name, values in additional_params.items():
-            doRemoveIdx = False            
-            if '_' in name:
-                ri = name.split('_')
-                # check for a remove (with simulation index) list, something of the form:  remove_3: ['atmo', 'rec', 'dm2']                
-                if len(ri) == 2:
-                    if ri[0] == 'remove':
-                        if int(ri[1]) == self.simul_idx:
-                            doRemoveIdx = True
-                        else:
-                            continue
-                # check for a override (with simulation index) parameters structure, something of the form:  dm_override_2: { ... }                
-                if ri[-1].isnumeric() and ri[-2] == 'override':
-                    if int(ri[-1]) == self.simul_idx:
-                        separator = "_"
-                        objname = separator.join(ri[:-2])                        
-                        if objname not in params:
-                            raise ValueError(f'Parameter file has no object named {objname}')
-                        params[objname].update(values)
+            # Check if "name" ends with _ plus a number, in that case it is a simulation index and we skip
+            # everything if our simul_idx is not equal to the number
+            # e.g. remove_3: ['atmo', 'rec', 'dm2'] or dm_override_2: { ... }
+            match = re.search(r'^(.*)_(\d+)$', name)
+            if match:
+                idx = int(match.group(2))
+                if idx != self.simul_idx:
                     continue
+                else:
+                    name = match.group(1)
 
-            if name == 'remove' or doRemoveIdx:
+            if name == 'remove':
                 for objname in values:
                     if objname not in params:
                         raise ValueError(f'Parameter file has no object named {objname}')
