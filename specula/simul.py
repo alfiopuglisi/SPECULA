@@ -304,7 +304,6 @@ class Simul():
             build_this_object = (process_rank == target_rank) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == None)) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == process_rank)) or \
-                                (classname=='SimulParams') or \
                                 (process_rank == None)
 
             # If not build, remember the remote rank of this object (needed for connections setup)
@@ -688,7 +687,6 @@ class Simul():
 
         # Actual creation code
         self.apply_overrides(params)
-        self.setSimulParams(params)
 
         self.trigger_order, self.trigger_order_idx = self.trigger_order(params)
         print(f'{self.trigger_order=}')
