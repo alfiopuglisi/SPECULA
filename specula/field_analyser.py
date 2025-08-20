@@ -1,8 +1,7 @@
-import os
-import re
+
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import yaml
 from astropy.io import fits
 from copy import deepcopy
