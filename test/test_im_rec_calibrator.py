@@ -70,7 +70,7 @@ class TestImRecCalibrator(unittest.TestCase):
         im_tag = 'test_im_trigger'
 
         slopes = Slopes(2, target_device_idx=target_device_idx)
-        cmd = BaseValue(value=xp.zeros(2), target_device_idx=target_device_idx)
+        cmd = BaseValue(xp.zeros(2), target_device_idx=target_device_idx)
         calibrator = ImCalibrator(nmodes=10, data_dir=self.test_dir, im_tag=im_tag, overwrite=True)
         calibrator.inputs['in_slopes'].set(slopes)
         calibrator.inputs['in_commands'].set(cmd)
@@ -121,7 +121,7 @@ class TestImRecCalibrator(unittest.TestCase):
         with open(rec_path, 'w') as f:
             f.write('')
 
-        intmat = BaseValue(value=specula.np.array([[1, 2], [3, 4]]))
+        intmat = BaseValue(specula.np.array([[1, 2], [3, 4]]))
         calibrator = RecCalibrator(nmodes=2, data_dir=self.test_dir, rec_tag=rec_tag, overwrite=True)
         calibrator.inputs['in_intmat'].set(intmat)
 
@@ -137,7 +137,7 @@ class TestImRecCalibrator(unittest.TestCase):
         n_slopes = 6
         n_modes = 3
         mock_im = xp.random.random((n_slopes, n_modes)).astype(xp.float32)
-        intmat = BaseValue(value=mock_im, target_device_idx=target_device_idx)
+        intmat = BaseValue(mock_im, target_device_idx=target_device_idx)
 
         # Set generation time BEFORE setup
         intmat.generation_time = 1

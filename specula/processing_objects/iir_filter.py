@@ -49,7 +49,7 @@ class IirFilter(BaseProcessingObj):
         self._ist = self.xp.zeros_like(iir_filter_data.num)
         self._ost = self.xp.zeros_like(iir_filter_data.den)
 
-        self.out_comm = BaseValue(value=self.xp.zeros(self._n, dtype=self.dtype), target_device_idx=target_device_idx)
+        self.out_comm = BaseValue(self.xp.zeros(self._n, dtype=self.dtype), target_device_idx=target_device_idx)
         self.inputs['delta_comm'] = InputValue(type=BaseValue)
         self.inputs['gain_mod'] = InputValue(type=BaseValue,optional=True)
         self.outputs['out_comm'] = self.out_comm

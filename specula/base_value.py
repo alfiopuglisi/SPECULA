@@ -4,7 +4,7 @@ from astropy.io import fits
 from specula.base_data_obj import BaseDataObj
 
 class BaseValue(BaseDataObj):
-    def __init__(self, description='', value=None, target_device_idx=None):
+    def __init__(self, value=None, description: str='', target_device_idx: int=None):
         """
         Initialize the base value object.
 
@@ -13,8 +13,8 @@ class BaseValue(BaseDataObj):
         value (any, optional): data to store. If not set, the value is initialized to None.
         """
         super().__init__(target_device_idx=target_device_idx)
-        self.description = description
         self.value = value
+        self.description = description
         
     def get_value(self):
         return self.value
@@ -42,15 +42,16 @@ class BaseValue(BaseDataObj):
     def restore(filename, target_device_idx=None):
         hdr = fits.getheader(filename)
         data = fits.getdata(filename)
-        v = BaseValue(target_device_idx=target_device_idx)
 
+        desc = hdr['DESC']
+        value = None
         if hdr['NDARRAY']:
-            v.value = data
+            value = data
         else:
             value_str = hdr.get('VALUE', None)
             if value_str is not None:
-                v.value = eval(value_str)  # Convert back from string to original type
-        return v
+                value = eval(value_str)  # Convert back from string to original type
+        return BaseValue(value, description=desc, target_device_idx=target_device_idx)
 
     def array_for_display(self):
         return self.value
@@ -59,4 +60,5 @@ class BaseValue(BaseDataObj):
         hdr = fits.Header()
         hdr['VERSION'] = 1
         hdr['OBJ_TYPE'] = 'BaseValue'
+        hdr['DESC'] = self.description
         return hdr

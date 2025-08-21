@@ -47,9 +47,9 @@ class MultiImCalibrator(BaseProcessingObj):
 
         self.outputs['out_intmat_list'] = []
         for i in range(self._n_inputs):
-            im = BaseValue(f'intmat_{i}', target_device_idx=self.target_device_idx)
+            im = BaseValue(description=f'intmat_{i}', target_device_idx=self.target_device_idx)
             self.outputs['out_intmat_list'].append(im)
-        self.outputs['out_intmat_full'] = BaseValue('full_intmat', target_device_idx=self.target_device_idx)
+        self.outputs['out_intmat_full'] = BaseValue(description='full_intmat', target_device_idx=self.target_device_idx)
 
     def tag_filename(self, tag, tag_template, prefix):
         if tag == 'auto' and tag_template is None:

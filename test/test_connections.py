@@ -21,7 +21,7 @@ class TestConnections(unittest.TestCase):
         data = xp.arange(2)
         input_v = InputValue(type=BaseValue)
 
-        output_v = BaseValue(value=data, target_device_idx=target_device_idx)
+        output_v = BaseValue(data, target_device_idx=target_device_idx)
         input_v.set(output_v)
 
         result = input_v.get(target_device_idx=target_device_idx)
@@ -35,7 +35,7 @@ class TestConnections(unittest.TestCase):
         data = xp.arange(2)
         input_v = InputValue(type=BaseValue)
 
-        output_v = BaseValue(value=data, target_device_idx=target_device_idx)
+        output_v = BaseValue(data, target_device_idx=target_device_idx)
         input_v.set(output_v)
 
         if target_device_idx == 0:
@@ -54,7 +54,7 @@ class TestConnections(unittest.TestCase):
         data = xp.arange(2)
         input_v = InputValue(type=BaseValue)
 
-        output_v = BaseValue(value=data, target_device_idx=target_device_idx)
+        output_v = BaseValue(data, target_device_idx=target_device_idx)
         input_v.set(output_v)
 
         if target_device_idx == 0:
@@ -73,8 +73,8 @@ class TestConnections(unittest.TestCase):
         data2 = xp.arange(2)+2
         input_v = InputList(type=BaseValue)
 
-        output1 = BaseValue(value=data1, target_device_idx=target_device_idx)
-        output2 = BaseValue(value=data2, target_device_idx=target_device_idx)
+        output1 = BaseValue(data1, target_device_idx=target_device_idx)
+        output2 = BaseValue(data2, target_device_idx=target_device_idx)
         input_v.set([output1, output2])
 
         result = input_v.get(target_device_idx=target_device_idx)
@@ -91,8 +91,8 @@ class TestConnections(unittest.TestCase):
         data2 = xp.arange(2)+2
         input_v = InputList(type=BaseValue)
 
-        output1 = BaseValue(value=data1, target_device_idx=target_device_idx)
-        output2 = BaseValue(value=data2, target_device_idx=target_device_idx)
+        output1 = BaseValue(data1, target_device_idx=target_device_idx)
+        output2 = BaseValue(data2, target_device_idx=target_device_idx)
         input_v.set([output1, output2])
 
         if target_device_idx == 0:
@@ -115,8 +115,8 @@ class TestConnections(unittest.TestCase):
         data2 = xp.arange(2)+2
         input_v = InputList(type=BaseValue)
 
-        output1 = BaseValue(value=data1, target_device_idx=target_device_idx)
-        output2 = BaseValue(value=data2, target_device_idx=target_device_idx)
+        output1 = BaseValue(data1, target_device_idx=target_device_idx)
+        output2 = BaseValue(data2, target_device_idx=target_device_idx)
         input_v.set([output1, output2])
 
         if target_device_idx == 0:
@@ -137,8 +137,8 @@ class TestConnections(unittest.TestCase):
         data2 = xp.arange(2)+2
         input_v = InputList(type=BaseValue)
 
-        output1 = BaseValue(value=data1, target_device_idx=target_device_idx)
-        output2 = BaseValue(value=data2, target_device_idx=target_device_idx)
+        output1 = BaseValue(data1, target_device_idx=target_device_idx)
+        output2 = BaseValue(data2, target_device_idx=target_device_idx)
         input_v.set([output1])
         input_v.append(output2)
 

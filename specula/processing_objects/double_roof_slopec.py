@@ -1,6 +1,5 @@
 from specula import fuse
 from specula.processing_objects.slopec import Slopec
-from specula.base_value import BaseValue
 from specula.data_objects.pupdata import PupData
 from specula.data_objects.slopes import Slopes
 

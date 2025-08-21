@@ -46,7 +46,7 @@ class ImCalibrator(BaseProcessingObj):
 
         self.output_im = [Slopes(length=2, target_device_idx=self.target_device_idx) for _ in range(nmodes)]
         self.outputs['out_im'] = self.output_im
-        self._im = BaseValue('intmat', target_device_idx=self.target_device_idx)
+        self._im = BaseValue(description='intmat', target_device_idx=self.target_device_idx)
         self.outputs['out_intmat'] = self._im
 
     def trigger_code(self):

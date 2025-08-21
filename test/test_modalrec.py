@@ -62,8 +62,8 @@ class TestModalrec(unittest.TestCase):
 
         # commands:
         commands_list = [0.1, 0.2, 0.3, 0.4]
-        commands    = BaseValue('commands', value=xp.array(commands_list), target_device_idx=target_device_idx)
-        commands_ip = BaseValue('commands', value=xp.array(commands_list), target_device_idx=target_device_idx)
+        commands    = BaseValue(xp.array(commands_list), description='commands', target_device_idx=target_device_idx)
+        commands_ip = BaseValue(xp.array(commands_list), description='commands', target_device_idx=target_device_idx)
         commands.generation_time = 0
         commands_ip.generation_time = 0
 

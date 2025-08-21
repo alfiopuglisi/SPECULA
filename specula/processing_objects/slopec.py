@@ -38,11 +38,11 @@ class Slopec(BaseProcessingObj):
 
         self.sn = sn
         self.slopes = Slopes(self.nslopes(), target_device_idx=self.target_device_idx) 
-        self.flux_per_subaperture_vector = BaseValue(value=self.xp.zeros(self.nsubaps(), dtype=self.dtype),
+        self.flux_per_subaperture_vector = BaseValue(self.xp.zeros(self.nsubaps(), dtype=self.dtype),
                                                      target_device_idx=self.target_device_idx)
 
-        self.total_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
-        self.subap_counts = BaseValue(value=self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
+        self.total_counts = BaseValue(self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
+        self.subap_counts = BaseValue(self.xp.zeros(1, dtype=self.dtype), target_device_idx=self.target_device_idx)
         self.recmat = recmat
         if filtmat is not None:
             if filt_intmat:

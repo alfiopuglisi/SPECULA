@@ -64,7 +64,7 @@ class TestIirFilter(unittest.TestCase):
         )
 
         # Create constant input of 1.0 for both modes
-        constant_input = BaseValue(value=xp.array([1.0, 1.0], dtype=xp.float32),
+        constant_input = BaseValue(xp.array([1.0, 1.0], dtype=xp.float32),
                                 target_device_idx=target_device_idx)
 
         # Connect inputs

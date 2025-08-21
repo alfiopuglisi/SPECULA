@@ -26,7 +26,7 @@ class TestBaseValue(unittest.TestCase):
             pass
 
         data = xp.arange(9).reshape((3,3))
-        v = BaseValue(value=data, target_device_idx=target_device_idx)
+        v = BaseValue(data, target_device_idx=target_device_idx)
         v.save(self.filename)
         v2 = BaseValue.restore(self.filename)
 

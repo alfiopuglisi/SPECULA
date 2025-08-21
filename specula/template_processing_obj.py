@@ -25,8 +25,8 @@ class ProcessingObjName(BaseProcessingObj):
         self.interalParam = self.to_xp(parameter1 * parameter2.recmat)
 
         # BaseValue is just an example, could be any data object 
-        self.result_data1 = BaseValue('some output for this processing object', target_device_idx=target_device_idx)
-        # self.result_data2 = BaseValue('some other output for this processing oibject', target_device_idx=target_device_idx)        
+        self.result_data1 = BaseValue(description='some output for this processing object', target_device_idx=target_device_idx)
+        # self.result_data2 = BaseValue(description='some other output for this processing oibject', target_device_idx=target_device_idx)        
 
         # allocate the inputs dictionary
         self.inputs['in_data1'] = InputValue(type=Slopes, optional=True) # Slopes is just an example, could be any data object 

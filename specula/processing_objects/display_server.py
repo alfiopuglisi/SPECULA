@@ -100,7 +100,7 @@ class DisplayServer(BaseProcessingObj):
                 # and remove xp/np modules to prepare for pickling
                 dataobj = self.data_obj_getter(name)
                 if dataobj is None:
-                    dataobj = BaseValue(value=None)
+                    dataobj = BaseValue(None)
 
                 if isinstance(dataobj, list):
                     dataobj_cpu = [x.copyTo(-1) for x in dataobj]

@@ -17,7 +17,7 @@ class TestBaseDataObj(unittest.TestCase):
         Test that copyTo() with target_device_idx >= 0
         allocates a new object on the GPU with the correct contents
         '''
-        a = BaseValue(value=np.arange(2), target_device_idx=-1)
+        a = BaseValue(np.arange(2), target_device_idx=-1)
         b = a.copyTo(target_device_idx=0)
 
         assert type(b.value) == cp.ndarray
@@ -30,8 +30,8 @@ class TestBaseDataObj(unittest.TestCase):
         Test that transferDataTo() with a GPU object
         correctly updates the contents
         '''
-        a1 = BaseValue(value=np.arange(2), target_device_idx=-1)
-        a2 = BaseValue(value=np.arange(2)+2, target_device_idx=-1)
+        a1 = BaseValue(np.arange(2), target_device_idx=-1)
+        a2 = BaseValue(np.arange(2)+2, target_device_idx=-1)
         b = a1.copyTo(target_device_idx=0)
         _ = a2.transferDataTo(b)
 
@@ -45,7 +45,7 @@ class TestBaseDataObj(unittest.TestCase):
         Test that copyTo() with target_device_idx == -1
         allocates a new object on the CPU with the correct contents
         '''
-        a = BaseValue(value=cp.arange(2), target_device_idx=0)
+        a = BaseValue(cp.arange(2), target_device_idx=0)
         b = a.copyTo(target_device_idx=-1)
 
         np.testing.assert_array_equal(b.value, [0, 1])
@@ -58,8 +58,8 @@ class TestBaseDataObj(unittest.TestCase):
         Test that transferDataTo() with a CPU object
         correctly updates the contents
         '''
-        a1 = BaseValue(value=cp.arange(2), target_device_idx=0)
-        a2 = BaseValue(value=cp.arange(2)+2, target_device_idx=0)
+        a1 = BaseValue(cp.arange(2), target_device_idx=0)
+        a2 = BaseValue(cp.arange(2)+2, target_device_idx=0)
         b = a1.copyTo(target_device_idx=-1)
         _ = a2.transferDataTo(b)
 
@@ -73,7 +73,7 @@ class TestBaseDataObj(unittest.TestCase):
         Test that copyTo() from a GPU device to another
         allocates a new object on the target GPU with the correct contents
         '''        
-        a = BaseValue(value=cp.arange(2), target_device_idx=0)
+        a = BaseValue(cp.arange(2), target_device_idx=0)
         b = a.copyTo(target_device_idx=1)
 
         np.testing.assert_array_equal(b.value.get(), [0, 1])
@@ -86,8 +86,8 @@ class TestBaseDataObj(unittest.TestCase):
         Test that transferDataTo() from a GPU device to another
         correctly updates the contents
         '''
-        a1 = BaseValue(value=cp.arange(2), target_device_idx=0)
-        a2 = BaseValue(value=cp.arange(2)+2, target_device_idx=0)
+        a1 = BaseValue(cp.arange(2), target_device_idx=0)
+        a2 = BaseValue(cp.arange(2)+2, target_device_idx=0)
         b = a1.copyTo(target_device_idx=1)
         _ = a2.transferDataTo(b)
 
