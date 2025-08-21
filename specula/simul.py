@@ -118,7 +118,7 @@ class Simul():
         return order, order_index
 
     def setSimulParams(self, params):
-        _, main_pars = self.get_by_class('SimulParams')
+        _, main_pars = params.get_by_class('SimulParams')
         self.mainParams = main_pars
 
     def create_input_list_inputs(self, params):
