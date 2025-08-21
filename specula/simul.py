@@ -55,7 +55,7 @@ class Simul():
         self.diagram = diagram
         self.diagram_title = diagram_title
         self.diagram_filename = diagram_filename
-    
+
     def split_output(self, output_name, get_ref=False, use_inputs=False):
         '''
         Split the output name into object name and output key.
@@ -99,7 +99,7 @@ class Simul():
             ref = None
 
         return Output(obj_name, output_key, delay, ref, input_name)
-            
+
     def output_owner(self, output_name):
         output = self.split_output(output_name)
         return output.obj_name
@@ -125,7 +125,7 @@ class Simul():
         '''
         output = self.split_output(input_name, get_ref=True, use_inputs=True)
         return output.ref
-        
+
     def output_delay(self, output_name):
         return self.split_output(output_name).delay
 
@@ -148,7 +148,7 @@ class Simul():
             if maxdelay == 0:
                 return False
         return True
-    
+
     def has_delayed_output(self, obj_name, params):
         '''
         Find out if an object has an output
@@ -263,7 +263,7 @@ class Simul():
 
             if pars['class'] == 'DataBuffer':
                 self.objs[key].setOutputs()
-   
+
     def build_objects(self, params):
 
         self.setSimulParams(params)
@@ -286,15 +286,15 @@ class Simul():
             hints = get_type_hints(klass)
 
             target_device_idx = pars.get('target_device_idx', None)
-                        
+ 
             par_target_rank = pars.get('target_rank', None)
             if par_target_rank is None:
                 target_rank = 0
                 self.all_objs_ranks[key] = 0
             else:
-                target_rank = par_target_rank     
+                target_rank = par_target_rank
                 self.all_objs_ranks[key] = par_target_rank
-                del pars['target_rank']        
+                del pars['target_rank']
 
             # create the simulations objects for this process. Data Objects are created
             # on all ranks (processes) by default, unless a specific rank has been specified.
@@ -320,6 +320,7 @@ class Simul():
                 self.objs[key] = klass.restore(filename, target_device_idx=target_device_idx)
                 self.objs[key].printMemUsage()
                 self.objs[key].name = key
+                self.objs[key].tag = pars['tag']
                 continue
 
             pars2 = {}
@@ -368,6 +369,9 @@ class Simul():
                         print('Restoring:', filename)
                         parobj = partype.restore(filename, target_device_idx=target_device_idx)
                         parobj.printMemUsage()
+
+                        # Set data_tag 
+                        parobj.tag = value
 
                         pars2[parname] = parobj
                     else:
