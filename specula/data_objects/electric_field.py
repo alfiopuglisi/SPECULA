@@ -72,7 +72,7 @@ class ElectricField(BaseDataObj):
         self.field[0] += 1
         self.field[1] *= 0
 
-    def resize(self, dimx, dimy):
+    def resize(self, dimx, dimy, pitch=None):
         '''
         Resize the electric field
         
@@ -81,6 +81,8 @@ class ElectricField(BaseDataObj):
         dimx = int(dimx)
         dimy = int(dimy)
         self.field = self.xp.zeros((2, dimx, dimy), dtype=self.dtype)
+        if pitch is not None:
+            self.pixel_pitch = pitch
         self.reset()
 
     @property

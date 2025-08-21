@@ -7,7 +7,6 @@ from specula import np
 from specula import cpuArray
 
 from specula.data_objects.electric_field import ElectricField
-from specula.data_objects.simul_params import SimulParams
 from specula.processing_objects.phase_flattening import PhaseFlattening
 
 from test.specula_testlib import cpu_and_gpu
@@ -19,11 +18,9 @@ class TestPhaseFlattening(unittest.TestCase):
         """Test phase flattening with random values"""
         pixel_pupil = 6
         pixel_pitch = 0.1
-        simul_params = SimulParams(pixel_pupil=pixel_pupil, pixel_pitch=pixel_pitch)
 
         # Create phase flattener (reuse for both subtests)
         phase_flattener = PhaseFlattening(
-            simul_params=simul_params,
             target_device_idx=target_device_idx
         )
 
@@ -82,11 +79,9 @@ class TestPhaseFlattening(unittest.TestCase):
         """Test edge cases"""
         pixel_pupil = 8
         pixel_pitch = 0.1
-        simul_params = SimulParams(pixel_pupil=pixel_pupil, pixel_pitch=pixel_pitch)
         
         # === SUBTEST 1: Checkerboard mask (preserves invalid pixels) ===
         phase_flattener = PhaseFlattening(
-            simul_params=simul_params,
             target_device_idx=target_device_idx
         )
         
@@ -151,11 +146,9 @@ class TestPhaseFlattening(unittest.TestCase):
         """Test that phase flattening doesn't cause memory reallocation"""
         pixel_pupil = 10
         pixel_pitch = 0.1
-        simul_params = SimulParams(pixel_pupil=pixel_pupil, pixel_pitch=pixel_pitch)
 
         # Create phase flattener
         phase_flattener = PhaseFlattening(
-            simul_params=simul_params,
             target_device_idx=target_device_idx
         )
         
