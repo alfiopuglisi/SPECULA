@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 from specula import cpuArray
 from specula.display.base_display import BaseDisplay
@@ -20,7 +19,7 @@ class SlopecDisplay(BaseDisplay):
         self.img = None
 
         # Setup input
-        self.input_key = 'slopes'
+        self.input_key = 'slopes'  # Used by base class
         self.inputs['slopes'] = InputValue(type=Slopes)
 
     def _update_display(self, slopes_obj):
@@ -31,7 +30,7 @@ class SlopecDisplay(BaseDisplay):
             frame2d = np.hstack(cpuArray(frame3d))
         else:
             # slopes from intensity case
-            frame2d = frame3d
+            frame2d = cpuArray(frame3d)
 
         if self.img is None:
             # First time: create image

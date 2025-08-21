@@ -9,8 +9,7 @@ from astropy.io import fits
 
 from specula import main_simul
 from specula.param_dict import ParamDict
-from specula.data_objects.simul_params import SimulParams
-from specula.processing_objects.psf import PSF
+from specula.lib.calc_psf import calc_psf_geometry
 
 
 # TODO candidate to be moved into module functions
@@ -407,19 +406,18 @@ class FieldAnalyser:
         # Get simul_params from main configuration
         _, main_config = self.params.get_by_class('SimulParams')
 
-        # Create a temporary SimulParams object to initialize PSF
-        temp_simul_params = SimulParams(pixel_pitch = main_config['pixel_pitch'],
-                                        pixel_pupil = main_config['pixel_pupil'])
+        pixel_pitch = main_config['pixel_pitch']
+        pixel_pupil = main_config['pixel_pupil']
 
-        temp_psf = PSF(
-            simul_params=temp_simul_params,
-            wavelengthInNm=self.wavelength_nm,
-            nd=psf_sampling,
-            pixel_size_mas=psf_pixel_size_mas,
-            start_time=self.start_time
-        )
-        self.psf_sampling = temp_psf.nd
-        self.psf_pixel_size_mas = temp_psf.psf_pixel_size
+        psf_geometry = calc_psf_geometry(
+                                    pixel_pupil,
+                                    pixel_pitch,
+                                    self.wavelength_nm,
+                                    nd=psf_sampling,
+                                    pixel_size_mas=psf_pixel_size_mas)
+        
+        self.psf_sampling = psf_geometry.nd
+        self.psf_pixel_size_mas = psf_geometry.pixel_size_mas
 
         # Check if all individual PSF files exist
         all_exist = True

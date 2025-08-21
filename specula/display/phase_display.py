@@ -1,8 +1,6 @@
 
 import numpy as np
-import matplotlib.pyplot as plt
 
-from specula import xp
 from specula import cpuArray
 
 from specula.display.base_display import BaseDisplay
@@ -18,11 +16,8 @@ class PhaseDisplay(BaseDisplay):
             figsize=figsize
         )
 
-        self.img = None
-        self._colorbar_added = False
-
         # Setup input
-        self.input_key = 'phase'
+        self.input_key = 'phase'  # Used by base class
         self.inputs['phase'] = InputValue(type=ElectricField)
 
     def _process_phase_data(self, phase):
@@ -36,7 +31,7 @@ class PhaseDisplay(BaseDisplay):
             # Remove average phase only from valid pixels
             frame[valid_mask] -= np.mean(frame[valid_mask])
 
-            if self._verbose:
+            if self.verbose:
                 print('Removing average phase in phase_display')
 
         return frame

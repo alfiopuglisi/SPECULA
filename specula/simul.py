@@ -43,7 +43,6 @@ class Simul():
         self.objs = {}
         self.simul_idx = simul_idx
         self.verbose = False  #TODO
-        self.isReplay = False
         self.mainParams = None
         if overrides is None:
             self.overrides = []
@@ -119,10 +118,8 @@ class Simul():
         return order, order_index
 
     def setSimulParams(self, params):
-        for key, pars in params.items():
-            classname = pars['class']
-            if classname == 'SimulParams':
-                self.mainParams = pars
+        _, main_pars = self.get_by_class('SimulParams')
+        self.mainParams = main_pars
 
     def create_input_list_inputs(self, params):
         '''
@@ -197,7 +194,6 @@ class Simul():
             build_this_object = (process_rank == target_rank) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == None)) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == process_rank)) or \
-                                (classname=='SimulParams') or \
                                 (process_rank == None)
 
             # If not build, remember the remote rank of this object (needed for connections setup)
@@ -220,8 +216,6 @@ class Simul():
 
             pars2 = {}
             for name, value in pars.items():
-                if key == 'data_source':
-                    self.isReplay = True
 
                 if key != 'data_source' and name in skip_pars:
                     continue
@@ -406,6 +400,9 @@ class Simul():
 #                    a_connection['end_label'] = self.objs[dest_object].inputs[use_input_name]
                     self.connections.append(a_connection)
 
+    def isReplay(self, params):
+        return 'data_source' in params
+
     def build_replay(self, params):
         replay_params = params.copy()
         obj_to_remove = []
@@ -489,19 +486,25 @@ class Simul():
         params = ParamDict()
         params.load(*self.param_files)
         params.apply_overrides(self.overrides)
-
         self.setSimulParams(params)
 
         self.trigger_order, self.trigger_order_idx = self.trigger_order(params)
         print(f'{self.trigger_order=}')
         print(f'{self.trigger_order_idx=}')
 
-        if not self.isReplay:
-            self.build_replay(params)
+        if not self.isReplay(params):
+            replay_params = self.build_replay(params)
+        else:
+            replay_params = None
 
         self.build_objects(params)
         self.create_input_list_inputs(params)
         self.connect_objects(params)
+
+        if replay_params is not None:
+            for obj in self.objs.values():
+                if type(obj) is DataStore:
+                    obj.setReplayParams(replay_params)
 
         # Initialize housekeeping objects
         self.loop = LoopControl()
@@ -541,8 +544,8 @@ class Simul():
     def get_info(self):
         '''Quick info string intended for web interfaces'''
         name= f'{self.param_files[0]}'
-        curtime= f'{self.loop._t / self.loop._time_resolution:.3f}'
-        stoptime= f'{self.loop._run_time / self.loop._time_resolution:.3f}'
+        curtime= f'{self.loop.t / self.loop._time_resolution:.3f}'
+        stoptime= f'{self.loop.run_time / self.loop._time_resolution:.3f}'
 
         info = f'{curtime}/{stoptime}s'
         return name, info

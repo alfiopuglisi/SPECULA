@@ -39,7 +39,7 @@ class TestSimul(unittest.TestCase):
           
         test:
           class: 'Source'
-          polar_coordinates: [0, 0]
+          polar_coordinates: [1, 2]
           magnitude: null
           wavelengthInNm: null
         '''

@@ -1,7 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
-from specula import xp
 from specula import cpuArray
 
 from specula.display.base_display import BaseDisplay
@@ -54,7 +52,7 @@ class DoublePhaseDisplay(BaseDisplay):
             # Remove average phase only from valid pixels
             frame[valid_mask] -= np.mean(frame[valid_mask])
 
-            if self._verbose:
+            if self.verbose:
                 print('Removing average phase in double_phase_display')
 
         return frame
@@ -63,8 +61,8 @@ class DoublePhaseDisplay(BaseDisplay):
         """Calculate power spectral density"""
         return np.absolute(ft_ft2(frame, 1))**2
 
-    def _get_data_list(self):
-        """Get both phases - this signals BaseDisplay to use special logic"""
+    def _get_data(self):
+        """Get both phases"""
         phase1 = self.local_inputs.get('phase1')
         phase2 = self.local_inputs.get('phase2')
 
