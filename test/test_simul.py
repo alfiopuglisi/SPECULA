@@ -7,6 +7,7 @@ specula.init(0)  # Default target device
 import unittest
 
 import yaml
+import copy
 from specula.simul import Simul
 from specula.connections import InputValue, InputList
 

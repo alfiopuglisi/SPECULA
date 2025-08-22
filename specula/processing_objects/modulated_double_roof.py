@@ -79,7 +79,7 @@ class ModulatedDoubleRoof(ModulatedPyramid):
                  target_device_idx=target_device_idx,
                  precision=precision)
 
-        self.stream_enable = False
+        self.stream_enable = True
 
         self.pup_diam = pup_diam
         self.pup_dist = pup_dist
@@ -187,13 +187,12 @@ class ModulatedDoubleRoof(ModulatedPyramid):
         # Combine the two roof images to create 4 sub-pupils
         self._combine_roof_images()
 
-        self.psf_bfm_arr[:] = self.xp.fft.fftshift(self.fpsf)
-        self.psf_tot_arr[:] = self.psf_bfm_arr * self.fp_mask
+        self.psf_bfm.value[:] = self.xp.fft.fftshift(self.fpsf)
+        self.psf_tot.value[:] = self.psf_bfm.value * self.fp_mask
         self.pup_pyr_tot[:] = self.pyr_image
-        self.pup_pyr_tot *= self.factor
-        self.psf_tot_arr *= self.factor
-        self.psf_bfm_arr *= self.factor
-        self.transmission[:] = self.xp.sum(self.psf_tot_arr) / self.xp.sum(self.psf_bfm_arr)
+        self.psf_tot.value *= self.factor
+        self.psf_bfm.value *= self.factor
+        self.transmission.value[:] = self.xp.sum(self.psf_tot.value) / self.xp.sum(self.psf_bfm.value)
 
     def _combine_roof_images(self):
         """Combine two roof images into a 4-quadrant pyramid-like pattern"""
