@@ -58,7 +58,7 @@ class GainOptimizer(BaseProcessingObj):
         self.comm_hist = []
         self.optical_gain_hist = []
         self.psd_ol = None
-        self.prev_optimized_gain = None
+        self.prev_optimized_gain = self.iir_filter_data.gain.copy()
 
         self.plot_debug = False  # Enable plotting for debugging
 
@@ -140,7 +140,7 @@ class GainOptimizer(BaseProcessingObj):
 
         if self.plot_debug:
             plt.figure()
-            plt.plot(opt_gains, marker='o')
+            plt.plot(cpuArray(opt_gains), marker='o')
             plt.xlabel('Mode Index')
             plt.ylabel('Optimized Gain')
             plt.title('Optimized Gains for Each Mode')
@@ -185,9 +185,9 @@ class GainOptimizer(BaseProcessingObj):
 
         if self.plot_debug:
             plt.figure()
-            plt.plot(comm_hist[:,0], label='Output Command')
-            plt.plot(delta_comm_hist[:,0], label='Delta Command')
-            plt.plot(pseudo_ol[:,0], label='Pseudo Open-Loop Signal')
+            plt.plot(cpuArray(comm_hist[:,0]), label='Output Command')
+            plt.plot(cpuArray(delta_comm_hist[:,0]), label='Delta Command')
+            plt.plot(cpuArray(pseudo_ol[:,0]), label='Pseudo Open-Loop Signal')
             plt.legend()
             plt.xlabel('Time Step')
             plt.ylabel('Signal Value')
@@ -226,21 +226,14 @@ class GainOptimizer(BaseProcessingObj):
         """
 
         # Get filter coefficients for this mode from iir_filter_data
-        num = cpuArray(self.iir_filter_data.num[mode, :])
-        den = cpuArray(self.iir_filter_data.den[mode, :])
+        num = cpuArray(self.iir_filter_data.num.copy()[mode, :])
+        den = cpuArray(self.iir_filter_data.den.copy()[mode, :])
+        # normalize numerator by the gain
+        # This is done because _calculate_rejection_tf wants a num with unitary gain
+        num /= cpuArray(self.iir_filter_data.gain[mode])
 
         # Calculate PSD of pseudo open-loop signal
         psd_pseudo_ol, freq = self._calculate_psd(pseudo_ol_mode, t_int)
-
-        if self.plot_debug:
-            plt.figure()
-            plt.plot(freq, psd_pseudo_ol, label='PSD of Pseudo Open-Loop Signal')
-            plt.xlabel('Frequency (Hz)')
-            plt.ylabel('Power Spectral Density')
-            plt.title(f'PSD for Mode {mode}')
-            plt.grid()
-            plt.legend()
-            plt.show()
 
         # Apply running mean if enabled
         if self.running_mean and self.psd_ol is not None:
@@ -255,11 +248,30 @@ class GainOptimizer(BaseProcessingObj):
             # Calculate rejection transfer function
             h_rej = self._calculate_rejection_tf(freq, t_int, gain, num, den)
             # Calculate total residual variance
-            totals[i] = self.xp.sum(self.xp.nan_to_num(self.xp.abs(h_rej)**2 * psd_pseudo_ol))
+            psd_res = self.xp.nan_to_num(self.xp.abs(h_rej)**2 * psd_pseudo_ol)
+            totals[i] = self.xp.sum(psd_res)
 
         if self.plot_debug:
             plt.figure()
-            plt.plot(gains, totals, marker='o')
+            plt.plot(cpuArray(freq), cpuArray(psd_pseudo_ol), label='Pseudo Open-Loop PSD')
+            plt.plot(cpuArray(freq), cpuArray(psd_res), label='Residual PSD')
+            plt.xlabel('Frequency (Hz)')
+            plt.ylabel('Power Spectral Density')
+            plt.title(f'PSDs for Mode {mode}')
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.grid()
+            plt.legend()
+            plt.figure()
+            plt.plot(cpuArray(freq), cpuArray(self.xp.nan_to_num(self.xp.abs(h_rej))))
+            plt.xlabel('Frequency (Hz)')
+            plt.ylabel('Amplitude')
+            plt.title(f'RTF for Mode {mode}')
+            plt.xscale('log')
+            plt.yscale('log')
+            plt.grid()
+            plt.figure()
+            plt.plot(cpuArray(gains), cpuArray(totals), marker='o')
             plt.xlabel('Gain')
             plt.ylabel('Total Residual Variance')
             plt.title(f'Mode {mode} Gain Optimization')
