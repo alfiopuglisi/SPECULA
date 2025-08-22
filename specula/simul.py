@@ -489,7 +489,7 @@ class Simul():
 
     def run(self):
         params = ParamDict()
-        params.load(*self.param_files)
+        params.load(*self.param_files, simul_idx=self.simul_idx)
         params.apply_overrides(self.overrides)
         self.setSimulParams(params)
 

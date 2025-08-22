@@ -1,4 +1,5 @@
 
+import re
 import copy
 import yaml
 from collections import namedtuple
@@ -82,7 +83,7 @@ class ParamDict():
     def pop(self, k):
         self.params.pop(k)
 
-    def load(self, *param_files):
+    def load(self, *param_files, simul_idx=0):
         '''
         Load params from one or more YAML files on disk
         '''
@@ -94,35 +95,22 @@ class ParamDict():
             print('Reading additional parameters from', filename)
             with open(filename, 'r') as stream:
                 additional_params = yaml.safe_load(stream)                
-                self.combine_params(additional_params)
+                self.combine_params(additional_params, simul_idx)
 
-    def combine_params(self, additional_params):
+    def combine_params(self, additional_params, simul_idx):
         '''
         Add/update/remove params with additional_params
         '''
         for name, values in additional_params.items():
-            doRemoveIdx = False            
-            if '_' in name:
-                ri = name.split('_')
-                # check for a remove (with simulation index) list, something of the form:  remove_3: ['atmo', 'rec', 'dm2']                
-                if len(ri) == 2:
-                    if ri[0] == 'remove':
-                        if int(ri[1]) == self.simul_idx:
-                            doRemoveIdx = True
-                        else:
-                            continue
-
-                # check for a override (with simulation index) parameters structure, something of the form:  dm_override_2: { ... }                
-                if ri[-1].isnumeric() and ri[-2] == 'override':
-                    if int(ri[-1]) == self.simul_idx:
-                        separator = "_"
-                        objname = separator.join(ri[:-2])                        
-                        if objname not in self.params:
-                            raise ValueError(f'Parameter file has no object named {objname}')
-                        self.params[objname].update(values)
+            match = re.search(r'^(.*)_(\d+)$', name)
+            if match:
+                idx = int(match.group(2))
+                if idx != simul_idx:
                     continue
+                else:
+                    name = match.group(1)
 
-            if name == 'remove' or doRemoveIdx:
+            if name == 'remove':
                 for objname in values:
                     if objname not in self.params:
                         raise ValueError(f'Parameter file has no object named {objname}')
