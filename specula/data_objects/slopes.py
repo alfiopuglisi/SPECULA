@@ -155,8 +155,8 @@ class Slopes(BaseDataObj):
         hdr['OBJ_TYPE'] = 'Intensity'
         hdr['INTRLVD'] = int(self.interleave)
         hdr['LENGTH'] = self.size
-        hdr['PUPD_TAG'] = self.pupdata_tag if self.pupdata_tag is not None else ''
-        hdr['SUBAP_TAG'] = self.subapdata_tag if self.subapdata_tag is not None else ''
+        hdr['PUPDTAG'] = self.pupdata_tag if self.pupdata_tag is not None else ''
+        hdr['SUBAPTAG'] = self.subapdata_tag if self.subapdata_tag is not None else ''
         return hdr
 
     def save(self, filename, overwrite=True):
@@ -179,8 +179,8 @@ class Slopes(BaseDataObj):
         else:
             slopes = Slopes(length=1, interleave=interleave, target_device_idx=target_device_idx)
         if version >= 2:
-            slopes.pupdata_tag = hdr.get('PUPD_TAG', None)
-            slopes.subapdata_tag = hdr.get('SUBAP_TAG', None)
+            slopes.pupdata_tag = hdr.get('PUPDTAG', None)
+            slopes.subapdata_tag = hdr.get('SUBAPTAG', None)
         return slopes
     
     @staticmethod
