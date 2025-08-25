@@ -275,4 +275,7 @@ def main_simul(yml_files: list,
     if mpi:
         MPI.Detach_buffer()
 
+### Exceptions
 
+class SpeculaStopSimulationException(Exception):
+    pass
