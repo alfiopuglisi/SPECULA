@@ -8,7 +8,7 @@ from specula.data_objects.recmat import Recmat
 
 class Intmat(BaseDataObj):
     '''
-    Interaction matrix axes are [slopes, modes]
+    An Interaction Matrix is a matrix with shape [n_slopes, n_modes]
     '''
     def __init__(self,
                  intmat,
