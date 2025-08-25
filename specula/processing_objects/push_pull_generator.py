@@ -1,4 +1,5 @@
 import numpy as np
+from specula import SpeculaStopSimulationException
 from specula.processing_objects.base_generator import BaseGenerator
 from specula.lib.modal_pushpull_signal import modal_pushpull_signal
 
@@ -17,6 +18,7 @@ class PushPullGenerator(BaseGenerator):
                  ncycles: int = 1,
                  nsamples: int = 1,
                  repeat_cycles: bool = False,
+                 stop_when_done: bool = True,
                  target_device_idx: int = None,
                  precision: int = None):
 
@@ -57,8 +59,10 @@ class PushPullGenerator(BaseGenerator):
 
     def trigger_code(self):
         """From original: VIB_HIST, VIB_PSD, PUSH, PUSHPULL, TIME_HIST case"""
-        self.output.value[:] = self.get_time_hist_at_current_time()
+        self.output.value[:] = self.to_xp(self.time_hist[self.iter_counter])
 
-    def get_time_hist_at_current_time(self):
-        """From original BaseGenerator"""
-        return self.to_xp(self.time_hist[self.iter_counter])
+    def post_trigger(self):
+        super().post_trigger()
+
+        if self.iter_counter == len(self.time_hist):
+            raise SpeculaStopSimulationException

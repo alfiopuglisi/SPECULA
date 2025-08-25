@@ -4,6 +4,7 @@ import numpy as np
 from collections import defaultdict
 
 from specula.base_time_obj import BaseTimeObj
+from specula import SpeculaStopSimulationException
 from specula import process_comm, process_rank, MPI_DBG
 
 
@@ -21,6 +22,7 @@ class LoopControl(BaseTimeObj):
         self.old_time = 0
         self.max_global_order = -1
         self.iter_counter = 0
+        self.stopped_by = None
 
     def add(self, obj, idx):
         self.trigger_lists[idx].append(obj)
@@ -30,12 +32,15 @@ class LoopControl(BaseTimeObj):
 
     def run(self, run_time, dt, t0=0, speed_report=False):
         self.start(run_time, dt, t0=t0, speed_report=speed_report)
-        while self.t < self.t0 + self.run_time:            
+        while (self.t < self.t0 + self.run_time) and \
+               self.stopped_by is None:
             if MPI_DBG: print(process_rank, 'before barrier iter', flush=True)
             if MPI_DBG: print(process_rank, 'after barrier iter', flush=True)
             if MPI_DBG: print(process_rank, 'NEW ITERATION', self.t,flush=True)
             self.iter()
-            
+        
+        if self.stopped_by:
+            print('Simulation stopped by object', self.stopped_by.name)
         self.finish()
 
     def start(self, run_time, dt, t0=0, speed_report=False):
@@ -92,6 +97,7 @@ class LoopControl(BaseTimeObj):
 
         # set the last_iter flag based on several conditions
         last_iter = (self.iter_counter == self.niters()-1)
+        self.stopped_by = None
 
         for i in sorted(self.trigger_lists.keys()):
             # all the objects having this trigger order could be remote
@@ -120,6 +126,9 @@ class LoopControl(BaseTimeObj):
                     # Always send MPI outputs, regardless of whether
                     # an object was triggered or not
                     element.send_outputs(skip_delayed=last_iter, first_mpi_send=False)
+                except SpeculaStopSimulationException:
+                    self.stopped_by = element
+                    print('Stopped by', element)
                 except:
                     print('Exception in', element.name, flush=True)
                     raise
