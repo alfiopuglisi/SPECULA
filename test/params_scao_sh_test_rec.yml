@@ -7,9 +7,6 @@ pushpull:
                     50,50,50,50,50,50,50,50,50,50]
   outputs: ['output']
 
-main_override:
-  total_time:  0.080
-
 prop_override:
   inputs:
     common_layer_list: ['pupilstop',
