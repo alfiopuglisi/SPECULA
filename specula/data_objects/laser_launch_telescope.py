@@ -22,7 +22,7 @@ class LaserLaunchTelescope(BaseDataObj):
 
     def __init__(self,
                  spot_size: float = 0.0,
-                 tel_position: list = [],
+                 tel_position: list = [0.0, 0.0, 0.0],
                  beacon_focus: float = 90e3,
                  beacon_tt: list = [0.0, 0.0],
                  target_device_idx: int = None, 
