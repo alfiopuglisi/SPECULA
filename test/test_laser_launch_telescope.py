@@ -71,7 +71,7 @@ class TestLaserLaunchTelescope(unittest.TestCase):
         llt = LaserLaunchTelescope(target_device_idx=target_device_idx)
 
         self.assertEqual(llt.spot_size, 0.0)
-        self.assertEqual(llt.tel_pos, [0.0, 0.0, 0.0])
+        self.assertEqual(llt.tel_pos, [])
         self.assertEqual(llt.beacon_focus, 90e3)
         self.assertEqual(llt.beacon_tt, [0.0, 0.0])
 

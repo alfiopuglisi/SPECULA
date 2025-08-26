@@ -119,13 +119,15 @@ class TestBaseProcessingObj(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             obj.post_trigger()
 
-    @cpu_and_gpu
-    def test_device_stream_creates_and_reuses_stream(self, target_device_idx, xp):
-        with patch.object(cp.cuda, "Stream", return_value="fake_stream") as mock_stream:
-            s1 = BaseProcessingObj.device_stream(target_device_idx)
-            s2 = BaseProcessingObj.device_stream(target_device_idx)
-            self.assertEqual(s1, s2)
-            mock_stream.assert_called_once()
+    # TODO this patch does not seem to be reverted correctly
+    #      and subsequent tests involving streams fail.
+    # @cpu_and_gpu
+    # def test_device_stream_creates_and_reuses_stream(self, target_device_idx, xp):
+    #     with patch.object(cp.cuda, "Stream", return_value="fake_stream") as mock_stream:
+    #         s1 = BaseProcessingObj.device_stream(target_device_idx)
+    #         s2 = BaseProcessingObj.device_stream(target_device_idx)
+    #         self.assertEqual(s1, s2)
+    #         mock_stream.assert_called_once()
 
     @cpu_and_gpu
     def test_check_ready_sets_inputs_changed_true(self, target_device_idx, xp):
@@ -169,9 +171,11 @@ class TestBaseProcessingObj(unittest.TestCase):
     @cpu_and_gpu
     def test_device_stream_reuses_existing_stream(self, target_device_idx, xp):
         # Pre-populate stream cache
-        BaseProcessingObj._streams[target_device_idx] = "cached_stream"
-        result = BaseProcessingObj.device_stream(target_device_idx)
+        test_device_idx = 42
+        BaseProcessingObj._streams[test_device_idx] = "cached_stream"
+        result = BaseProcessingObj.device_stream(test_device_idx)
         self.assertEqual(result, "cached_stream")
+        del BaseProcessingObj._streams[test_device_idx]
 
     # --- CUDA GRAPH CAPTURE TESTS ---
 
