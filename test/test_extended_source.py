@@ -15,7 +15,7 @@ from specula.data_objects.simul_params import SimulParams
 from test.specula_testlib import cpu_and_gpu
 
 
-def make_simul_params(xp, pixel_pupil=100, pixel_pitch=0.01, zenith=0.0):
+def make_simul_params(pixel_pupil=100, pixel_pitch=0.01, zenith=0.0):
     return SimulParams(
         pixel_pupil=pixel_pupil,
         pixel_pitch=pixel_pitch,
@@ -43,7 +43,8 @@ class TestExtendedSource(unittest.TestCase):
             source_type='POINT_SOURCE',
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             size_obj=None,
-            sampling_type='CARTESIAN'
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
         )
         src.compute()
         if self.debug_plot:
@@ -59,8 +60,9 @@ class TestExtendedSource(unittest.TestCase):
             source_type='TOPHAT',
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             size_obj=self.size_obj,
-            sampling_type='CARTESIAN'
-        )
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
+            )
         src.compute()
         if self.debug_plot:
             src.plot_source()
@@ -75,7 +77,8 @@ class TestExtendedSource(unittest.TestCase):
             source_type='GAUSS',
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             size_obj=self.size_obj,
-            sampling_type='CARTESIAN'
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
         )
         src.compute()
         if self.debug_plot:
@@ -94,7 +97,8 @@ class TestExtendedSource(unittest.TestCase):
             source_type='GAUSS',
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             size_obj=self.size_obj,
-            sampling_type='CARTESIAN'
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
         )
         src.compute()
         if self.debug_plot:
@@ -116,7 +120,8 @@ class TestExtendedSource(unittest.TestCase):
             source_type='GAUSS',
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             size_obj=self.size_obj,
-            sampling_type='CARTESIAN'
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
         )
         src.compute()
 
@@ -184,7 +189,8 @@ class TestExtendedSource(unittest.TestCase):
             sampling_lambda_over_d=self.sampling_lambda_over_d,
             initial_psf=psf,
             pixel_scale_psf=0.1,
-            sampling_type='CARTESIAN'
+            sampling_type='CARTESIAN',
+            target_device_idx=target_device_idx,
         )
 
         # Create a new PSF to update with
@@ -209,7 +215,7 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_validate_parameters_success_and_failures(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        simul_params = make_simul_params()
 
         # Valid POINT_SOURCE
         ExtendedSource(simul_params, 500, 'POINT_SOURCE', target_device_idx=target_device_idx)
@@ -237,7 +243,7 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_check_if_3d(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        simul_params = make_simul_params()
         src = ExtendedSource(simul_params, 500, 'POINT_SOURCE', target_device_idx=target_device_idx)
 
         # No layers
@@ -258,7 +264,11 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_compute_tophat_cartesian_and_polar_and_rings(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        '''
+        Just check that the computation goes through without errors
+        Actual results are not checked.
+        '''
+        simul_params = make_simul_params()
 
         # Cartesian
         src = ExtendedSource(simul_params, 500, 'TOPHAT', size_obj=1.0,
@@ -277,7 +287,11 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_compute_gauss_cartesian_and_rings(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        '''
+        Just check that the computation goes through without errors
+        Actual results are not checked.
+        '''
+        simul_params = make_simul_params()
 
         # Cartesian
         src = ExtendedSource(simul_params, 500, 'GAUSS', size_obj=1.0,
@@ -292,7 +306,7 @@ class TestExtendedSource(unittest.TestCase):
     # TODO fails because of problems with PSF interpolation at extended_source.py line 590
     # @cpu_and_gpu
     # def test_compute_from_psf_polar(self, target_device_idx, xp):
-    #     simul_params = make_simul_params(xp)
+    #     simul_params = make_simul_params()
     #     psf = xp.ones((7, 7))
 
     #     src = ExtendedSource(simul_params, 500, 'FROM_PSF',
@@ -304,7 +318,7 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_apply_flux_threshold(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        simul_params = make_simul_params()
 
         src = ExtendedSource(simul_params, 500, 'POINT_SOURCE', target_device_idx=target_device_idx)
         src.coeff_flux = xp.array([1.0, 0.5, 0.1])
@@ -321,7 +335,7 @@ class TestExtendedSource(unittest.TestCase):
 
     @cpu_and_gpu
     def test_compute_3d_errors(self, target_device_idx, xp):
-        simul_params = make_simul_params(xp)
+        simul_params = make_simul_params()
 
         # Missing intensity_profile
         with self.assertRaises(ValueError):
