@@ -149,7 +149,6 @@ class ExtendedSource(BaseProcessingObj):
         if self.flux_threshold > 0:
             self._apply_flux_threshold()
 
-        print(f'{self.coeff_tiltx.shape=} {self.coeff_tilty.shape=} {self.coeff_focus.shape=} {self.coeff_flux.shape=}')
         # Update outputs
         self.outputs['coeff'].value = self.xp.column_stack([
                                                     self.coeff_tiltx,
