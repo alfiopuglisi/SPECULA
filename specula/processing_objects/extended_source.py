@@ -149,6 +149,7 @@ class ExtendedSource(BaseProcessingObj):
         if self.flux_threshold > 0:
             self._apply_flux_threshold()
 
+        print(f'{self.coeff_tiltx.shape=} {self.coeff_tilty.shape=} {self.coeff_focus.shape=} {self.coeff_flux.shape=}')
         # Update outputs
         self.outputs['coeff'].value = self.xp.column_stack([
                                                     self.coeff_tiltx,
@@ -577,7 +578,7 @@ class ExtendedSource(BaseProcessingObj):
             from scipy.interpolate import RectBivariateSpline
             x_psf = np.arange(sPSF[1])
             y_psf = np.arange(sPSF[0])
-            interp_func = RectBivariateSpline(y_psf, x_psf, psf, kx=1, ky=1)
+            interp_func = RectBivariateSpline(y_psf, x_psf, cpuArray(psf), kx=1, ky=1)
 
             flux_percent = []
             for i in range(len(xx_arcsec)):
