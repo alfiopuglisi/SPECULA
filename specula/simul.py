@@ -271,6 +271,10 @@ class Simul():
 
         cm = CalibManager(self.mainParams['root_dir'])
         skip_pars = 'class inputs outputs'.split()
+        if 'add_modules' in self.mainParams:
+            additional_modules = self.mainParams['add_modules']
+        else:
+            additional_modules = []
 
         if MPI_DBG: print(process_rank, 'building objects')
 
@@ -282,7 +286,7 @@ class Simul():
             except KeyError:
                 raise KeyError(f'Object {key} does not define the "class" parameter')
 
-            klass = import_class(classname)
+            klass = import_class(classname, additional_modules)
             args = inspect.getfullargspec(getattr(klass, '__init__')).args
             hints = get_type_hints(klass)
 
