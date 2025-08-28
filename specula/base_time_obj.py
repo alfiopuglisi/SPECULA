@@ -61,7 +61,8 @@ class BaseTimeObj:
             from scipy.linalg import lu_factor, lu_solve
             self.PerformanceWarning = None
 
-        self.rotate = rotate
+        if not hasattr(self, 'rotate'):
+            self.rotate = rotate
         self.shift = shift
         self._lu_factor = lu_factor
         self._lu_solve = lu_solve

@@ -152,7 +152,7 @@ class Slopes(BaseDataObj):
         if len(idx.shape) == 1:
             self.xp.put(frame, idx, self.slopes[self.indx()])
         elif len(idx.shape) == 2:
-            frame[idx] = self.slopes[self.indx()]
+            frame[idx[0], idx[1]] = self.slopes[self.indx()]
         else:
             raise ValueError('Frame index must be either 1d for flattened indexes or 2d')
 
@@ -163,7 +163,7 @@ class Slopes(BaseDataObj):
         if len(idx.shape) == 1:
             self.xp.put(frame, idx, self.slopes[self.indy()])
         elif len(idx.shape) == 2:
-            frame[idx] = self.slopes[self.indy()]
+            frame[idx[0], idx[1]] = self.slopes[self.indy()]
         else:
             raise ValueError('Frame index must be either 1d for flattened indexes or 2d')
 
