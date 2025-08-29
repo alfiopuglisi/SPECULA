@@ -48,3 +48,6 @@ class TimeHistory(BaseDataObj):
         hdr['VERSION'] = 1
         hdr['OBJ_TYPE'] = 'TimeHistory'
         return hdr
+    
+    def array_for_display(self):
+        raise NotImplementedError
