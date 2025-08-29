@@ -2,7 +2,6 @@ import specula
 specula.init(0)  # Default target device
 
 import unittest
-import numpy as np
 
 from specula.data_objects.electric_field import ElectricField
 from specula.data_objects.simul_params import SimulParams

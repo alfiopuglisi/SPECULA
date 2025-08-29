@@ -1,11 +1,8 @@
-import numpy as np
-import pytest
 import specula
 specula.init(0)
 
 from specula import cpuArray
-from specula.lib.make_xy import make_xy
-from specula.lib.make_mask import make_mask  # replace with actual module
+from specula.lib.make_mask import make_mask
 from test.specula_testlib import cpu_and_gpu_noself
 
 

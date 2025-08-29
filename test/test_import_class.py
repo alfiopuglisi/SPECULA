@@ -1,7 +1,7 @@
 import unittest
-import importlib
 from unittest.mock import patch, MagicMock
 from specula.lib.utils import import_class
+
 
 class TestImportClass(unittest.TestCase):
     """

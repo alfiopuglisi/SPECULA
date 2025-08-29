@@ -1,10 +1,7 @@
 import unittest
 import os
 import shutil
-import subprocess
-import sys
 import glob
-import time
 import specula
 specula.init(-1,precision=1)  # Default target device
 

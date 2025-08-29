@@ -10,7 +10,7 @@ specula.init(0)  # Default target device
 from astropy.io import fits
 import numpy as np
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from specula.connections import InputValue
 from specula.base_data_obj import BaseDataObj

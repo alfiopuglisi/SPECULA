@@ -4,7 +4,7 @@ specula.init(0)  # Default target device
 
 import numpy as np
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from specula import cp, cpuArray
 from specula.base_processing_obj import BaseProcessingObj

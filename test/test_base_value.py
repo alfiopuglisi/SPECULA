@@ -2,7 +2,6 @@
 
 
 import os
-import tempfile
 import unittest
 from astropy.io import fits
 
@@ -13,6 +12,7 @@ from specula import np
 from specula import cpuArray
 from specula.base_value import BaseValue
 from test.specula_testlib import cpu_and_gpu
+
 
 class TestBaseValue(unittest.TestCase):
    

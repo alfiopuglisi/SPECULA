@@ -4,7 +4,6 @@ import numpy as np
 import specula
 specula.init(0)  # Default target device
 
-from unittest import mock
 from specula import cpuArray, cp
 from specula.lib.toccd import toccd
 from test.specula_testlib import cpu_and_gpu

@@ -7,7 +7,6 @@ import specula
 specula.init(-1, precision=1)
 
 from specula.simul import Simul
-from test.specula_testlib import assert_HDU_contents_match
 from astropy.io import fits
 
 class TestLowPassFilterSimulation(unittest.TestCase):

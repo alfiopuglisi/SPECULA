@@ -3,13 +3,9 @@ import specula
 specula.init(0)  # Default target device
 
 import unittest
-
 import numpy as np
-
 from specula import cpuArray
-
 from specula.data_objects.iir_filter_data import IirFilterData
-
 from test.specula_testlib import cpu_and_gpu
 
 # Try to import control library for testing
