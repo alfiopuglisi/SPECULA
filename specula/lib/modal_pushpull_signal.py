@@ -76,6 +76,7 @@ def modal_pushpull_signal(
     History
     -------
     Created on 12-SEP-2014 by Guido Agapito (guido.agapito@inaf.it)
+    2025-08-29 by Alfio Puglisi (alfio.puglisi@inaf.it): added "pattern", "first mode" and "constant" parameters
     """
     if only_push:
         pattern = [1]
@@ -85,15 +86,15 @@ def modal_pushpull_signal(
         if linear:
             vect_amplitude = amplitude/radorder
         elif constant:
-            vect_amplitude = np.repeat(amplitude, len(radorder))
+            vect_amplitude = xp.repeat(amplitude, len(radorder))
         else:
-            vect_amplitude = amplitude/np.sqrt(radorder)
+            vect_amplitude = amplitude/xp.sqrt(radorder)
         if min_amplitude is not None:
             vect_amplitude = xp.minimum(vect_amplitude, min_amplitude)
 
     # Prepend zero values equal to the number of skipped modes
-    vect_amplitude = np.hstack((
-        np.repeat(0, first_mode), vect_amplitude
+    vect_amplitude = xp.hstack((
+        xp.repeat(0, first_mode), vect_amplitude
     ))
 
     n_pokes = len(pattern)
@@ -110,4 +111,4 @@ def modal_pushpull_signal(
             for j in range(ncycles):
                 time_hist[n_pokes*(ncycles*hist_idx+j):n_pokes*(ncycles*hist_idx+j+1), mode] = poke_pattern
 
-    return np.repeat(time_hist, nsamples, axis=0)
+    return xp.repeat(time_hist, nsamples, axis=0)
