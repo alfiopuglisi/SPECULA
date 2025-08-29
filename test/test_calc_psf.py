@@ -4,7 +4,7 @@ specula.init(0)  # Default target device
 import unittest
 import numpy as np
 
-from specula.lib.calc_psf import calc_psf, calc_psf_sampling
+from specula.lib.calc_psf import calc_psf, calc_psf_pixel_size, calc_psf_sampling
 from test.specula_testlib import cpu_and_gpu
 
 
@@ -49,3 +49,10 @@ class TestCalcPsf(unittest.TestCase):
         with self.assertRaises(ValueError):
             calc_psf_sampling(pixel_pupil, pixel_pitch, wavelength_nm, max_pixel_size_mas * 2)
 
+    def test_calc_psf_pixel_size(self):
+
+        result = calc_psf_pixel_size(500, 1.0, 2.0)
+
+        # Compute expected manually
+        expected = (500e-9 / 1.0 * 3600 * 180 / np.pi) * 1000 / 2.0
+        self.assertAlmostEqual(result, expected)

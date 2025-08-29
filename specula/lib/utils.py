@@ -84,7 +84,9 @@ def get_type_hints(type):
         A dictionary mapping parameter names to type hints for all __init__ methods in the class hierarchy.
     """
     hints = {}
-    for x in type.__mro__:
+
+    # We iterate on reversed MRO so that child classes will override parent ones.
+    for x in reversed(type.__mro__):
         hints.update(typing.get_type_hints(getattr(x, '__init__')))
     return hints
 
