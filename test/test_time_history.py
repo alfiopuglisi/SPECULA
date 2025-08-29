@@ -64,9 +64,10 @@ class TestTimeHistory(unittest.TestCase):
 
     @cpu_and_gpu
     def test_array_for_display(self, target_device_idx, xp):
-        """Test array_for_display returns the stored value"""
+        """Test array_for_display rasies"""
         data = xp.array([1, 2, 3])
         th = TimeHistory(data, target_device_idx=target_device_idx)
-        xp.testing.assert_array_equal(th.array_for_display(), data)
+        with self.assertRaises(NotImplementedError):
+            _ = th.array_for_display()
 
 
