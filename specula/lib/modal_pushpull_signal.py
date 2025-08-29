@@ -12,7 +12,8 @@
 # KEYWORD:
 #   amplitude	    amplitude of mode 0
 #   vect_amplitude  modal amplitude vector
-#   linear          vect_amplitude change as 1/rad_order
+#   linear          vect_amplitude change as 1/rad_order instead of 1/sqrt(radorder)
+#   constant        vect_amplitude is constant across modes
 #   min_amplitude   min value for vect_amplitude
 #   only_push       makes an only push signal
 #   ncycles         number of cycle of push-pull
@@ -32,34 +33,41 @@
 import numpy as np
 from specula.lib.zernike_generator import ZernikeGenerator
 
-def modal_pushpull_signal(n_modes, amplitude=None, vect_amplitude=None,
+def modal_pushpull_signal(n_modes, amplitude=None, vect_amplitude=None, constant=False, first_mode=0,
                                 linear=None, min_amplitude=None, only_push=False,
                                 ncycles=1, repeat_ncycles=False, nsamples=1, xp=np):
 
     if vect_amplitude is None:
-        radorder = xp.array([ZernikeGenerator.degree(x)[0] for x in xp.arange(n_modes)+2])
+        radorder = xp.array([ZernikeGenerator.degree(x)[0] for x in xp.arange(first_mode, n_modes) + 2])
         if linear:
             vect_amplitude = amplitude/radorder
+        elif constant:
+            vect_amplitude = np.repeat(amplitude, len(radorder))
         else:
             vect_amplitude = amplitude/np.sqrt(radorder)
         if min_amplitude is not None:
             vect_amplitude = xp.minimum(vect_amplitude, min_amplitude)
 
+    # Prepend zero values equal to the number of skipped modes
+    vect_amplitude = np.hstack((
+        np.repeat(0, first_mode), vect_amplitude
+    ))
+
+    real_n_modes = n_modes - first_mode
     if only_push:
-        time_hist = xp.zeros((n_modes * ncycles, n_modes))
-        for i in range(n_modes):
+        time_hist = xp.zeros((real_n_modes * ncycles, n_modes))
+        for i in range(first_mode, n_modes):
             for j in range(ncycles):
                 time_hist[ncycles*i+j, i] = vect_amplitude[i]     
     else:
-        if repeat_ncycles:
-            time_hist = xp.zeros((2*n_modes*ncycles, n_modes))
-            for i in range(n_modes):
-                time_hist[2*i*ncycles:2*(i+1)*ncycles, i] = \
-                    xp.concatenate((xp.repeat(vect_amplitude[i], ncycles), xp.repeat(-vect_amplitude[i], ncycles)))
-        else:
-            time_hist =xp.zeros((2*n_modes*ncycles,n_modes))
-            for i in range(n_modes):
+        time_hist = xp.zeros((2*real_n_modes*ncycles, n_modes))
+        for mode in range(first_mode, n_modes):
+            hist_idx = mode - first_mode
+            if repeat_ncycles:
+                time_hist[2*hist_idx*ncycles:2*(hist_idx+1)*ncycles, mode] = \
+                    xp.concatenate((xp.repeat(vect_amplitude[mode], ncycles), xp.repeat(-vect_amplitude[mode], ncycles)))
+            else:
                 for j in range(ncycles):
-                    time_hist[2*(ncycles*i+j):2*(ncycles*i+j)+2,i] = xp.array([vect_amplitude[i],-vect_amplitude[i]])
+                    time_hist[2*(ncycles*hist_idx+j):2*(ncycles*hist_idx+j)+2, mode] = xp.array([vect_amplitude[mode],-vect_amplitude[mode]])
 
     return np.repeat(time_hist, nsamples, axis=0)
