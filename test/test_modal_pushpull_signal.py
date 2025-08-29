@@ -209,3 +209,94 @@ class TestModalPushPullSignal(unittest.TestCase):
             x2 = x1 + ncycles*2
             self.assertTrue(np.array_equal(col[x1:x2], repeated_blocks))
 
+    @patch("specula.lib.modal_pushpull_signal.ZernikeGenerator.degree", return_value=(1,))
+    def test_custom_pattern_three_elements(self, mock_degree):
+        """
+        Verify that a custom pattern [1, -1, 1] produces the correct sequence for each mode.
+        """
+        n_modes = 3
+        amplitude = 2.0
+        pattern = [1, -1, 1]
+        ncycles = 2
+
+        result = modal_pushpull_signal(
+            n_modes=n_modes,
+            amplitude=amplitude,
+            pattern=pattern,
+            ncycles=ncycles,
+            constant=True,
+            xp=np
+        )
+
+        n_pokes = len(pattern)
+        expected_rows = n_pokes * n_modes * ncycles
+        self.assertEqual(result.shape, (expected_rows, n_modes))
+
+        # Expected block for each mode: amplitude * pattern, repeated ncycles times
+        expected_block = np.tile(np.array(pattern) * amplitude, ncycles)
+        for mode in range(n_modes):
+            x1 = mode * len(pattern)*ncycles
+            x2 = (mode+1) * len(pattern)*ncycles
+            np.testing.assert_array_equal(result[x1:x2, mode], expected_block)
+
+    @patch("specula.lib.modal_pushpull_signal.ZernikeGenerator.degree", return_value=(1,))
+    def test_custom_pattern_negative_first(self, mock_degree):
+        """
+        Verify that a custom pattern [-1, 1] applies correctly, starting with a negative amplitude.
+        """
+        n_modes = 2
+        amplitude = 3.0
+        pattern = [-1, 1]
+        ncycles = 2
+
+        result = modal_pushpull_signal(
+            n_modes=n_modes,
+            amplitude=amplitude,
+            pattern=pattern,
+            ncycles=ncycles,
+            constant=True,
+            xp=np
+        )
+
+        n_pokes = len(pattern)
+        expected_rows = n_pokes * n_modes * ncycles
+        self.assertEqual(result.shape, (expected_rows, n_modes))
+
+        expected_block = np.tile(np.array(pattern) * amplitude, ncycles)
+        for mode in range(n_modes):
+            x1 = mode * len(pattern)*ncycles
+            x2 = (mode+1) * len(pattern)*ncycles
+            np.testing.assert_array_equal(result[x1:x2, mode], expected_block)
+
+    @patch("specula.lib.modal_pushpull_signal.ZernikeGenerator.degree", return_value=(1,))
+    def test_only_push_overrides_pattern(self, mock_degree):
+        """
+        Verify that setting only_push=True forces the pattern to [1] regardless of the input pattern.
+        """
+        n_modes = 3
+        amplitude = 4.0
+        ncycles = 2
+        pattern = [-1, 1]
+
+        # Provide a fake negative pattern; should be ignored
+        result = modal_pushpull_signal(
+            n_modes=n_modes,
+            amplitude=amplitude,
+            only_push=True,
+            pattern=pattern,
+            ncycles=ncycles,
+            constant=True,
+            xp=np
+        )
+
+        expected_rows = n_modes * ncycles  # only_push -> 1 poke per mode per cycle
+        self.assertEqual(result.shape, (expected_rows, n_modes))
+
+        expected_pattern = [1]
+        expected_block = np.tile(np.array(expected_pattern) * amplitude, ncycles)
+        for mode in range(n_modes):
+            x1 = mode * len(expected_pattern)*ncycles
+            x2 = (mode+1) * len(expected_pattern)*ncycles
+            np.testing.assert_array_equal(result[x1:x2, mode], expected_block)
+
+

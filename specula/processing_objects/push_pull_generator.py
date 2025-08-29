@@ -15,6 +15,7 @@ class PushPullGenerator(BaseGenerator):
                  push_pull_type: str = 'PUSHPULL',  # 'PUSH' or 'PUSHPULL'
                  amp: float = None,
                  constant_amp: bool=False,
+                 pattern: list = [1, -1],
                  vect_amplitude: list = None,
                  ncycles: int = 1,
                  nsamples: int = 1,
@@ -54,6 +55,7 @@ class PushPullGenerator(BaseGenerator):
                 amplitude=amp,
                 constant=constant_amp,
                 vect_amplitude=vect_amplitude,
+                pattern=pattern,
                 ncycles=ncycles,
                 repeat_ncycles=repeat_cycles,
                 nsamples=nsamples

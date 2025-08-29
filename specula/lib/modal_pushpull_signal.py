@@ -16,6 +16,7 @@
 #   constant        vect_amplitude is constant across modes
 #   min_amplitude   min value for vect_amplitude
 #   only_push       makes an only push signal
+#   pattern         push_pull pattern, default [-1, 1], can be any sequence of numbers
 #   ncycles         number of cycle of push-pull
 #   repeat_ncycles   set it to have ncycles of push and then ncycles of pull
 #   nsamples        how many samples to hold in each position, default=1
@@ -35,7 +36,11 @@ from specula.lib.zernike_generator import ZernikeGenerator
 
 def modal_pushpull_signal(n_modes, amplitude=None, vect_amplitude=None, constant=False, first_mode=0,
                                 linear=None, min_amplitude=None, only_push=False,
+                                pattern=[1, -1],
                                 ncycles=1, repeat_ncycles=False, nsamples=1, xp=np):
+
+    if only_push:
+        pattern = [1]
 
     if vect_amplitude is None:
         radorder = xp.array([ZernikeGenerator.degree(x)[0] for x in xp.arange(first_mode, n_modes) + 2])
@@ -53,21 +58,18 @@ def modal_pushpull_signal(n_modes, amplitude=None, vect_amplitude=None, constant
         np.repeat(0, first_mode), vect_amplitude
     ))
 
+    n_pokes = len(pattern)
+
     real_n_modes = n_modes - first_mode
-    if only_push:
-        time_hist = xp.zeros((real_n_modes * ncycles, n_modes))
-        for i in range(first_mode, n_modes):
+    time_hist = xp.zeros((n_pokes * real_n_modes * ncycles, n_modes))
+    for mode in range(first_mode, n_modes):
+        hist_idx = mode - first_mode
+        poke_pattern = vect_amplitude[mode] * xp.array(pattern)
+        if repeat_ncycles:
+            time_hist[n_pokes*hist_idx*ncycles:n_pokes*(hist_idx+1)*ncycles, mode] = \
+                xp.repeat(poke_pattern, ncycles)
+        else:
             for j in range(ncycles):
-                time_hist[ncycles*i+j, i] = vect_amplitude[i]     
-    else:
-        time_hist = xp.zeros((2*real_n_modes*ncycles, n_modes))
-        for mode in range(first_mode, n_modes):
-            hist_idx = mode - first_mode
-            if repeat_ncycles:
-                time_hist[2*hist_idx*ncycles:2*(hist_idx+1)*ncycles, mode] = \
-                    xp.concatenate((xp.repeat(vect_amplitude[mode], ncycles), xp.repeat(-vect_amplitude[mode], ncycles)))
-            else:
-                for j in range(ncycles):
-                    time_hist[2*(ncycles*hist_idx+j):2*(ncycles*hist_idx+j)+2, mode] = xp.array([vect_amplitude[mode],-vect_amplitude[mode]])
+                time_hist[n_pokes*(ncycles*hist_idx+j):n_pokes*(ncycles*hist_idx+j+1), mode] = poke_pattern
 
     return np.repeat(time_hist, nsamples, axis=0)
