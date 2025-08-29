@@ -18,16 +18,19 @@ class DataStore(BaseProcessingObj):
     def __init__(self,
                 store_dir: str,         # TODO ="",
                 split_size: int=0,
+                first_suffix: int=0,
                 data_format: str='fits',
                 create_tn: bool=True):
         super().__init__()
         self.data_filename = ''
-        self.tn_dir = store_dir
+        self.today = time.strftime("%Y%m%d_%H%M%S")
+        self.tn_dir_orig = store_dir
         self.data_format = data_format
         self.create_tn = create_tn
         self.replay_params = None
         self.iter_counter = 0
         self.split_size = split_size
+        self.first_suffix = first_suffix
         self.init_storage()
 
     def init_storage(self):
@@ -80,11 +83,10 @@ class DataStore(BaseProcessingObj):
             hdul.close()  # Force close for Windows
 
     def create_TN_folder(self, suffix=''):
-        today = time.strftime("%Y%m%d_%H%M%S")
         iter = None
         while True:
-            tn = f'{today}'
-            fullpath = os.path.join(self.tn_dir, tn) + suffix
+            tn = f'{self.today}'
+            fullpath = os.path.join(self.tn_dir_orig, tn) + suffix
             if iter is not None:
                 fullpath += f'.{iter}'
             if not os.path.exists(fullpath):
@@ -108,7 +110,7 @@ class DataStore(BaseProcessingObj):
         self.iter_counter += 1
         if self.split_size > 0:
             if self.iter_counter % self.split_size == 0:
-                self.create_TN_folder(suffix=f'_{self.iter_counter - self.split_size}')
+                self.create_TN_folder(suffix=f'_{self.iter_counter - self.split_size + self.first_suffix}')
                 self.save()
                 self.init_storage()
 
