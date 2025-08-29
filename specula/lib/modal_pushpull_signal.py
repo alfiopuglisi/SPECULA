@@ -1,44 +1,82 @@
-#+
-# NAME:
-#   modal_pushpull_signal
-# PURPOSE:
-#   generate a modal push-pull time history to be use for calibration purpose
-# CATEGORY:
-#   AO simulation.
-# CALLING SEQUENCE:
-# function modal_pushpull_signal, n_modes, amplitude=amplitude, vect_amplitude=vect_amplitude
-# INPUTS:
-#   n_modes         number of modes
-# KEYWORD:
-#   amplitude	    amplitude of mode 0
-#   vect_amplitude  modal amplitude vector
-#   linear          vect_amplitude change as 1/rad_order instead of 1/sqrt(radorder)
-#   constant        vect_amplitude is constant across modes
-#   min_amplitude   min value for vect_amplitude
-#   only_push       makes an only push signal
-#   pattern         push_pull pattern, default [-1, 1], can be any sequence of numbers
-#   ncycles         number of cycle of push-pull
-#   repeat_ncycles   set it to have ncycles of push and then ncycles of pull
-#   nsamples        how many samples to hold in each position, default=1
-# OUTPUTS:
-#   time_hist       modal time history
-# COMMON BLOCKS:
-#   None.
-# SIDE EFFECTS:
-#   None.
-# RESTRICTIONS:
-#   None
-# MODIFICATION HISTORY:
-#   Created 12-SEP-2014 by Guido Agapito guido.agapito@inaf.it
-#-
 import numpy as np
+from typing import Optional, Sequence
+
 from specula.lib.zernike_generator import ZernikeGenerator
 
-def modal_pushpull_signal(n_modes, amplitude=None, vect_amplitude=None, constant=False, first_mode=0,
-                                linear=None, min_amplitude=None, only_push=False,
-                                pattern=[1, -1],
-                                ncycles=1, repeat_ncycles=False, nsamples=1, xp=np):
+def modal_pushpull_signal(
+    n_modes: int,
+    first_mode: Optional[int] = 0,
+    amplitude: Optional[float] = None,
+    vect_amplitude: Optional[Sequence[float]] = None,
+    linear: bool = False,
+    constant: bool = False,
+    min_amplitude: Optional[float] = None,
+    only_push: bool = False,
+    pattern: Sequence[float] = [1, -1],
+    ncycles: int = 1,
+    repeat_ncycles: bool = False,
+    nsamples: int = 1,
+    xp=np,
+) -> np.ndarray:
+    """
+    Generate a modal push-pull time history for calibration purposes.
 
+    This function generates a modal push-pull time series to be used in
+    adaptive optics (AO) simulations. The output represents a modal time
+    history that can be used for calibration and testing.
+
+    Parameters
+    ----------
+    n_modes : int
+        Number of modes.
+    first_mode: int, optional
+        First mode to actuate. Default to zero.
+    amplitude : float, optional
+        Amplitude of mode 0. By default it will be rescaled as 1/sqrt(rad_order)
+    vect_amplitude : sequence of float, optional
+        Vector of modal amplitudes. 
+    linear : bool, optional
+        If True, `vect_amplitude` changes as ``1/rad_order`` instead of
+        ``1/sqrt(rad_order)``. Default is False.
+    constant : bool, optional
+        If True, `vect_amplitude` is constant across all modes. Default is False.
+    min_amplitude : float, optional
+        Minimum value for `vect_amplitude`. Default is None.
+    only_push : bool, optional
+        If True, generates a signal with only positive pushes. Default is False.
+    pattern : sequence of float, optional
+        Push-pull pattern. Default is ``[-1, 1]``, but can be any sequence of numbers.
+    ncycles : int, optional
+        Number of push-pull cycles. Default is 1.
+    repeat_ncycles : bool, optional
+        If True, generates `ncycles` of push followed by `ncycles` of pull.
+        Default is False.
+    nsamples : int, optional
+        Number of samples to hold in each position. Default is 1.
+
+    Returns
+    -------
+    time_hist : np.ndarray
+        Modal time history signal.
+
+    Notes
+    -----
+    This function is primarily used for calibration in AO simulations.
+
+    Examples
+    --------
+    >>> time_hist = modal_pushpull_signal(
+    ...     n_modes=5,
+    ...     amplitude=0.1,
+    ...     pattern=[-1, 1],
+    ...     ncycles=3,
+    ...     nsamples=2
+    ... )
+
+    History
+    -------
+    Created on 12-SEP-2014 by Guido Agapito (guido.agapito@inaf.it)
+    """
     if only_push:
         pattern = [1]
 
