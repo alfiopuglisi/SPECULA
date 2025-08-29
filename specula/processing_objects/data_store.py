@@ -24,7 +24,8 @@ class DataStore(BaseProcessingObj):
         super().__init__()
         self.data_filename = ''
         self.today = time.strftime("%Y%m%d_%H%M%S")
-        self.tn_dir_orig = store_dir
+        self.tn_dir = store_dir
+        self.tn_dir_orig = store_dir     # Extra copy needed when suffix is used
         self.data_format = data_format
         self.create_tn = create_tn
         self.replay_params = None
