@@ -11,8 +11,11 @@ class PushPullGenerator(BaseGenerator):
     """
     def __init__(self,
                  nmodes: int,
+                 first_mode: int=0,
                  push_pull_type: str = 'PUSHPULL',  # 'PUSH' or 'PUSHPULL'
                  amp: float = None,
+                 constant_amp: bool=False,
+                 pattern: list = [1, -1],
                  vect_amplitude: list = None,
                  ncycles: int = 1,
                  nsamples: int = 1,
@@ -36,18 +39,23 @@ class PushPullGenerator(BaseGenerator):
 
         # Generate the time history using modal_pushpull_signal (from original)
         if self.push_pull_type == 'PUSH':
-            self.time_hist = modal_pushpull_signal(
+            time_hist = modal_pushpull_signal(
                 nmodes,
+                first_mode=first_mode,
                 amplitude=amp,
+                constant=constant_amp,
                 vect_amplitude=vect_amplitude,
                 only_push=True,
                 ncycles=ncycles
             )
         elif self.push_pull_type == 'PUSHPULL':
-            self.time_hist = modal_pushpull_signal(
+            time_hist = modal_pushpull_signal(
                 nmodes,
+                first_mode=first_mode,
                 amplitude=amp,
+                constant=constant_amp,
                 vect_amplitude=vect_amplitude,
+                pattern=pattern,
                 ncycles=ncycles,
                 repeat_ncycles=repeat_cycles,
                 nsamples=nsamples
@@ -55,10 +63,7 @@ class PushPullGenerator(BaseGenerator):
         else:
             raise ValueError(f'Unknown push_pull_type: {self.push_pull_type}')
 
-    def trigger_code(self):
-        """From original: VIB_HIST, VIB_PSD, PUSH, PUSHPULL, TIME_HIST case"""
-        self.output.value[:] = self.get_time_hist_at_current_time()
+        self.time_hist = self.to_xp(time_hist, dtype=self.dtype)
 
-    def get_time_hist_at_current_time(self):
-        """From original BaseGenerator"""
-        return self.to_xp(self.time_hist[self.iter_counter])
+    def trigger_code(self):
+        self.output.value[:] = self.time_hist[self.iter_counter]
