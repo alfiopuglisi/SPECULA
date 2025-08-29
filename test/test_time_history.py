@@ -67,7 +67,11 @@ class TestTimeHistory(unittest.TestCase):
         """Test array_for_display rasies"""
         data = xp.array([1, 2, 3])
         th = TimeHistory(data, target_device_idx=target_device_idx)
-        with self.assertRaises(NotImplementedError):
-            _ = th.array_for_display()
+        xp.testing.assert_array_equal(th.array_for_display(), data)
 
+    @cpu_and_gpu
+    def test_from_header(self, target_device_idx, xp):
+        """Test array_for_display rasies"""
+        with self.assertRaises(NotImplementedError):
+            _ = TimeHistory.from_header({})
 

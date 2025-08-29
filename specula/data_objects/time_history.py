@@ -49,9 +49,6 @@ class TimeHistory(BaseDataObj):
         hdr['OBJ_TYPE'] = 'TimeHistory'
         return hdr
     
-    def array_for_display(self):
-        raise NotImplementedError
-
     @staticmethod
     def from_header(hdr, target_device_idx=None):
         raise NotImplementedError
