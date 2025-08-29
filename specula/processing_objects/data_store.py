@@ -17,15 +17,21 @@ class DataStore(BaseProcessingObj):
 
     def __init__(self,
                 store_dir: str,         # TODO ="",
+                split_size: int=0,
                 data_format: str='fits',
                 create_tn: bool=True):
         super().__init__()
         self.data_filename = ''
         self.tn_dir = store_dir
         self.data_format = data_format
-        self.storage = defaultdict(OrderedDict)
-        self._create_tn = create_tn
+        self.create_tn = create_tn
         self.replay_params = None
+        self.iter_counter = 0
+        self.split_size = split_size
+        self.init_storage()
+
+    def init_storage(self):
+        self.storage = defaultdict(OrderedDict)
 
     def setParams(self, params):
         self.params = params
@@ -73,41 +79,47 @@ class DataStore(BaseProcessingObj):
             hdul.writeto(filename, overwrite=True)
             hdul.close()  # Force close for Windows
 
-    def create_TN_folder(self):
+    def create_TN_folder(self, suffix=''):
         today = time.strftime("%Y%m%d_%H%M%S")
         iter = None
         while True:
             tn = f'{today}'
-            prefix = os.path.join(self.tn_dir, tn)
+            fullpath = os.path.join(self.tn_dir, tn) + suffix
             if iter is not None:
-                prefix += f'.{iter}'
-            if not os.path.exists(prefix):
-                os.makedirs(prefix)
+                fullpath += f'.{iter}'
+            if not os.path.exists(fullpath):
+                os.makedirs(fullpath)
                 break
             if iter is None:
                 iter = 0
             else:
                 iter += 1
-        self.tn_dir = prefix
+        self.tn_dir = fullpath
 
     def trigger_code(self):
         for k, item in self.local_inputs.items():
             if item is not None and item.generation_time == self.current_time:
-                if hasattr(item, 'get_value'):
-                    value = item.get_value()
-                    v = cpuArray(value, force_copy=True)
-                else:
-                    raise TypeError(f"Error: don't know how to save an object of type {type(item)}")
+                value = item.get_value()
+                v = cpuArray(value, force_copy=True)
                 self.storage[k][self.current_time] = v
+        
+        # If we are saving a split TN, check whether it is time to save a new chunk
+        # In case, clear the storage dictionary to restart with an empty one.
+        self.iter_counter += 1
+        if self.split_size > 0:
+            if self.iter_counter % self.split_size == 0:
+                self.create_TN_folder(suffix=f'_{self.iter_counter - self.split_size}')
+                self.save()
+                self.init_storage()
 
-    def finalize(self):
+    def setup(self):
+        # We check that all input items
+        for k, _input in self.inputs.items():
+            item = _input.get(target_device_idx=self.target_device_idx)
+            if item is not None and not hasattr(item, 'get_value'):
+                raise TypeError(f"Error: don't know how to buffer an object of type {type(item)}")
 
-        # Perform an additional trigger to ensure all data is captured,
-        # including any calculations done in other objects' finalize() methods
-        self.trigger_code()
-
-        if self._create_tn:
-            self.create_TN_folder()
+    def save(self):
         self.save_params()
         if self.data_format == 'pickle':
             self.save_pickle()
@@ -115,3 +127,14 @@ class DataStore(BaseProcessingObj):
             self.save_fits()
         else:
             raise TypeError(f"Error: unsupported file format {self.data_format}")
+
+    def finalize(self):
+
+        # Perform an additional trigger to ensure all data is captured,
+        # including any calculations done in other objects' finalize() methods
+        self.trigger_code()
+
+        if self.split_size == 0:
+            if self.create_tn:
+                self.create_TN_folder()
+            self.save()
