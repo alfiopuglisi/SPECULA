@@ -577,7 +577,7 @@ class ExtendedSource(BaseProcessingObj):
             from scipy.interpolate import RectBivariateSpline
             x_psf = np.arange(sPSF[1])
             y_psf = np.arange(sPSF[0])
-            interp_func = RectBivariateSpline(y_psf, x_psf, psf, kx=1, ky=1)
+            interp_func = RectBivariateSpline(y_psf, x_psf, cpuArray(psf), kx=1, ky=1)
 
             flux_percent = []
             for i in range(len(xx_arcsec)):
