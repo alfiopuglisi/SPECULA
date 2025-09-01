@@ -34,6 +34,12 @@ class SimulParams(BaseDataObj):
                 add_modules: List[str] = [],
     ):
         super().__init__()
+
+        if not isinstance(add_modules, list):
+            raise ValueError('add_modules parameter must be a list of strings')
+        for module_name in add_modules:
+            if not isinstance(module_name, str):
+                raise ValueError('add_modules parameter must be a list of strings')
         self.pixel_pupil = pixel_pupil
         self.pixel_pitch = pixel_pitch
         self.root_dir = root_dir
