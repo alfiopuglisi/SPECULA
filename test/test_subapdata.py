@@ -1,6 +1,5 @@
 import unittest
 import numpy as np
-from astropy.io import fits
 import os
 
 from specula.data_objects.subap_data import SubapData

@@ -1,4 +1,3 @@
-import numpy as np
 import specula
 specula.init(0)
 

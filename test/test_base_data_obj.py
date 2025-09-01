@@ -7,7 +7,6 @@ import unittest
 from specula import np, cp
 from specula.base_value import BaseValue
 
-from test.specula_testlib import cpu_and_gpu
 
 class TestBaseDataObj(unittest.TestCase):
 
@@ -117,7 +116,3 @@ class TestBaseDataObj(unittest.TestCase):
         assert type(b.value) == cp.ndarray
         np.testing.assert_array_equal(b.value.get(), [2, 3])
         assert b.target_device_idx == 1
-
-
-if __name__ == '__main__':
-    unittest.main()
