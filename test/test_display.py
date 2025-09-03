@@ -3,6 +3,7 @@ import os
 import specula
 specula.init(0)  # Default target device
 
+import pytest
 import unittest
 
 import numpy as np
@@ -33,6 +34,7 @@ class TestDisplays(unittest.TestCase):
         self.pixel_pitch = 0.1
         self.S0 = 1.0
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_phase_display_init_and_trigger(self, target_device_idx, xp):
         """Test PhaseDisplay initialization and trigger"""
@@ -56,6 +58,7 @@ class TestDisplays(unittest.TestCase):
 
         display.close()
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_pixels_display_init_and_trigger(self, target_device_idx, xp):
         """Test PixelsDisplay initialization and trigger"""
@@ -79,6 +82,7 @@ class TestDisplays(unittest.TestCase):
 
         display.close()
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_slopec_display_init_and_trigger(self, target_device_idx, xp):
         """Test SlopecDisplay initialization and trigger"""
@@ -102,6 +106,7 @@ class TestDisplays(unittest.TestCase):
 
         display.close()
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_psf_display_init_and_trigger(self, target_device_idx, xp):
         """Test PsfDisplay initialization and trigger"""
@@ -133,6 +138,7 @@ class TestDisplays(unittest.TestCase):
 
         display.close()
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_modes_display_trigger(self, target_device_idx, xp):
         """Test ModesDisplay trigger functionality"""
@@ -158,6 +164,7 @@ class TestDisplays(unittest.TestCase):
 
         display.close()
 
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @cpu_and_gpu
     def test_plot_display_trigger(self, target_device_idx, xp):
         """Test PlotDisplay trigger functionality"""
