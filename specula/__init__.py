@@ -219,7 +219,8 @@ def main_simul(yml_files: list,
                mpidbg: bool=False,
                diagram: bool=False,
                diagram_title: str=None,
-               diagram_filename: str=None):
+               diagram_filename: str=None,
+               diagram_colors_on: bool=False):
 
     if mpi:
         try:
@@ -265,6 +266,7 @@ def main_simul(yml_files: list,
             diagram=diagram,
             diagram_filename=diagram_filename,
             diagram_title=diagram_title,
+            diagram_colors_on=diagram_colors_on
         ).run()
 
     if profile:
