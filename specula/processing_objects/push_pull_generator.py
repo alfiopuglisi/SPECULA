@@ -1,9 +1,9 @@
-from specula import SpeculaStopSimulationException
-from specula.processing_objects.base_generator import BaseGenerator
+from specula.data_objects.time_history import TimeHistory
+from specula.processing_objects.time_history_generator import TimeHistoryGenerator
 from specula.lib.modal_pushpull_signal import modal_pushpull_signal
 
 
-class PushPullGenerator(BaseGenerator):
+class PushPullGenerator(TimeHistoryGenerator):
     """
     Generates push-pull signals for modal calibration.
     
@@ -31,12 +31,6 @@ class PushPullGenerator(BaseGenerator):
             raise ValueError('nsamples can only be used with PUSHPULL type')
 
         self.stop_when_done = stop_when_done
-
-        super().__init__(
-            output_size=nmodes,
-            target_device_idx=target_device_idx,
-            precision=precision
-        )
 
         self.push_pull_type = push_pull_type.upper()
 
@@ -66,13 +60,9 @@ class PushPullGenerator(BaseGenerator):
         else:
             raise ValueError(f'Unknown push_pull_type: {self.push_pull_type}')
 
-        self.time_hist = self.to_xp(time_hist, dtype=self.dtype)
-
-    def trigger_code(self):
-        self.output.value[:] = self.time_hist[self.iter_counter]
-
-    def post_trigger(self):
-        super().post_trigger()
-
-        if self.stop_when_done and self.iter_counter == len(self.time_hist):
-            raise SpeculaStopSimulationException
+        super().__init__(
+            time_hist=TimeHistory(time_hist),
+            stop_when_done=stop_when_done,
+            target_device_idx=target_device_idx,
+            precision=precision,
+        )

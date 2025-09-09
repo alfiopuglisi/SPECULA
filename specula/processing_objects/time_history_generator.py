@@ -1,5 +1,6 @@
 from specula.processing_objects.base_generator import BaseGenerator
 from specula.data_objects.time_history import TimeHistory
+from specula import SpeculaStopSimulationException
 
 
 class TimeHistoryGenerator(BaseGenerator):
@@ -8,6 +9,7 @@ class TimeHistoryGenerator(BaseGenerator):
     """
     def __init__(self,
                  time_hist: TimeHistory,
+                 stop_when_done: bool = True,
                  target_device_idx: int = None,
                  precision: int = None):
 
@@ -21,6 +23,7 @@ class TimeHistoryGenerator(BaseGenerator):
         )
 
         self.time_hist = self.to_xp(time_history_array)
+        self.stop_when_done = stop_when_done
 
     def trigger_code(self):
         if self.iter_counter < self.time_hist.shape[0]:
@@ -28,3 +31,9 @@ class TimeHistoryGenerator(BaseGenerator):
         else:
             # Beyond available data, use last values
             self.output.value[:] = self.time_hist[-1]
+
+    def post_trigger(self):
+        super().post_trigger()
+
+        if self.stop_when_done and self.iter_counter == len(self.time_hist):
+            raise SpeculaStopSimulationException

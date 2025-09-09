@@ -6,6 +6,7 @@ import unittest
 
 from specula import np
 from specula import cpuArray
+from specula import SpeculaStopSimulationException
 
 from specula.data_objects.simul_params import SimulParams
 from specula.lib.modal_pushpull_signal import modal_pushpull_signal
@@ -214,7 +215,9 @@ class TestGenerators(unittest.TestCase):
         data = xp.arange(12).reshape((3,4))
         time_hist = TimeHistory(data, target_device_idx=target_device_idx)
 
-        f = TimeHistoryGenerator(time_hist, target_device_idx=target_device_idx)
+        f = TimeHistoryGenerator(time_hist,
+                                 stop_when_done=False,
+                                 target_device_idx=target_device_idx)
 
         # Test first frame
         f.check_ready(1)
@@ -339,6 +342,59 @@ class TestGenerators(unittest.TestCase):
         hist = modal_pushpull_signal(n_modes=nmodes, first_mode=first_mode, amplitude=amp, constant=constant_amp, ncycles=ncycles, xp=np)
         for i in range(10):
             np.testing.assert_array_equal(cpuArray(outputs[i]), hist[i])
+
+    @cpu_and_gpu
+    def test_stop_when_done_true_raises(self, target_device_idx, xp):
+        nmodes = 2
+        amp = 0.5
+        ncycles = 2
+
+        f = PushPullGenerator(
+            nmodes=nmodes,
+            push_pull_type='PUSHPULL',
+            amp=amp,
+            ncycles=ncycles,
+            stop_when_done=True,
+            target_device_idx=target_device_idx
+        )
+        f.setup()
+
+        for i in range(nmodes * ncycles * 2 -1):
+            f.check_ready(i)
+            f.trigger()
+            f.post_trigger()
+
+        # Next call should raise exception
+        f.check_ready(i)
+        f.trigger()
+        with self.assertRaises(SpeculaStopSimulationException):
+            f.post_trigger()
+
+    @cpu_and_gpu
+    def test_stop_when_done_false_does_not_raise(self, target_device_idx, xp):
+        nmodes = 2
+        amp = 0.5
+        ncycles = 2
+
+        f = PushPullGenerator(
+            nmodes=nmodes,
+            push_pull_type='PUSHPULL',
+            amp=amp,
+            ncycles=ncycles,
+            stop_when_done=False,
+            target_device_idx=target_device_idx
+        )
+        f.setup()
+
+        for i in range(nmodes * ncycles * 2):
+            f.check_ready(i)
+            f.trigger()
+            f.post_trigger()
+
+        # Next call should not raise
+        f.check_ready(i)
+        f.trigger()
+        f.post_trigger()
 
     @cpu_and_gpu
     def test_func_generator_float(self, target_device_idx, xp):
