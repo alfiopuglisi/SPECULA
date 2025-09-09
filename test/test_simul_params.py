@@ -15,6 +15,7 @@ class TestSimulParams(unittest.TestCase):
         self.assertEqual(params.time_step, 0.001)
         self.assertEqual(params.zenithAngleInDeg, 0)
         self.assertFalse(params.display_server)
+        self.assertEqual(params.add_modules, [])
 
     def test_custom_initialization(self):
         """Test initialization with custom values."""
@@ -25,6 +26,7 @@ class TestSimulParams(unittest.TestCase):
             total_time=2.0,
             time_step=0.01,
             zenithAngleInDeg=30,
+            add_modules=['foo', 'bar'],
             display_server=True
         )
 
@@ -35,3 +37,13 @@ class TestSimulParams(unittest.TestCase):
         self.assertEqual(params.time_step, 0.01)
         self.assertEqual(params.zenithAngleInDeg, 30)
         self.assertTrue(params.display_server)
+        self.assertEqual(params.add_modules, ['foo', 'bar'])
+
+
+    def test_wrong_add_modules(self):
+        """Test initialization with wrong values for add_modules"""
+        with self.assertRaises(ValueError):
+            _ = SimulParams(add_modules=42)
+
+        with self.assertRaises(ValueError):
+            _ = SimulParams(add_modules=[3.1415, 42])

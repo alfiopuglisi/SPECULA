@@ -1,4 +1,3 @@
-import numpy as np
 from specula import SpeculaStopSimulationException
 from specula.processing_objects.base_generator import BaseGenerator
 from specula.lib.modal_pushpull_signal import modal_pushpull_signal
@@ -12,8 +11,11 @@ class PushPullGenerator(BaseGenerator):
     """
     def __init__(self,
                  nmodes: int,
+                 first_mode: int=0,
                  push_pull_type: str = 'PUSHPULL',  # 'PUSH' or 'PUSHPULL'
                  amp: float = None,
+                 constant_amp: bool=False,
+                 pattern: list = [1, -1],
                  vect_amplitude: list = None,
                  ncycles: int = 1,
                  nsamples: int = 1,
@@ -28,6 +30,8 @@ class PushPullGenerator(BaseGenerator):
         if nsamples != 1 and push_pull_type != 'PUSHPULL':
             raise ValueError('nsamples can only be used with PUSHPULL type')
 
+        self.stop_when_done = stop_when_done
+
         super().__init__(
             output_size=nmodes,
             target_device_idx=target_device_idx,
@@ -38,18 +42,23 @@ class PushPullGenerator(BaseGenerator):
 
         # Generate the time history using modal_pushpull_signal (from original)
         if self.push_pull_type == 'PUSH':
-            self.time_hist = modal_pushpull_signal(
+            time_hist = modal_pushpull_signal(
                 nmodes,
+                first_mode=first_mode,
                 amplitude=amp,
+                constant=constant_amp,
                 vect_amplitude=vect_amplitude,
                 only_push=True,
                 ncycles=ncycles
             )
         elif self.push_pull_type == 'PUSHPULL':
-            self.time_hist = modal_pushpull_signal(
+            time_hist = modal_pushpull_signal(
                 nmodes,
+                first_mode=first_mode,
                 amplitude=amp,
+                constant=constant_amp,
                 vect_amplitude=vect_amplitude,
+                pattern=pattern,
                 ncycles=ncycles,
                 repeat_ncycles=repeat_cycles,
                 nsamples=nsamples
@@ -57,12 +66,13 @@ class PushPullGenerator(BaseGenerator):
         else:
             raise ValueError(f'Unknown push_pull_type: {self.push_pull_type}')
 
+        self.time_hist = self.to_xp(time_hist, dtype=self.dtype)
+
     def trigger_code(self):
-        """From original: VIB_HIST, VIB_PSD, PUSH, PUSHPULL, TIME_HIST case"""
-        self.output.value[:] = self.to_xp(self.time_hist[self.iter_counter])
+        self.output.value[:] = self.time_hist[self.iter_counter]
 
     def post_trigger(self):
         super().post_trigger()
 
-        if self.iter_counter == len(self.time_hist):
+        if self.stop_when_done and self.iter_counter == len(self.time_hist):
             raise SpeculaStopSimulationException

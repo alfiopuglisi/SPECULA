@@ -18,6 +18,11 @@ class LaserLaunchTelescope(BaseDataObj):
         The distance from the telescope pupil to beacon focus in m.
     beacon_tt : list
         The tilt and tip of the beacon in arcsec.
+
+    TODO the empty tel_position array is actually significant, because
+         it is checked in the SH code to manage the kernels,
+         but gives some problems for the FITS header (when reading from disk,
+         it won't be empty anymore)
     '''
 
     def __init__(self,
@@ -46,9 +51,11 @@ class LaserLaunchTelescope(BaseDataObj):
         hdr = fits.Header()
         hdr['VERSION'] = 1
         hdr['SPOTSIZE'] = self.spot_size
-        hdr['TELPOS_X'] = self.tel_pos[0]
-        hdr['TELPOS_Y'] = self.tel_pos[1]
-        hdr['TELPOS_Z'] = self.tel_pos[2]
+
+        tel_pos = [0.0, 0.0, 0.0] if self.tel_pos == [] else self.tel_pos
+        hdr['TELPOS_X'] = tel_pos[0]
+        hdr['TELPOS_Y'] = tel_pos[1]
+        hdr['TELPOS_Z'] = tel_pos[2]
         hdr['BEAC_FOC'] = self.beacon_focus
         hdr['BEAC_TT0'] = self.beacon_tt[0]
         hdr['BEAC_TT1'] = self.beacon_tt[1]

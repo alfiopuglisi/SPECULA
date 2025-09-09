@@ -45,11 +45,6 @@ class TestLowPassFilterSimulation(unittest.TestCase):
         diff_path = os.path.join(latest_data_dir, 'diff.fits')
         self.assertTrue(os.path.exists(diff_path), f"{diff_path} not found")
 
-        # If reference does not exist, create it
-        if not os.path.exists(self.diff_ref_path):
-            shutil.copy(diff_path, self.diff_ref_path)
-            print(f"Reference file created at {self.diff_ref_path}")
-
         # Compare diff.fits with diff_ref.fits
         with fits.open(diff_path) as hdul, fits.open(self.diff_ref_path) as ref_hdul:
             data = hdul[0].data

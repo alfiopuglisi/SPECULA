@@ -15,7 +15,7 @@ class BaseValue(BaseDataObj):
         super().__init__(target_device_idx=target_device_idx)
         self.description = description
         self.value = value
-        
+
     def get_value(self):
         return self.value
 

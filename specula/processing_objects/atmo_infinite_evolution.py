@@ -14,7 +14,7 @@ from seeing.formulary import *
 from seeing.integrator import *
 
 
-from symao.turbolence import createTurbolenceFormulary, ft_phase_screen0, ft_ft2
+from symao.turbolence import createTurbolenceFormulary, ft_phase_screen0
 
 turbolenceFormulas = createTurbolenceFormulary()
 
@@ -138,7 +138,7 @@ class InfinitePhaseScreen(BaseDataObj):
         # Now use sqrt(eigenvalues) to get B matrix
         B_mat = u.dot(L_mat)
         return A_mat, B_mat
-    
+
     def setup(self):
         # set X coords
         self.new_col_coords1 = self.xp.zeros((self.stencil_size, 2))
@@ -179,10 +179,10 @@ class InfinitePhaseScreen(BaseDataObj):
         if row:
             self.prepare_random_data_row()
             stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 1], self.stencil_coords[after][:, 0]])
-            new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_row)  
+            new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_row)
         else:
             self.prepare_random_data_col()
-            stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 0], self.stencil_coords[after][:, 1]])            
+            stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 0], self.stencil_coords[after][:, 1]])
             new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_col)
         return new_line
 
@@ -192,21 +192,21 @@ class InfinitePhaseScreen(BaseDataObj):
             new_line = new_line[:,self.xp.newaxis]
             if after:
                 self.full_scrn = self.xp.concatenate((self.full_scrn, new_line), axis=row)[:self.stencil_size, 1:]
-            #    self.shift(self.full_scrn, [-1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [-1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[-1, :] = new_line
             else:
                 self.full_scrn = self.xp.concatenate((new_line, self.full_scrn), axis=row)[:self.stencil_size, :self.stencil_size]
-            #    self.shift(self.full_scrn, [1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[0, :] = new_line
         else:
             new_line = new_line[self.xp.newaxis, :]
             if after:
                 self.full_scrn = self.xp.concatenate((self.full_scrn, new_line), axis=row)[1:, :self.stencil_size]
-            #    self.shift(self.full_scrn, [0, -1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [0, -1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[:, -1] = new_line
             else:
                 self.full_scrn = self.xp.concatenate((new_line, self.full_scrn), axis=row)[:self.stencil_size, :self.stencil_size]
-            #    self.shift(self.full_scrn, [0, 1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [0, 1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[:, 0] = new_line
         if flush:
             self.random_data_col = None
@@ -365,7 +365,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         else:
             scale_r0 = 0.0
 
-        scale_wvl = ( self.ref_wavelengthInNm / (2 * np.pi) )
+        scale_wvl = self.ref_wavelengthInNm / (2 * np.pi)
         self.scale_coeff = scale_r0 * scale_wvl
 
     @show_in_profiler('atmo_evolution.trigger_code')
