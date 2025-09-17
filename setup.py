@@ -56,6 +56,9 @@ class UploadCommand(Command):
 
         sys.exit()
 
+# Read dependencies from requirements.txt
+with open("requirements.txt") as f:
+    requirements = f.read().splitlines()
 
 setup(name=NAME,
       description=DESCRIPTION,
@@ -80,20 +83,11 @@ setup(name=NAME,
           'console_scripts': [
               'specula_frontend_start=specula.scripts.web_frontend:start',
               'specula_frontend_stop=specula.scripts.web_frontend:stop',
-              'specula=specula.scripts.specula:main',
+              'specula=specula.scripts.specula_main:main',
           ],
       },
       python_requires='>=3.8.0',
-      install_requires=["numpy",
-                        "scipy",
-                        "astropy",
-                        "matplotlib",
-                        "astro-seeing>=1.1",
-                        "symao>=1.0.1",
-                        "flask-socketio",
-                        "python-socketio",
-                        "requests"
-                        ],
+      install_requires=requirements,
       extras_require={
           'control': ["iircontrol"]
       },

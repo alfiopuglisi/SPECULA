@@ -1,9 +1,8 @@
+import os
 import unittest
 import numpy as np
 from specula.data_objects.recmat import Recmat
 from specula import cpuArray
-from astropy.io import fits
-import os
 
 from test.specula_testlib import cpu_and_gpu
 

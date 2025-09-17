@@ -217,9 +217,11 @@ def main_simul(yml_files: list,
                profile: bool=False,
                mpi: bool=False,
                mpidbg: bool=False,
+               stepping: bool=False,
                diagram: bool=False,
                diagram_title: str=None,
-               diagram_filename: str=None):
+               diagram_filename: str=None,
+               diagram_colors_on: bool=False):
 
     if mpi:
         try:
@@ -262,9 +264,11 @@ def main_simul(yml_files: list,
         Simul(*yml_files,
             simul_idx=simul_idx,
             overrides=overrides,
+            stepping=stepping,
             diagram=diagram,
             diagram_filename=diagram_filename,
             diagram_title=diagram_title,
+            diagram_colors_on=diagram_colors_on
         ).run()
 
     if profile:

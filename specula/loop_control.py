@@ -1,6 +1,5 @@
 
 import time
-import numpy as np
 from collections import defaultdict
 
 from specula.base_time_obj import BaseTimeObj
@@ -8,7 +7,7 @@ from specula import process_comm, process_rank, MPI_DBG
 
 
 class LoopControl(BaseTimeObj):
-    def __init__(self, verbose=False):
+    def __init__(self, stepping=False, verbose=False):
         super().__init__(target_device_idx=-1, precision=1)
         self.trigger_lists = defaultdict(list)
         self.verbose = verbose
@@ -21,6 +20,7 @@ class LoopControl(BaseTimeObj):
         self.old_time = 0
         self.max_global_order = -1
         self.iter_counter = 0
+        self.stepping = stepping
 
     def add(self, obj, idx):
         """
@@ -52,12 +52,19 @@ class LoopControl(BaseTimeObj):
             speed_report (bool): Whether to report the speed of the loop (default: False).
         """
         self.start(run_time, dt, t0=t0, speed_report=speed_report)
-        while self.t < self.t0 + self.run_time:            
+        self.next_time_to_stop = 0
+        while self.t < self.t0 + self.run_time:
+            if not process_rank and self.stepping and self.t > self.next_time_to_stop:
+                nnStr = input("Press Enter to advance one timestep, or enter the number of timesteps to advance:")
+                try:
+                    nn = int(nnStr)
+                except:
+                    nn = 1
+                self.next_time_to_stop = self.t + nn * dt * 1e9
             if MPI_DBG: print(process_rank, 'before barrier iter', flush=True)
             if MPI_DBG: print(process_rank, 'after barrier iter', flush=True)
             if MPI_DBG: print(process_rank, 'NEW ITERATION', self.t,flush=True)
             self.iter()
-            
         self.finish()
 
     def start(self, run_time, dt, t0=0, speed_report=False):

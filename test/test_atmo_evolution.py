@@ -6,6 +6,7 @@ specula.init(0)  # Default target device
 import unittest
 
 from specula import cpuArray
+from specula import np
 
 from specula.data_objects.source import Source
 from specula.base_time_obj import BaseTimeObj
@@ -73,8 +74,8 @@ class TestAtmoEvolution(unittest.TestCase):
                 obj.trigger()
 
             for obj in objlist:
-               obj.post_trigger()
-            
+                obj.post_trigger()
+
         ef_onaxis = cpuArray(prop.outputs['out_on_axis_source_ef'])
         ef_offaxis = cpuArray(prop.outputs['out_lgs1_source_ef'])
 
@@ -152,7 +153,7 @@ class TestAtmoEvolution(unittest.TestCase):
                 obj.trigger()
 
             for obj in objlist:
-               obj.post_trigger()
+                obj.post_trigger()
 
         id_a1 = id(atmo.outputs['layer_list'][0].field)
         id_b1 = id(atmo.outputs['layer_list'][1].field)
@@ -165,7 +166,7 @@ class TestAtmoEvolution(unittest.TestCase):
                 obj.trigger()
 
             for obj in objlist:
-               obj.post_trigger()
+                obj.post_trigger()
 
         id_a2 = id(atmo.outputs['layer_list'][0].field)
         id_b2 = id(atmo.outputs['layer_list'][1].field)
@@ -196,10 +197,10 @@ class TestAtmoEvolution(unittest.TestCase):
 
         for obj in [seeing, wind_speed, wind_direction]:
             obj.setup()
-            
+ 
         with self.assertRaises(ValueError):
             atmo.setup()
-        
+
     @cpu_and_gpu
     def test_wrong_wind_speed_length_is_checked(self, target_device_idx, xp):
 
@@ -223,7 +224,7 @@ class TestAtmoEvolution(unittest.TestCase):
 
         for obj in [seeing, wind_speed, wind_direction]:
             obj.setup()
- 
+
         with self.assertRaises(ValueError):
             atmo.setup()
 
@@ -250,10 +251,9 @@ class TestAtmoEvolution(unittest.TestCase):
 
         for obj in [seeing, wind_speed, wind_direction]:
             obj.setup()
-            
+
         with self.assertRaises(ValueError):
             atmo.setup()
-
 
     @cpu_and_gpu
     def test_extra_delta_time(self, target_device_idx, xp):
@@ -292,7 +292,7 @@ class TestAtmoEvolution(unittest.TestCase):
                 obj.trigger()
 
             for obj in objlist:
-               obj.post_trigger()
+                obj.post_trigger()
 
             for obj in objlist:
                 obj.check_ready(delta_t)
@@ -301,7 +301,7 @@ class TestAtmoEvolution(unittest.TestCase):
                 obj.trigger()
 
             for obj in objlist:
-               obj.post_trigger()
+                obj.post_trigger()
 
         assert atmo.delta_time == delta_time + extra_delta_time
 
@@ -339,3 +339,23 @@ class TestAtmoEvolution(unittest.TestCase):
 
         assert reversed_layers != original_layers
         assert reversed_layers == original_layers[::-1]
+
+    @cpu_and_gpu
+    def test_pupil_distances_are_scaled_by_airmass(self, target_device_idx, xp):
+        """
+        Test that pupil_distances are correctly computed as heights * airmass
+        """
+        pixel_pupil = 160
+        zenith = 30.0  # degrees
+        simul_params = SimulParams(pixel_pupil=pixel_pupil, pixel_pitch=0.05, zenithAngleInDeg=zenith, time_step=1)
+        heights = [1000.0, 5000.0, 12000.0]
+        airmass = 1.0 / np.cos(np.radians(zenith))
+        atmo = AtmoEvolution(simul_params,
+                             L0=23,
+                             data_dir=self.data_dir,
+                             heights=heights,
+                             Cn2=[1/3, 1/3, 1/3],
+                             fov=120.0,
+                             target_device_idx=target_device_idx)
+        expected = cpuArray(heights) * airmass
+        np.testing.assert_allclose(atmo.pupil_distances, expected, rtol=1e-8)

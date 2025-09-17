@@ -4,7 +4,6 @@ specula.init(0)  # Default target device
 import os
 import tempfile
 import unittest
-import uuid
 import shutil
 
 from specula.base_value import BaseValue

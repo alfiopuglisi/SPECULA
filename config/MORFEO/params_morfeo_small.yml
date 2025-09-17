@@ -15,14 +15,6 @@ main:
   zenithAngleInDeg:  30.0                   # [deg] Airmass correction
   display_server:    true                   # Display server on auto-selected port
 
-data_store:
-  class:             'DataStore'
-  store_dir:         './output'             # Data result directory: 'store_dir'/TN/
-  inputs:    
-    input_list: [ 'ref-control_ref.out_comm',
-                  'psf-psf.out_sr'
-]
-
 
 seeing:
   class:             'WaveGenerator'
@@ -77,16 +69,6 @@ source_ngs1: &NGS_SOURCE
 source_ngs2: { <<: *NGS_SOURCE, polar_coordinates: [42.5, 78.9] }
 source_ngs3: { <<: *NGS_SOURCE, polar_coordinates: [42.7,197.0] }
 
-source_ref1: &REF_SOURCE
-  class:             'Source'
-  polar_coordinates:  [46.2,303.5]         # [arcsec, degrees] source polar coordinates
-  height:            .inf                # Source height [m]
-  magnitude:         12.0                # source magnitude
-  wavelengthInNm:    750                # [nm] wavelength
-
-source_ref2: { <<: *REF_SOURCE, polar_coordinates: [42.5, 78.9] }
-source_ref3: { <<: *REF_SOURCE, polar_coordinates: [42.7, 197.0] }
-
 
 pupilstop:                                 # Default parameters (circular pupil)
   class: 'Pupilstop'
@@ -112,15 +94,6 @@ atmo:
     wind_direction: 'wind_direction.output'
   outputs: ['layer_list']
 
-
-pushpull:
-  class:     'PushPullGenerator'
-  ncycles:    1
-  nmodes:     100
-  amp:        1000
-  nsamples:          5
-  outputs: ['output']
-
 ifunc_m4:
   class:   'IFunc'
   tag:     'M4_eso_zonal_486p_5352a_slaved'
@@ -129,30 +102,12 @@ m2c_m4:
   class:   'M2C'
   tag:     'M4_eso_39.5m_486p_20230215'
 
-    #dm_disturb:
-    #  class:             'DM'
-    #  simul_params_ref:  'main'
-    ##  ifunc_ref:   'ifunc_m4'
-    ##  m2c_ref:     'm2c_m4'
-#  ifunc_object:      'MAORY_542pix_31nacts_cir_0.000obs_zonal_ifs'
-#  m2c_object:        'MAORY_542pix_31nacts_cir_0.000obs_5zern_10000.0cn'
-#  start_mode:        5
-#  input_offset:      0                        # Offset into input command vector
-##  nmodes:            4519
-#  nmodes:            720
-##  height:            600                      # DM height [m]
-#  height:            6500 
-#  inputs:
-#      in_command: 'pushpull.output'
-#  outputs:  ['out_layer']
-
 prop:
   class:                'AtmoPropagation'
   simul_params_ref:  'main'
   source_dict_ref:      ['source_on_axis',
                          'source_lgs1','source_lgs2','source_lgs3','source_lgs4','source_lgs5','source_lgs6',
-                         'source_ngs1', 'source_ngs2', 'source_ngs3',
-                         'source_ref1', 'source_ref2', 'source_ref3']
+                         'source_ngs1', 'source_ngs2', 'source_ngs3']
   inputs:
     atmo_layer_list: ['atmo.layer_list']
     common_layer_list: [ 'pupilstop',
@@ -163,8 +118,7 @@ prop:
                   ]
   outputs: ['out_source_on_axis_ef','out_source_lgs1_ef','out_source_lgs2_ef','out_source_lgs3_ef',
             'out_source_lgs4_ef','out_source_lgs5_ef','out_source_lgs6_ef',
-            'out_source_ngs1_ef', 'out_source_ngs2_ef', 'out_source_ngs3_ef',
-            'out_source_ref1_ef', 'out_source_ref2_ef', 'out_source_ref3_ef']
+            'out_source_ngs1_ef', 'out_source_ngs2_ef', 'out_source_ngs3_ef']            
 
 # ---------------------------------------
 # LGS WFS simulation and slope processing
@@ -305,63 +259,6 @@ slopec_ngs1: &NGS_SLOPEC
 slopec_ngs2: { <<: *NGS_SLOPEC, inputs: {in_pixels: 'detector_ngs2.out_pixels' }}
 slopec_ngs3: { <<: *NGS_SLOPEC, inputs: {in_pixels: 'detector_ngs3.out_pixels' }}
 
-# ---------------------------------------
-# REF WFS simulation and slope processing
-# ---------------------------------------
-
-sh_ref1: &REF_SH
-  class:             'SH'
-  subap_on_diameter: 8                      # Number of subapertures in diameter
-  subap_wanted_fov:  4.6                    # Requested field-of-view [arcsec]
-  sensor_pxscale:    0.153                    # Pixel scale in arcsec/pix
-  subap_npx:         30                      # Output sampling [usually corresponding to CCD pixels]
-  wavelengthInNm:    750                     # [nm] Pyramid wavelength
-  inputs:
-    in_ef: 'prop.out_source_ref1_ef'
-  outputs:  ['out_i']
-
-sh_ref2: { <<: *REF_SH, inputs: {in_ef: 'prop.out_source_ref2_ef' }}
-sh_ref3: { <<: *REF_SH, inputs: {in_ef: 'prop.out_source_ref3_ef' }}
-
-detector_ref1: &REF_DETECTOR
-  class:             'CCD'
-  simul_params_ref:  'main'
-  size:              [240,240]               # Detector size in pixels
-  dt:                0.010                   # [s] Detector integration time
-  bandw:             400                     # [nm] Sensor bandwidth
-  photon_noise:      True                    # activate photon noise
-  readout_noise:     True                    # activate readout noise
-  readout_level:     0.2                     # readout noise in [e-/pix/frame]
-  quantum_eff:       0.400                   # quantum efficiency * total transmission
-  inputs:
-    in_i: 'sh_ref1.out_i'
-  outputs:  ['out_pixels']
-
-detector_ref2: { <<: *REF_DETECTOR, inputs: {in_i: 'sh_ref2.out_i' }}
-detector_ref3: { <<: *REF_DETECTOR, inputs: {in_i: 'sh_ref3.out_i' }}
-
-slopec_ref1: &REF_SLOPEC
-  class:             'ShSlopec'
-  thr_value:         10
-  subapdata_object:  'maory_ps480p0.080_shs8x8_wl750_fv4.6_np30_th0.50_stopTEELT480pp0.0813spiderRoundObsCentered'
-  sn_object:         'maory_ps480p0.080_shs8x8_wl750_fv4.6_np30_th0.50_ce_stopTEELT480pp0.0813spiderRoundObsCentered'
-  inputs:
-    in_pixels:        'detector_ref1.out_pixels'
-  outputs:  ['out_slopes', 'out_subapdata']
-
-slopec_ref2: { <<: *REF_SLOPEC, inputs: {in_pixels: 'detector_ref2.out_pixels' }}
-slopec_ref3: { <<: *REF_SLOPEC, inputs: {in_pixels: 'detector_ref3.out_pixels' }}
-
-# -------------------------------
-# LIFT piston estimates from SRTC
-# -------------------------------
-
-lift:
-  class:             'WaveGenerator'
-  constant:          [0, 0, 0, 0, 0]        # Piston estimates
-  outputs: ['output']
-
-
 # -----------------------------
 # LGS pipeline
 # -----------------------------
@@ -379,85 +276,21 @@ tomo_polc_lgs:
     in_commands:            'modal_combination.out_vector:-1'
   outputs:  ['out_modes', 'out_pseudo_ol_modes']
 
-subtract_ref:
-  class:            'BaseOperation'
-  sum: true
-  value2_remap_data:   '/tmp/ref_input_index2.fits'     # Map from 6564 to 293
-  inputs:
-    in_value1: 'tomo_polc_lgs.out_modes'
-    in_value2: 'control_ref.out_comm'
-  outputs: ['out_value']
-
-#iir_lgs_data_zero:
-#  class:        'IirFilterData'
-#  ordnum:        !!python/object/apply:numpy.full
-#  - [6258]  # Shape of the array
-#  - 2        # Fill value
-#  ordden:        !!python/object/apply:numpy.full
-#  - [6258]  # Shape of the array
-#  - 2        # Fill value
-#  num:        !!python/object/apply:numpy.full
-#  - [6258, 2]  # Shape of the array
-#  - 0.0        # Fill value
-#  den:        !!python/object/apply:numpy.full
-#  - [6258, 2]  # Shape of the array
-#  - 0.0        # Fill value
 
 iir_lgs:
   class:             'IirFilter'
   simul_params_ref:  'main'
   iir_filter_data_object: 'int0.25_6258'
   inputs:
-      delta_comm: 'subtract_ref.out_value'     
+      delta_comm: 'tomo_polc_lgs.out_modes'     
   outputs:  ['out_comm']
-
-
-# avc_lgs:
-#   class:             'AVC'
-#   inputs:
-#       in_measurement: 'tomo_polc_lgs.out_pseudo_ol_modes'     
-#   outputs:  ['out_comm']
-
-# ----------------------------------------
-# Common DM control
-# ---------------------------------------
 
 modal_combination:
   class:        'LinearCombination'
+  simul_params_ref:  'main'
   inputs:
     in_vectors_list: ['iir_lgs.out_comm', 'iir_focus.out_comm', 'iir_lift.out_comm', 'iir_ngs.out_comm']
   outputs: ['out_vector']
-
-# modal_integrator:
-#   class:        'Integrator'
-#   delay:             2                      # Total temporal delay in time steps
-#   int_gain_data:     'g0.40_6258'
-#   inputs:
-#       delta_comm: 'modal_combination.out_vector'     
-#   outputs:  ['out_comm']
-
-#combine_avc:
-#  class:             'BaseOperation'
-#  sum: true
-#  inputs:
-#    in_value1: 'avc_lgs.out_comm'
-#    in_value2: 'avc_ngs.out_comm'
-#  outputs: ['out_value']
-
-#sum_avc:
-#  class:             'BaseOperation'
-#  sum: true
-#  inputs:
-#    in_value1: 'modal_integrator.out_comm'
-#    in_value2: 'combine_avc.out_value'
-#s  outputs: ['out_value']
-
-zerocmd:
-  class:             'WaveGenerator'
-  constant:          0.0
-  vsize:             6269
-  outputs: ['output']
-
 
 dm1:
   class:             'DM'
@@ -465,7 +298,7 @@ dm1:
   ifunc_ref:         'ifunc_m4'
   m2c_ref:           'm2c_m4'
   input_offset:      0                        # Offset into input command vector
-  nmodes:            4519
+  nmodes:            100
   height:            600                      # DM height [m]
   inputs:
       in_command: 'modal_combination.out_vector'
@@ -476,9 +309,9 @@ dm2:
   simul_params_ref:  'main'
   ifunc_object:      'MAORY_542pix_31nacts_cir_0.000obs_zonal_ifs'
   m2c_object:        'MAORY_542pix_31nacts_cir_0.000obs_5zern_10000.0cn'
-  nmodes:            720
+  nmodes:            100
   start_mode:        5                         # Offset into influence function matrix
-  input_offset:      4519                      # Offset into input command vector
+  input_offset:      100                       # Offset into input command vector
   height:            6500                      # DM height [m]
   inputs:
       in_command: 'modal_combination.out_vector'
@@ -489,9 +322,9 @@ dm3:
   simul_params_ref:  'main'
   ifunc_object:      'MAORY_648pix_37nacts_cir_0.000obs_zonal_ifs'
   m2c_object:        'MAORY_648pix_37nacts_cir_0.000obs_5zern_10000.0cn'
-  nmodes:            1026
+  nmodes:            100
   start_mode:        2                          # Offset into influence function matrix
-  input_offset:      5234  #  4519+720-5        # Offset into input command vector
+  input_offset:      195    #  100+100-5        # Offset into input command vector
   height:            17500                      # DM height [m]
   inputs:
       in_command: 'modal_combination.out_vector'
@@ -517,16 +350,6 @@ iir_ngs:
       delta_comm: 'tomo_ngs.out_modes'     
   outputs:  ['out_comm']
 
-# avc_ngs:
-#   class:             'AVC'
-#   inputs:
-#       in_measurement: 'tomo_ngs.out_pseudo_ol_modes'     
-#   outputs:  ['out_comm']
-
-# --------------
-# Focus pipeline
-# --------------
-
 rec_focus:
   class:              'Modalrec'
   recmat_object:      '20240530_101618.0/recmat'
@@ -543,55 +366,6 @@ iir_focus:
   inputs:
       delta_comm: 'rec_focus.out_modes'     
   outputs:  ['out_comm']
-
-
-# --------------
-# REF pipeline
-# --------------
-
-tomo_polc_ref:
-  class:              'Modalrec'
-  recmat_object:      '20240614_194901.0/recmat'
-  projmat_object:     'p20240526_141118.0/projmatAll'
-  intmat_object:      '20250326_000001.0/intmat'
-  polc:   true
-  in_commands_size:   293
-  inputs:
-    in_slopes_list:        ['slopec_ref1.out_slopes','slopec_ref2.out_slopes','slopec_ref3.out_slopes']
-    in_commands:            'control_ref.out_comm:-1'
-  outputs:  ['out_modes', 'out_pseudo_ol_modes']
-
-# Not used.
-iir_ref:
-  class:             'IirFilter'
-  simul_params_ref:  'main'
-  iir_filter_data_object: 'int0.0_293modes'
-  inputs:
-      delta_comm: 'tomo_polc_ref.out_modes'     
-  outputs:  ['out_comm']
-
-control_ref: 
-  class:             'Integrator'
-  simul_params_ref:  'main'
-  delay:             2
-  int_gain:          [0, 0.1, 0,  0.1, 0,  0, 0.1,  0]
-  n_modes:           [3, 30,  67, 30,  65, 3, 30,  65]  # 30 modes/DM, and skip the 3 modes for plate scale
-  inputs:
-      delta_comm: 'tomo_polc_ref.out_modes'   
-  outputs:  ['out_comm']
-
-# -------------
-# LIFT pipeline
-# -------------
-
-iir_lift:
-  class:             'IirFilter'
-  simul_params_ref:  'main'
-  iir_filter_data_object: 'int0.0_5modes'   # TODO should be 6 modes
-  inputs:
-      delta_comm: 'lift.output'
-  outputs:  ['out_comm']
-
 
 psf:
   class:             'PSF'

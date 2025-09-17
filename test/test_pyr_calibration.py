@@ -8,7 +8,6 @@ from specula.simul import Simul
 from test.specula_testlib import cpu_and_gpu, assert_HDU_contents_match
 from specula.processing_objects.pyr_pupdata_calibrator import PyrPupdataCalibrator
 from specula import cpuArray
-from astropy.io import fits
 import numpy as np
 
 class TestPyrPupdataCalibration(unittest.TestCase):

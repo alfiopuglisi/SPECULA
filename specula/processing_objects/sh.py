@@ -22,7 +22,7 @@ if hasattr(np, 'exceptions'):
 
 @fuse(kernel_name='abs2')
 def abs2(u_fp, out, xp):
-     out[:] = xp.real(u_fp * xp.conj(u_fp))
+    out[:] = xp.real(u_fp * xp.conj(u_fp))
 
 
 class SH(BaseProcessingObj):
@@ -387,7 +387,7 @@ class SH(BaseProcessingObj):
             sodium_intensity = self.local_inputs['sodium_intensity']
             if sodium_altitude is None or sodium_intensity is None:
                 raise ValueError('sodium_altitude and sodium_intensity must be provided')
-            sodium_altitude = sodium_altitude.value
+            sodium_altitude = sodium_altitude.value * self._laser_launch_tel.airmass
             sodium_intensity = sodium_intensity.value
         else:
             sodium_altitude = None

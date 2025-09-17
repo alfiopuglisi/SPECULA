@@ -5,7 +5,6 @@ specula.init(-1, precision=1)
 
 from numpy import random
 import unittest
-import logging
 import numpy as np
 
 from specula.lib.mask import BaseMask, CircularMask, AnnularMask

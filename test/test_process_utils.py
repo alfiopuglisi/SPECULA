@@ -1,12 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-import subprocess
-import os
-import sys
-
 from specula.lib.process_utils import killProcessByName
-
-
 
 
 class TestKillProcessByName(unittest.TestCase):

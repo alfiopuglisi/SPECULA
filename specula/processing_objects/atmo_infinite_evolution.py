@@ -14,7 +14,7 @@ from seeing.formulary import *
 from seeing.integrator import *
 
 
-from symao.turbolence import createTurbolenceFormulary, ft_phase_screen0, ft_ft2
+from symao.turbolence import createTurbolenceFormulary, ft_phase_screen0
 
 turbolenceFormulas = createTurbolenceFormulary()
 
@@ -138,7 +138,7 @@ class InfinitePhaseScreen(BaseDataObj):
         # Now use sqrt(eigenvalues) to get B matrix
         B_mat = u.dot(L_mat)
         return A_mat, B_mat
-    
+
     def setup(self):
         # set X coords
         self.new_col_coords1 = self.xp.zeros((self.stencil_size, 2))
@@ -179,10 +179,10 @@ class InfinitePhaseScreen(BaseDataObj):
         if row:
             self.prepare_random_data_row()
             stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 1], self.stencil_coords[after][:, 0]])
-            new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_row)  
+            new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_row)
         else:
             self.prepare_random_data_col()
-            stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 0], self.stencil_coords[after][:, 1]])            
+            stencil_data = self.xp.asarray(self.full_scrn[self.stencil_coords[after][:, 0], self.stencil_coords[after][:, 1]])
             new_line = self.A_mat[after].dot(stencil_data) + self.B_mat[after].dot(self.random_data_col)
         return new_line
 
@@ -192,21 +192,21 @@ class InfinitePhaseScreen(BaseDataObj):
             new_line = new_line[:,self.xp.newaxis]
             if after:
                 self.full_scrn = self.xp.concatenate((self.full_scrn, new_line), axis=row)[:self.stencil_size, 1:]
-            #    self.shift(self.full_scrn, [-1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [-1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[-1, :] = new_line
             else:
                 self.full_scrn = self.xp.concatenate((new_line, self.full_scrn), axis=row)[:self.stencil_size, :self.stencil_size]
-            #    self.shift(self.full_scrn, [1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [1, 0], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[0, :] = new_line
         else:
             new_line = new_line[self.xp.newaxis, :]
             if after:
                 self.full_scrn = self.xp.concatenate((self.full_scrn, new_line), axis=row)[1:, :self.stencil_size]
-            #    self.shift(self.full_scrn, [0, -1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [0, -1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[:, -1] = new_line
             else:
                 self.full_scrn = self.xp.concatenate((new_line, self.full_scrn), axis=row)[:self.stencil_size, :self.stencil_size]
-            #    self.shift(self.full_scrn, [0, 1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
+            #    self.ndimage_shift(self.full_scrn, [0, 1], self.full_scrn, order=0, mode='constant', cval=0.0, prefilter=False)
             #    self.full_scrn[:, 0] = new_line
         if flush:
             self.random_data_col = None
@@ -231,7 +231,6 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
                  L0: list=[1.0],
                  heights: list=[0.0],
                  Cn2: list=[1.0],
-                 zenithAngleInDeg: float=0.0,
                  fov: float=0.0,
                  seed: int=1,
                  extra_delta_time: float=0,
@@ -247,6 +246,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
 
         self.pixel_pupil = self.simul_params.pixel_pupil
         self.pixel_pitch = self.simul_params.pixel_pitch
+        self.zenithAngleInDeg = self.simul_params.zenithAngleInDeg
 
         self.n_infinite_phasescreens = len(heights)
         self.last_position = np.zeros(self.n_infinite_phasescreens)
@@ -266,13 +266,15 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         if pupil_position is None:
             pupil_position = [0, 0]
 
-        if zenithAngleInDeg is not None:
-            self.airmass = 1.0 / np.cos(np.radians(zenithAngleInDeg), dtype=self.dtype)
-            print(f'Atmo_Evolution: zenith angle is defined as: {zenithAngleInDeg} deg')
-            print(f'Atmo_Evolution: airmass is: {self.airmass}')
+        if self.zenithAngleInDeg is not None:
+            self.airmass = 1.0 / np.cos(np.radians(self.zenithAngleInDeg), dtype=self.dtype)
+            print(f'AtmoInfiniteEvolution: zenith angle is defined as: {self.zenithAngleInDeg} deg')
+            print(f'AtmoInfiniteEvolution: airmass is: {self.airmass}')
         else:
-            self.airmass = np.array(1.0, dtype=self.dtype)
-        self.heights = np.array(heights, dtype=self.dtype) * self.airmass
+            self.airmass = 1.0
+
+        heights = np.array(heights, dtype=self.dtype)
+        self.pupil_distances = heights * self.airmass  # distances from the pupil accounting for zenith angle
 
         alpha_fov = fov / 2.0
 
@@ -280,17 +282,19 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         rad_alpha_fov = alpha_fov * ASEC2RAD
 
         # Compute layers dimension in pixels
-        self.pixel_layer_size = np.ceil((self.pixel_pupil + 2 * np.sqrt(np.sum(np.array(pupil_position, dtype=self.dtype) * 2)) / self.pixel_pitch + 
-                               2.0 * abs(self.heights) / self.pixel_pitch * rad_alpha_fov) / 2.0) * 2.0
+        self.pixel_layer_size = np.ceil(
+            (self.pixel_pupil + 2 * np.sqrt(np.sum(np.array(pupil_position, dtype=self.dtype) * 2)) / self.pixel_pitch +
+            2.0 * abs(self.pupil_distances) / self.pixel_pitch * rad_alpha_fov) / 2.0
+        ) * 2.0
         if fov_in_m is not None:
-            self.pixel_layer_size = np.full_like(self.heights, int(fov_in_m / self.pixel_pitch / 2.0) * 2)
+            self.pixel_layer_size = np.full_like(heights, int(fov_in_m / self.pixel_pitch / 2.0) * 2)
 
         self.L0 = L0
 
         if np.isscalar(self.L0):
-            self.L0 = [self.L0] * len(self.heights)
-        elif len(self.L0) != len(self.heights):
-            raise ValueError(f"L0 must have the same length as heights ({len(self.heights)}), got {len(self.L0)}")
+            self.L0 = [self.L0] * len(heights)
+        elif len(self.L0) != len(heights):
+            raise ValueError(f"L0 must have the same length as heights ({len(heights)}), got {len(self.L0)}")
 
         self.Cn2 = np.array(Cn2, dtype=self.dtype)
         self.verbose = verbose if verbose is not None else False
@@ -298,7 +302,8 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         # Initialize layer list with correct heights
         self.layer_list = []
         for i in range(self.n_infinite_phasescreens):
-            layer = Layer(self.pixel_layer_size[i], self.pixel_layer_size[i], self.pixel_pitch, self.heights[i], precision=self.precision, target_device_idx=self.target_device_idx)
+            layer = Layer(self.pixel_layer_size[i], self.pixel_layer_size[i], self.pixel_pitch, heights[i],
+                          precision=self.precision, target_device_idx=self.target_device_idx)
             self.layer_list.append(layer)
         self.outputs['layer_list'] = self.layer_list
 
@@ -365,7 +370,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         else:
             scale_r0 = 0.0
 
-        scale_wvl = ( self.ref_wavelengthInNm / (2 * np.pi) )
+        scale_wvl = self.ref_wavelengthInNm / (2 * np.pi)
         self.scale_coeff = scale_r0 * scale_wvl
 
     @show_in_profiler('atmo_evolution.trigger_code')

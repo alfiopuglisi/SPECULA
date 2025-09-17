@@ -6,8 +6,6 @@ specula.init(0)
 
 from specula.simul import Simul
 from test.specula_testlib import assert_HDU_contents_match
-from astropy.io import fits
-import numpy as np
 
 class TestDoubleRoofCalibration(unittest.TestCase):
     """Test Double Roof calibration by comparing generated calibration files with reference ones"""
