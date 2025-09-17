@@ -500,6 +500,8 @@ class Simul():
 
             # Check that outputs exist (or for remote objects, that they are defined in the params)
             if 'outputs' in pars:
+                if pars['outputs'] is None:
+                    raise ValueError(f'Object {dest_object} has an empty outputs list')
                 for output_name in pars['outputs']:
                     if local_dest_object:
                         # check that this output was actually created by this dest_object
