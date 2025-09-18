@@ -12,6 +12,11 @@ class IFuncInv(BaseDataObj):
                 ):
         """
         Initialize an :class:`~specula.data_objects.ifunc_inv.IFuncInv` object.
+
+        ifunc_inv: 2d array [npixels, nmodes]. Pixels stored as a single 1D-vector for each mode,
+               and pixels outside the mask are omitted.
+        mask: 2d array [rows, cols]: nonzero pixels are included in the ifunc. The number
+              of nonzero pixels is equal to "npixels" in the ifunc shape.
         """
         super().__init__(precision=precision, target_device_idx=target_device_idx)
         self._doZeroPad = False

@@ -39,6 +39,16 @@ class IFunc(BaseDataObj):
                  target_device_idx=None,
                  precision=None
                 ):
+        '''
+        Initialize a new IFunc object.
+
+        ifunc: 2d array [nmodes, npixels]. Pixels stored as a single 1D-vector for each mode,
+               and pixels outside the mask are omitted.
+        mask: 2d array [rows, cols]: nonzero pixels are included in the ifunc. The number
+              of nonzero pixels is equal to "npixels" in the ifunc shape.
+        npixels: int. If ifunc is not set, this parameter is mandatory.
+                 Diameter of ifunc to generate, in pixels.
+        '''
         super().__init__(precision=precision, target_device_idx=target_device_idx)
         self.type_str = type_str
         self._doZeroPad = False
