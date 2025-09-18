@@ -25,6 +25,10 @@ class IFuncInv(BaseDataObj):
         self.mask_inf_func = self.to_xp(mask)
         self.idx_inf_func = self.xp.where(self.mask_inf_func)
 
+        if len(self.idx_inf_func[0]) != self.ifunc_inv.shape[0]:
+            raise ValueError(f"Error: number of nonzero pixels {len(self.idx_inf_func[0])}"
+                             f"does not match the number of pixels in the ifunc_inv shape {self.ifunc_inv.shape[0]}")
+
     @property
     def size(self):
         return self.ifunc_inv.shape

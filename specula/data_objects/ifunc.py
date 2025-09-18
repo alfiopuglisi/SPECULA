@@ -97,6 +97,10 @@ class IFunc(BaseDataObj):
         self._idx_inf_func = self.xp.where(self._mask_inf_func)
         self.cut(start_mode=start_mode, nmodes=nmodes, idx_modes=idx_modes)
 
+        if len(self.idx_inf_func[0]) != ifunc.shape[1]:
+            raise ValueError(f"Error: number of nonzero pixels {len(self.idx_inf_func[0])}"
+                             f"does not match the number of pixels in the ifunc shape {ifunc.shape[1]}")
+
     @property
     def influence_function(self):
         return self._influence_function
