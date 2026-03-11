@@ -315,8 +315,79 @@ class TestIirFilterData(unittest.TestCase):
         np.testing.assert_allclose(num, expected_num, rtol=1e-12)
         np.testing.assert_array_equal(den, expected_den)
 
-    @cpu_and_gpu
+    @cpu_and_gpu 
     def test_set_gain(self, target_device_idx, xp):
+        """Test vectorized set_gain and zero-recovery with proper class signature"""
+        
+        # 1. Setup Data
+        # 2 filters: Filter 0 is 2nd order (3 coeffs), Filter 1 is 1st order (2 coeffs)
+        ordnum_list = [2, 1]
+        ordden_list = [2, 1]
+        
+        # num and den must match the max order across the filters
+        # Filter 0: [1.0, 2.0, 3.0] | Filter 1: [0.0, 0.0, 5.0] (1st order uses last index)
+        num_init = np.array([
+            [1.0, 2.0, 3.0], 
+            [0.0, 0.0, 5.0]
+        ])
+        den_init = np.array([
+            [1.0, 0.5, 0.1], 
+            [0.0, 1.0, 0.2]
+        ])
+        
+        # 2. Instantiate with the requested signature
+        f_data = IirFilterData(
+            ordnum=ordnum_list,
+            ordden=ordden_list,
+            num=num_init,
+            den=den_init,
+            n_modes=[2,3],
+            target_device_idx=target_device_idx,
+            precision=1,
+        )
+
+        # Initialize gain state (Assume current num is unity gain 1.0)
+        f_data.set_gain(xp.array([1.0, 1.0]))
+
+        # --- TEST 1: Basic Vectorized Scaling ---
+        # Scale Filter 0 by 0.5 and Filter 1 by 2.0
+        f_data.set_gain(xp.array([0.5, 2.0]))
+        
+        # Expected:
+        # F0 (High Order): [1, 2, 3] * 0.5 = [0.5, 1.0, 1.5]
+        # F1 (1st Order):  Gain = 2.0 -> num[1, -1] = 2.0
+        self.assertTrue(xp.allclose(f_data.num[0, :], xp.array([0.5, 1.0, 1.5])))
+        self.assertEqual(float(f_data.num[1, -1]), 2.0)
+
+        # --- TEST 2: Zero Gain & Division Safety ---
+        # Set all gains to 0.0. This previously caused crashes/NaNs.
+        f_data.set_gain(xp.array([0.0, 0.0]))
+        
+        self.assertTrue(xp.all(f_data.num[0, :] == 0))
+        self.assertEqual(float(f_data.num[1, -1]), 0.0)
+        self.assertTrue(xp.all(f_data.gain == 0))
+
+        # --- TEST 3: Recovery from Zero (The 'base_num' fix) ---
+        # Bring gain back to 1.0. High-order filter should regain its shape.
+        f_data.set_gain(xp.array([1.0, 1.0]))
+        
+        # F0 should be back to [1.0, 2.0, 3.0]
+        # F1 should be back to [..., 1.0]
+        self.assertTrue(xp.allclose(f_data.num[0, :], xp.array([1.0, 2.0, 3.0])))
+        self.assertEqual(float(f_data.num[1, -1]), 1.0)
+
+        # --- TEST 4: Partial Updates & NaN Masking ---
+        # Update F0 to 3.0, leave F1 alone using NaN
+        f_data.set_gain(xp.array([3.0, xp.nan]))
+        
+        # F0: 3.0 * [1, 2, 3] = [3, 6, 9]
+        # F1: remains 1.0
+        self.assertTrue(xp.allclose(f_data.num[0, :], xp.array([3.0, 6.0, 9.0])))
+        self.assertEqual(float(f_data.gain[0]), 3.0)
+        self.assertEqual(float(f_data.gain[1]), 1.0) 
+
+    @cpu_and_gpu
+    def test_set_gain1(self, target_device_idx, xp):
         """Test set_gain method functionality"""
 
         # Test 1: Set gain on gain+ff filters (simple case)

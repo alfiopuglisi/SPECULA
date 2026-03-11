@@ -67,6 +67,12 @@ class IirFilterData(BaseDataObj):
         self.set_num(self.to_xp(num, dtype=self.dtype))
         self.set_den(self.to_xp(den, dtype=self.dtype))
 
+        self.base_num = self.num.copy()
+        if self.gain is not None and self.xp.any(self.gain != 0):
+            # If initialized with a gain, normalize base_num to gain=1.0
+            nonzero = self.gain != 0
+            self.base_num[nonzero, :] /= self.gain[nonzero][:, self.xp.newaxis]
+
     @property
     def nfilter(self):
         return len(self.num)
@@ -138,34 +144,45 @@ class IirFilterData(BaseDataObj):
         self.den = den
 
     def set_gain(self, gain, verbose=False):
-        gain = self.to_xp(gain, dtype=self.dtype)
+        new_gain = self.to_xp(gain, dtype=self.dtype)
+        
+        # Ensure we have a clean reference of the numerator
+        if not hasattr(self, 'base_num') or self.base_num is None:
+            self.base_num = self.num.copy()
+
         if verbose:
-            print('original gain:', self.gain)
-        if self.xp.size(gain) < self.nfilter:
-            nfilter = np.size(gain)
-        else:
-            nfilter = self.nfilter
+            print(f'Old gain: {self.gain}')
+
+        n_upd = min(self.xp.size(new_gain), self.nfilter)
+        g_in = new_gain[:n_upd]
+        mask_valid = self.xp.isfinite(g_in)
+        
+        # We only work on valid indices to avoid NaN pollution
+        valid_idx = self.xp.where(mask_valid)[0]
+        
+        if valid_idx.size > 0:
+            # Mask for High-Order (ordnum > 1)
+            # Use self.ordnum[:n_upd] to match the sliced gain input
+            is_high = self.ordnum[valid_idx] > 1
+            
+            # Update High-Order: num = base * new_gain
+            high_idx = valid_idx[is_high]
+            if high_idx.size > 0:
+                self.num[high_idx, :] = self.base_num[high_idx, :] * g_in[high_idx][:, self.xp.newaxis]
+
+            # Update 1st-Order: Direct assignment to the last coefficient
+            low_idx = valid_idx[~is_high]
+            if low_idx.size > 0:
+                self.num[low_idx, -1] = g_in[low_idx]
+                # Optional: Ensure leading coefficients are 0 for 1st order
+                if self.num.shape[1] > 1:
+                    self.num[low_idx, :-1] = 0
+
+        # Update the state tracking
         if self.gain is None:
-            for i in range(nfilter):
-                if self.xp.isfinite(gain[i]):
-                    if self.ordnum[i] > 1:
-                        self.num[i, :] *= gain[i]
-                    else:
-                        self.num[i, - 1] = gain[i]
-                else:
-                    gain[i] = self.num[i, - 1]
-        else:
-            for i in range(nfilter):
-                if self.xp.isfinite(gain[i]):
-                    if self.ordnum[i] > 1:
-                        self.num[i, :] *= (gain[i] / self.gain[i])
-                    else:
-                        self.num[i, - 1] = gain[i] / self.gain[i]
-                else:
-                    gain[i] = self.gain[i]
-        self.gain = self.to_xp(gain, dtype=self.dtype)
-        if verbose:
-            print('new gain:', self.gain)
+            self.gain = self.xp.ones(self.nfilter, dtype=self.dtype)
+        
+        self.gain[:n_upd] = self.xp.where(mask_valid, g_in, self.gain[:n_upd])
 
     def RTF(self, mode, fs, freq=None, dm=None, nw=None, dw=None,
             verbose=False,title=None, plot=True, overplot=False,
