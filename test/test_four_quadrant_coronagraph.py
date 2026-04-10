@@ -251,7 +251,7 @@ class TestFourQuadrantCoronagraph(unittest.TestCase):
 
         self.assertLess(max_4pixel, max_pixel,
                     f"4-pixel centering should provide better nulling for 4Q coronagraph "
-                    f"(max_4pixel={max_4pixel:.2e}, max_pixel={max_pixel:.2e})")
+                    f"(max_4pixel={max_4pixel[0]:.2e}, max_pixel={max_pixel[0]:.2e})")
 
         debug_plot = False
         if debug_plot: # pragma: no cover

@@ -107,7 +107,7 @@ class TestModulatedPyramid(unittest.TestCase):
                           "Not enough bright pixels for 4 sub-pupils")
 
         print(f"Circular modulation test passed: output shape = {intensity.i.shape}, "
-              f"total flux = {cpuArray(total_flux):.1f}, "
+              f"total flux = {cpuArray(total_flux)[0]:.1f}, "
               f"bright pixels = {cpuArray(bright_pixels)}")
 
     @cpu_and_gpu

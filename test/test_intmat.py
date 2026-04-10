@@ -287,7 +287,7 @@ class TestIntmatViews(unittest.TestCase):
                 else:
                     expected = intmat_obj.intmat[key, :]
 
-                np.testing.assert_array_equal(cpuArray(expected), cpuArray(value))
+                assert np.all(expected == value)
 
 
     @cpu_and_gpu

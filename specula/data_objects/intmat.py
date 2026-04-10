@@ -173,11 +173,8 @@ class Intmat(BaseDataObj):
         return Intmat(intmat, slope_mm, slope_rms, pupdata_tag, subapdata_tag, norm_factor, target_device_idx=target_device_idx)
 
     def generate_rec(self, nmodes=None, cut_modes=0, w_vec=None, interactive=False):
-        if nmodes is not None:
-            intmat = self.modes[:nmodes]
-        else:
-            intmat = self.intmat
-        recmat = self.pseudo_invert(intmat, n_modes_to_drop=cut_modes, w_vec=w_vec, interactive=interactive)
+        intmat = self.modes[:nmodes]
+        recmat = self.pseudo_invert(self.to_xp(intmat), n_modes_to_drop=cut_modes, w_vec=w_vec, interactive=interactive)
         rec = Recmat(recmat, target_device_idx=self.target_device_idx)
         rec.im_tag = self.norm_factor  # TODO wrong
         return rec

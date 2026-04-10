@@ -221,7 +221,7 @@ class TestGenerators(unittest.TestCase):
 
         # amp must be constant for all modes (CONSTANT scaling)
         np.testing.assert_allclose(cpuArray(amp3[forced_zero_modes:]),
-                                   cpuArray(amp3[forced_zero_modes]), atol=1e-5)
+                                   cpuArray(amp3[forced_zero_modes])[0], atol=1e-5)
 
     @cpu_and_gpu
     def test_vibration(self, target_device_idx, xp):

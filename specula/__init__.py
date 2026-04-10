@@ -129,8 +129,6 @@ def to_xp(xp, v, dtype=None, force_copy=False):
     The main trigger for this function is that np.array() cannot
     be used on a cupy array.
     '''
-    if np.ndim(v) == 0:
-        v = np.atlea
     if xp is cp:
         if isinstance(v, cp.ndarray) and not force_copy:
             retval = v
