@@ -258,7 +258,7 @@ class AtmoEvolution(BaseProcessingObj):
         self.delta_time = cpuArray(
             self.n_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
         )
-        seeing = float(cpuArray(self.local_inputs['seeing'].value[0]))
+        seeing = float(cpuArray(self.local_inputs['seeing'].value)[0])
         if seeing > 0:
             r0 = 0.9759 * 0.5 / (seeing * 4.848) * self.airmass**(-3./5.)
             self.scale_coeff = (self.pixel_pitch / r0)**(5./6.)

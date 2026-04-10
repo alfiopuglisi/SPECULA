@@ -192,7 +192,7 @@ class TestDemodulateSignal(unittest.TestCase):
 
         # With noise, allow larger tolerance
         self.assertAlmostEqual(amp_demod, amplitude_true, delta=0.5,
-             msg=f"Amplitude error too large with noise: {abs(amp_demod - amplitude_true):.3e}")
+             msg=f"Amplitude error too large with noise: {abs(amp_demod - amplitude_true)[0]:.3e}")
 
     @cpu_and_gpu
     def test_demodulate_multiple_signals_vectorized(self, target_device_idx, xp):

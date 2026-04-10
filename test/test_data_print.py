@@ -173,26 +173,6 @@ class TestDataPrint(unittest.TestCase):
             self.assertIn('(5, 5)', output)
 
     @cpu_and_gpu
-    def test_data_print_scalar(self, target_device_idx, xp):
-        """Test DataPrint with scalar value"""
-        printer = DataPrint(print_dt=0.1, target_device_idx=target_device_idx)
-
-        data = BaseValue(target_device_idx=target_device_idx)
-        data.value = xp.array(42.5)
-        printer.inputs['in_value'].set(data)
-        printer.setup()
-
-        with patch('sys.stdout', new_callable=StringIO) as mock_stdout:
-            time = printer.seconds_to_t(1)
-            data.generation_time = time
-            printer.check_ready(time)
-            printer.trigger()
-
-            output = mock_stdout.getvalue()
-            self.assertIn('42.5', output)
-            self.assertNotIn('[', output)  # Scalars shouldn't have brackets
-
-    @cpu_and_gpu
     def test_data_print_every_other_element(self, target_device_idx, xp):
         """Test DataPrint with slice selecting every other element"""
         printer = DataPrint(

@@ -12,15 +12,13 @@ class BaseValue(BaseDataObj):
         Parameters:
         description (str, optional)
         value (any, optional): data to store. If not set, the value is initialized to None.
+
+        Values are always stored as numpy/cupy arrays rather than scalars.
         """
         super().__init__(target_device_idx=target_device_idx, precision=precision)
         self.description = description
         if value is not None:
-            # if it is a scalar, convert to the appropriate scalar type
-            if np.isscalar(value):
-                self.value = self.dtype(value)
-            else:
-                self.value = self.to_xp(value, force_copy=True, dtype=self.dtype)
+            self.value = self.to_xp(value, force_copy=True, dtype=self.dtype)
         else:
             self.value = None
 
@@ -29,10 +27,7 @@ class BaseValue(BaseDataObj):
 
     def set_value(self, val):
         if self.value is not None:
-            if np.isscalar(self.value):
-                self.value = self.dtype(val)
-            else:
-                self.value[...] = self.to_xp(val)
+            self.value[...] = self.to_xp(val)
         else:
             self.value = self.to_xp(val, force_copy=True, dtype=self.dtype)
 

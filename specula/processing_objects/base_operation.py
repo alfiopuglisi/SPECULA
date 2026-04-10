@@ -50,42 +50,24 @@ class BaseOperation(BaseProcessingObj):
 
         # Implement constant div and sub as reciprocal of mul and sum
         if not constant_mul is None:
-            if self.xp.isscalar(constant_mul):
-                self.constant_mul = constant_mul
-            else:
-                self.constant_mul = self.to_xp(constant_mul)
+            self.constant_mul = self.to_xp(constant_mul)
         else:
             self.constant_mul = None
         if not constant_sum is None:
-            if self.xp.isscalar(constant_sum):
-                self.constant_sum = constant_sum
-            else:
-                self.constant_sum = self.to_xp(constant_sum)
+            self.constant_sum = self.to_xp(constant_sum)
         else:
             self.constant_sum = None
         if not constant_div is None:
-            if self.xp.isscalar(constant_div):
-                self.constant_mul = 1.0 / constant_div
-            else:
-                self.constant_mul = 1.0 / self.to_xp(constant_div)
+            self.constant_mul = 1.0 / self.to_xp(constant_div)
         if not constant_sub is None:
-            if self.xp.isscalar(constant_sub):
-                self.constant_sum = -constant_sub
-            else:
-                self.constant_sum = -self.to_xp(constant_sub)
+            self.constant_sum = -self.to_xp(constant_sub)
 
         if not constant_max is None:
-            if self.xp.isscalar(constant_max):
-                self.constant_max = constant_max
-            else:
-                self.constant_max = self.xp.max(constant_max)
+            self.constant_max = self.xp.max(constant_max)
         else:
             self.constant_max = None
         if not constant_min is None:
-            if self.xp.isscalar(constant_min):
-                self.constant_min = constant_min
-            else:
-                self.constant_min = self.xp.min(constant_min)
+            self.constant_min = self.xp.min(constant_min)
         else:
             self.constant_min = None
 

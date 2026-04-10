@@ -107,12 +107,9 @@ class TestDynamicDarkCalibrator(unittest.TestCase):
         calibrator.check_ready(42)
         assert calibrator.nframes == 10
 
-        # String input converted to int
-        nframes = BaseValue(value='10')
-        nframes.generation_time = 42
-        calibrator.inputs['in_nframes'].set(nframes)
-        calibrator.check_ready(42)
-        assert calibrator.nframes == 10
+        # String input (invalid)
+        with self.assertRaises(ValueError):
+            nframes = BaseValue(value='10')
 
     @cpu_and_gpu
     def test_darkframe_size(self, target_device_idx, xp):

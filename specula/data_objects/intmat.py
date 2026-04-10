@@ -177,7 +177,7 @@ class Intmat(BaseDataObj):
             intmat = self.modes[:nmodes]
         else:
             intmat = self.intmat
-        recmat = self.pseudo_invert(self.to_xp(intmat), n_modes_to_drop=cut_modes, w_vec=w_vec, interactive=interactive)
+        recmat = self.pseudo_invert(intmat, n_modes_to_drop=cut_modes, w_vec=w_vec, interactive=interactive)
         rec = Recmat(recmat, target_device_idx=self.target_device_idx)
         rec.im_tag = self.norm_factor  # TODO wrong
         return rec

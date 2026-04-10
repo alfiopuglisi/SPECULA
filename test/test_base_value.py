@@ -49,12 +49,11 @@ class TestBaseValue(unittest.TestCase):
         v.save(self.filename)
         v2 = BaseValue.restore(self.filename)
 
-        assert v2.value == 3.1415
+        assert v2.value[0] == 3.1415
 
         # Check FITS header for ndarray info
         hdr = fits.getheader(self.filename)
-        self.assertEqual(hdr["NDARRAY"], 0)
-        self.assertEqual(float(hdr["VALUE"]), 3.1415)
+        self.assertEqual(hdr["NDARRAY"], 1) # Was converted to array
 
     @cpu_and_gpu
     def test_save_restore_roundtrip_empty(self, target_device_idx, xp):
@@ -135,7 +134,8 @@ class TestBaseValue(unittest.TestCase):
     def test_init_scalar_with_precision(self, target_device_idx, xp):
         """Test initializing BaseValue with scalar and precision argument"""
         bv = BaseValue(value=3.14, target_device_idx=target_device_idx, precision=1)
-        self.assertEqual(str(type(bv.value)), "<class 'numpy.float32'>")
-        self.assertAlmostEqual(bv.value, 3.14, places=6)
+        self.assertEqual(str(bv.value[0].dtype), 'float32')
+        self.assertAlmostEqual(bv.value[0], 3.14, places=6)
         bv64 = BaseValue(value=3.14, target_device_idx=target_device_idx, precision=0)
-        self.assertEqual(str(type(bv64.value)), "<class 'numpy.float64'>")
+        self.assertEqual(str(bv64.value[0].dtype), 'float64')
+        self.assertAlmostEqual(bv.value[0], 3.14, places=8)

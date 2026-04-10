@@ -137,9 +137,9 @@ class TestModulatedDoubleRoof(unittest.TestCase):
                           "Quadrant 4 has insufficient intensity")
 
         print(f"Test passed: output shape = {intensity.i.shape}, "
-              f"total flux = {cpuArray(total_flux):.1f}, "
+              f"total flux = {cpuArray(total_flux)[0]:.1f}, "
               f"bright pixels = {cpuArray(bright_pixels)}")
 
-        print(f"Quadrant intensities: Q1={cpuArray(q1_intensity):.1f}, "
-              f"Q2={cpuArray(q2_intensity):.1f}, Q3={cpuArray(q3_intensity):.1f}, "
-              f"Q4={cpuArray(q4_intensity):.1f}") 
+        print(f"Quadrant intensities: Q1={cpuArray(q1_intensity)[0]:.1f}, "
+              f"Q2={cpuArray(q2_intensity)[0]:.1f}, Q3={cpuArray(q3_intensity)[0]:.1f}, "
+              f"Q4={cpuArray(q4_intensity)[0]:.1f}") 

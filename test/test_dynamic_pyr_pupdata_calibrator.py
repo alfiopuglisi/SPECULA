@@ -53,13 +53,9 @@ class TestDynamicPyrPupdataCalibrator(unittest.TestCase):
         calibrator.check_ready(42)
         assert calibrator.thr1 == 3.1415
 
-        # String input converted to float
-        thr1 = BaseValue(value='0.123')
-        thr1.generation_time = 42
-        calibrator.inputs['in_thr1'].set(thr1)
-        calibrator.check_ready(42)
-
-        assert calibrator.thr1 == 0.123
+        # String input (invalid)
+        with self.assertRaises(ValueError):
+            thr1 = BaseValue(value='0.123')
 
         # Float input
         thr2 = BaseValue(value=3.1415)
@@ -68,12 +64,8 @@ class TestDynamicPyrPupdataCalibrator(unittest.TestCase):
         calibrator.check_ready(42)
         assert calibrator.thr2 == 3.1415
 
-        # String input converted to float
-        thr2 = BaseValue(value='0.123')
-        thr2.generation_time = 42
-        calibrator.inputs['in_thr2'].set(thr2)
-        calibrator.check_ready(42)
-
-        assert calibrator.thr2 == 0.123
+        # String input (invalid)
+        with self.assertRaises(ValueError):
+            thr2 = BaseValue(value='0.123')
 
         

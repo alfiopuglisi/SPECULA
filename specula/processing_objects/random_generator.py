@@ -54,13 +54,15 @@ class RandomGenerator(BaseGenerator):
             # Fallback to the original default behavior if no amplitude parameter is passed
             amp = 1.0
 
-        # Validate arrays and determine output size
-        temp_amp = np.atleast_1d(amp) if not np.isscalar(amp) else np.array([amp])
-        temp_const = np.atleast_1d(constant) if not np.isscalar(constant) \
-                     else np.array([constant])
+        # Make sure arguments are arrays
+        amp = np.atleast_1d(amp)
+        constant = np.atleast_1d(constant)
+
+        # Validate array sizes
+        self._validate_array_sizes(amp, constant, names=['amp', 'constant'])
 
         if output_size == 1:
-            output_size = max(len(temp_amp), len(temp_const), output_size)
+            output_size = max(len(amp), len(constant), output_size)
         if output_size == 1:
             output_size = vsize
 
@@ -70,16 +72,12 @@ class RandomGenerator(BaseGenerator):
             precision=precision
         )
 
-        self.distribution = distribution.upper()
-        if self.distribution not in ['NORMAL', 'UNIFORM']:
-            raise ValueError(f"Unknown distribution: {distribution}")
-
-        # Target device conversion (e.g., cupy/numpy)
         self.amp = self.to_xp(amp, dtype=self.dtype)
         self.constant = self.to_xp(constant, dtype=self.dtype)
 
-        # Validate array sizes
-        self._validate_array_sizes(self.amp, self.constant, names=['amp', 'constant'])
+        self.distribution = distribution.upper()
+        if self.distribution not in ['NORMAL', 'UNIFORM']:
+            raise ValueError(f"Unknown distribution: {distribution}")
 
         # Setup random number generator
         if seed is not None:

@@ -24,8 +24,8 @@ class WaveGenerator(BaseGenerator):
             raise ValueError(f"Unknown wave type: {wave_type}")
 
         # Determine output size from arrays
-        arrays = [np.atleast_1d(x) if not np.isscalar(x) else np.array([x])
-                 for x in [amp, freq, offset, slope, constant]]
+        arrays = [np.atleast_1d(x)
+                  for x in [amp, freq, offset, slope, constant]]
         if output_size == 1:
             output_size = max(len(arr) for arr in arrays)
         if output_size == 1 and vsize > 1:
