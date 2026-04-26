@@ -29,8 +29,6 @@ class CalibManager():
             'pupdata': 'pupils',
             'PupData': 'pupils',
             'PyrPupdataCalibrator': 'pupils/',
-            'DynamicPyrPupdataCalibrator': 'pupils/',
-            'DynamicDarkCalibrator': 'dark/',
             'subapdata': 'subapdata/',
             'ShSubapCalibrator': 'subapdata/',
             'iir_filter_data': 'filter/',
