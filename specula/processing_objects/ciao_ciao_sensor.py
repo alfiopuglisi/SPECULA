@@ -226,12 +226,10 @@ class CiaoCiaoSensor(BaseProcessingObj):
         super().post_trigger()
 
         # Resample to output resolution if needed
-        if self.number_px == self._interf_i.shape[0]:
-            self._out_i.i[:] = self._interf_i
-        else:
-            self._out_i.i[:] = toccd(self._interf_i,
-                                     (self.number_px, self.number_px),
-                                     xp=self.xp)
+        toccd(self._interf_i,
+              (self.number_px, self.number_px),
+              xp=self.xp,
+              out=self._out_i.i)
 
         # Normalize flux
         if self.normalize_flux:

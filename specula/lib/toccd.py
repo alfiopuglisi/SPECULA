@@ -30,7 +30,7 @@ def lcm(a,b):
     return (a*b) // gcd(a,b)
 
 
-def toccd(a, newshape, set_total=None, xp=None):
+def toccd(a, newshape, set_total=None, xp=None, out=None):
     '''
     Clone of oaalib's toccd() function, using least common multiple
     to rebin an array similar to openvc's INTER_AREA interpolation.
@@ -48,19 +48,29 @@ def toccd(a, newshape, set_total=None, xp=None):
         if not set, the same total count as the input array is used.
     xp : module
         numpy or cupy module
+    out : array
+        array for output data. Must have been already allocated with the correct shape and dtype.
+        If not set, a new array will be allocated
+        Only used for GPU calculations, ignored for CPU.
 
     Returns
     -------
     array
-        resized array
+        resized array. Same as the "out" parameter, if set.
     '''
     newshape = tuple(cpuArray(newshape))  # Works for lists, tuples and any cupy/numpy array
 
     if a.shape == newshape:
         return a
 
+    if out and out.shape != newshape:
+        raise ValueError(f'Output array has shape {out.shape} instead of {newshape}')
+
+    if out and out.dtype != a.dtype:
+        raise ValueError(f'Output array has dtype {out.dtype} instead of {a.dtype}')
+
     if xp == cp:
-        return toccd_gpu(a, newshape, set_total=set_total)
+        return toccd_gpu(a, newshape, set_total=set_total, out=out)
 
     if len(a.shape) != 2:
         raise ValueError('Input array has shape %s, cannot continue' % str(a.shape))
@@ -77,15 +87,21 @@ def toccd(a, newshape, set_total=None, xp=None):
     temp = rebin2d(a, (mcmx, a.shape[1]), sample=True, xp=xp)
     temp = rebin2d(temp, (newshape[0], a.shape[1]), xp=xp)
     temp = rebin2d(temp, (newshape[0], mcmy), sample=True, xp=xp)
-    rebinned = rebin2d(temp, newshape, xp=xp)
+    if out:
+        out[:] = rebin2d(temp, newshape, xp=xp)
+        rebinned = out
+    else:
+        rebinned = rebin2d(temp, newshape, xp=xp)
 
     eps = xp.finfo(rebinned.dtype).eps
     rebinned_sum = xp.maximum(rebinned.sum(), eps)
 
-    return rebinned / rebinned_sum * set_total
+    rebinned /= rebinned_sum
+    rebinned *= set_total
+    return rebinned
 
 
-def toccd_gpu(a, newshape, set_total=None):
+def toccd_gpu(a, newshape, set_total=None, out=None):
     '''
     toccd GPU code adapted from IDL PASSATA (gpu_simul.cu)
     - python code replicates the C function doCudaToCcdOptimized()
@@ -118,7 +134,8 @@ def toccd_gpu(a, newshape, set_total=None):
     grid_tmp = (numBlocks2d, numBlocks2d_tmp)  # Note second element is different
 
     tmp = cp.empty_like(a, shape=(iny, outx))  # TODO this is a reallocation and could give problems with streams
-    out = cp.empty_like(a, shape=(outy, outx))
+    if out is None:
+        out = cp.empty_like(a, shape=(outy, outx))
 
     if a.dtype == cp.float32:
         _rebin2D_step1_float(grid_tmp, block, (a, tmp, inx, iny, outx, outy, dx_out, cp.float32(oneOverDxIn)))
