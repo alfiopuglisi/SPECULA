@@ -21,7 +21,6 @@ class AtmoEvolutionUpDown(AtmoEvolution):
                  L0: list,
                  heights: list,
                  Cn2: list,
-                 data_dir: str,
                  extra_delta_time_down: float = 0,
                  extra_delta_time_up: float = 0,
                  fov: float = 0.0,
@@ -47,8 +46,6 @@ class AtmoEvolutionUpDown(AtmoEvolution):
             Heights of the atmospheric layers in meters (at zenith).
         Cn2 : list
             Fractional Cn2 values for each layer (must sum to 1.0).
-        data_dir : str
-            Directory path for storing/loading phase screen data.
         extra_delta_time_down : float or list, optional
             Extra time offset for downward propagation in seconds. Default is 0.
         extra_delta_time_up : float or list, optional
@@ -75,7 +72,6 @@ class AtmoEvolutionUpDown(AtmoEvolution):
             L0=L0,
             heights=heights,
             Cn2=Cn2,
-            data_dir=data_dir,
             fov=fov,
             pixel_phasescreens=pixel_phasescreens,
             seed=seed,

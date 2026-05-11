@@ -4,9 +4,8 @@ import warnings
 from copy import copy
 from functools import lru_cache
 
-from specula import cp, np, array_types
+from specula import cp, np, array_types, get_calib_manager
 from specula.base_time_obj import BaseTimeObj
-from specula.calib_manager import CalibManager
 
 
 # We use lru_cache() instead of cache() for python 3.8 compatibility
@@ -152,9 +151,9 @@ class BaseDataObj(BaseTimeObj):
             # Nothing changed, nothing to do
             return
 
-        cm = CalibManager()
+        cm = get_calib_manager()
         fullpath = cm.filename(self.__class__.__name__, fname)
-        alternative_fullpaths = [cm.filename(self.__class.__name__, f) for f in alternatives]
+        alternative_fullpaths = [cm.filename(self.__class__.__name__, f) for f in alternatives]
         for fullpath in [fullpath] + alternative_fullpaths:
             if not fullpath.endswith('.fits'):
                 fullpath += '.fits'

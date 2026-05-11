@@ -7,7 +7,7 @@ from specula.lib.calc_phasescreen import calc_phasescreen
 
 class Phasescreen(BaseDataObj):
     """
-    Intensity field data object.
+    Phasescreen field data object.
     """
     def __init__(self, 
                  dimx: int, 
@@ -70,17 +70,20 @@ class Phasescreen(BaseDataObj):
         L0 = hdr['L0']
         seed = hdr['SEED']
         pixel_pitch = hdr['PIXPITCH']
-        intensity = Phasescreen(dimx, dimy, L0=L0, pixel_pitch=pixel_pitch, seed=seed, target_device_idx=target_device_idx)
-        return intensity
+        phasescreen = Phasescreen(dimx, dimy, L0=L0, pixel_pitch=pixel_pitch, seed=seed, target_device_idx=target_device_idx)
+        return phasescreen
     
     @staticmethod
-    def restore(filename, target_device_idx=None):
+    def restore(filename, update=None, target_device_idx=None):
         hdr = fits.getheader(filename)
-        if 'OBJ_TYPE' not in hdr or hdr['OBJ_TYPE'] != 'Intensity':
-            raise ValueError(f"Error: file {filename} does not contain an Intensity object")
-        phasescreen = Phasescreen.from_header(hdr, target_device_idx=target_device_idx)
+        if 'OBJ_TYPE' not in hdr or hdr['OBJ_TYPE'] != 'Phasescreen':
+            raise ValueError(f"Error: file {filename} does not contain a Phasescreen object")
+        if update is None:
+            phasescreen = Phasescreen.from_header(hdr, target_device_idx=target_device_idx)
+        else:
+            phasescreen = update
         with fits.open(filename) as hdul:
-            phasescreen.i[:] = phasescreen.to_xp(hdul[0].data)  # pylint: disable=no-member
+            phasescreen.phasescreen[:] = phasescreen.to_xp(hdul[0].data)  # pylint: disable=no-member
         return phasescreen
 
     def array_for_display(self):
@@ -105,4 +108,5 @@ class Phasescreen(BaseDataObj):
                                                pixel_pitch=self.pixel_pitch,
                                                seed=self.seed,
                                                xp=self.xp,
+                                               precision=self.precision,
                                                target_device_idx=self.target_device_idx)

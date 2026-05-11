@@ -5,7 +5,6 @@ from specula.data_objects.electric_field import ElectricField
 from specula.base_value import BaseValue
 from specula.data_objects.layer import Layer
 from specula.data_objects.pupilstop import Pupilstop
-from specula.lib.phasescreen_manager import phasescreens_manager
 from specula.connections import InputValue
 from specula.data_objects.simul_params import SimulParams
 

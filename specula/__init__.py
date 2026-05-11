@@ -4,6 +4,7 @@ import logging
 import functools
 from functools import wraps
 
+from specula.calib_manager import CalibManager
 from specula.log import get_specula_logger, init_logging
 
 cpu_float_dtype_list = [np.float64, np.float32]
@@ -26,6 +27,8 @@ process_comm = None
 process_rank = None
 ASEC2RAD = np.pi / (3600 * 180)
 RAD2ASEC = 1.0 / ASEC2RAD
+global_calib_manager = None
+
 
 # precision = 0 -> double precision
 # precision = 1 -> single precision
@@ -296,3 +299,9 @@ def main_simul(yml_files: list,
         MPI.Detach_buffer()
 
 
+def init_calib_manager(root_dir):
+    global global_calib_manager
+    global_calib_manager = CalibManager(root_dir)
+
+def get_calib_manager():
+    return global_calib_manager

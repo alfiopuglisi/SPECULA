@@ -6,7 +6,7 @@ specula.init(0)  # Default target device
 
 import unittest
 
-from specula import cpuArray
+from specula import cpuArray, init_calib_manager
 from specula import np
 
 from specula.base_time_obj import BaseTimeObj
@@ -20,15 +20,18 @@ from test.specula_testlib import cpu_and_gpu
 
 class TestAtmoEvolutionUpDown(unittest.TestCase):
 
-    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+
+    @classmethod
+    def setUp(cls):
+        init_calib_manager(os.path.join(os.path.dirname(__file__), 'data'))
 
     @classmethod
     def tearDownClass(cls):
         """Clean up after all tests by removing generated files"""
         pattern = 'ps_seed*_pixpit0.050_L023.0000_*.fits'
-        for fpath in glob.glob(os.path.join(cls.data_dir, pattern)):
-            if os.path.exists(fpath):
-                os.remove(fpath)
+#        for fpath in glob.glob(os.path.join(cls.data_dir, pattern)):
+#            if os.path.exists(fpath):
+#                os.remove(fpath)
 
     @cpu_and_gpu
     def test_two_layer_lists_exist(self, target_device_idx, xp):
@@ -38,7 +41,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 26500.0],
             Cn2=[0.5, 0.5],
             fov=120.0,
@@ -75,7 +77,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 26500.0],
             Cn2=[0.5, 0.5],
             fov=120.0,
@@ -106,7 +107,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 26500.0],
             Cn2=[0.5, 0.5],
             fov=120.0,
@@ -126,15 +126,17 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         loop.add(atmo, idx=1)
         loop.run(run_time=1, dt=1)
 
-        # After first trigger, check positions
-        wind_speed_values = cpuArray(wind_speed.output.value)
-
-        # Down should have no extra offset
-        np.testing.assert_allclose(atmo.last_position, 0.0, atol=1e-6)
-
-        # Up should have extra offset
-        expected_extra_offset_up = wind_speed_values * extra_delta_time_up / atmo.pixel_pitch
-        np.testing.assert_allclose(atmo.last_position_up, 0.0, atol=1e-6)
+        # After first trigger, check stored extra delta time offsets
+        np.testing.assert_allclose(
+            atmo.extra_delta_time_down,
+            [extra_delta_time_down, extra_delta_time_down],
+            rtol=1e-8
+        )
+        np.testing.assert_allclose(
+            atmo.extra_delta_time_up,
+            [extra_delta_time_up, extra_delta_time_up],
+            rtol=1e-8
+        )
 
         # The phase screens should be different due to different sampling positions
         # (we can't directly compare phases because they're sampled from the same screens
@@ -157,7 +159,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 26500.0],
             Cn2=[0.5, 0.5],
             fov=120.0,
@@ -213,7 +214,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 7000.0, 26500.0],
             Cn2=[1/3, 1/3, 1/3],
             fov=120.0,
@@ -257,7 +257,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 26500.0],
             Cn2=[0.5, 0.5],
             fov=120.0,
@@ -322,7 +321,6 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
         atmo = AtmoEvolutionUpDown(
             simulParams,
             L0=23,
-            data_dir=self.data_dir,
             heights=[30.0, 10000.0],
             Cn2=[0.7, 0.3],
             fov=120.0,

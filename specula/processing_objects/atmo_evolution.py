@@ -159,23 +159,23 @@ class AtmoEvolution(BaseProcessingObj):
         self.pixel_phasescreens = int(self.xp.max(self.pixel_layer))
         temp_screens = []
 
-        if len(self.xp.unique(self.to_xp(self.L0))) == 1:
+        if len(np.unique(cpuArray(self.L0))) == 1:
             # Number of rectangular phase screens from a single square phasescreen
             n_ps_from_square_ps = self.xp.floor(
                 self.pixel_square_phasescreens / self.pixel_phasescreens
             )
             # Number of square phasescreens
-            n_ps = self.xp.ceil(float(self.n_phasescreens) / n_ps_from_square_ps)
+            n_ps = int(self.xp.ceil(float(self.n_phasescreens) / n_ps_from_square_ps))
 
             # Seed vector
-            seed = self.xp.arange(self.seed, self.seed + int(n_ps))
+            seed = np.arange(self.seed, self.seed + n_ps)
 
             # Square phasescreens, all with same L0
-            L0 = np.repeat(np.atleast_1d(L0)[0], n_ps)
+            L0 = self.xp.repeat(self.xp.atleast_1d(self.L0)[0], n_ps)
             square_phasescreens = [
-                Phasescreen(dimx = self.pixel_square_phasescreen,
-                            dimy = self.pixel_square_phasescreen,
-                            L0=L0i,
+                Phasescreen(dimx = self.pixel_square_phasescreens,
+                            dimy = self.pixel_square_phasescreens,
+                            L0=float(L0i),
                             seed=seedi,
                             pixel_pitch=self.pixel_pitch,
                             precision=self.precision,
@@ -200,7 +200,7 @@ class AtmoEvolution(BaseProcessingObj):
                 ps_index += 1
 
         else:
-            seed = self.seed + self.xp.arange(self.n_phasescreens)
+            seed = self.seed + np.arange(self.n_phasescreens)
 
             if len(seed) != len(self.L0):
                 raise ValueError('Number of elements in seed and L0 must be the same!')
@@ -214,7 +214,7 @@ class AtmoEvolution(BaseProcessingObj):
                             pixel_pitch=self.pixel_pitch,
                             precision=self.precision,
                             target_device_idx=self.target_device_idx)
-                 for L0i, seedi in zip(L0, seed)]
+                 for L0i, seedi in zip(self.L0, seed)]
 
             for i in range(self.n_phasescreens):
                 temp_screen = square_phasescreens[i][ :int(self.pixel_phasescreens), :]

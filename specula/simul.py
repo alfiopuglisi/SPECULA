@@ -4,7 +4,7 @@ import itertools
 from copy import deepcopy
 from pathlib import Path
 from collections import namedtuple
-from specula import process_rank
+from specula import process_rank, init_calib_manager, get_calib_manager
 from specula.base_processing_obj import BaseProcessingObj
 from specula.base_data_obj import BaseDataObj
 
@@ -12,7 +12,6 @@ from specula.base_data_obj import BaseDataObj
 from specula.log import get_specula_logger
 from specula.loop_control import LoopControl
 from specula.lib.utils import import_class, get_type_hints, remove_suffix, resolve_type
-from specula.calib_manager import CalibManager
 from specula.processing_objects.data_store import DataStore
 from specula.connections import InputList, InputValue
 from specula.simul_diagram import SimulDiagram
@@ -290,7 +289,7 @@ class Simul():
 
         self.setSimulParams(params)
 
-        cm = CalibManager(self.mainParams['root_dir'])
+        cm = get_calib_manager()
         skip_pars = 'class inputs outputs'.split()
         if 'add_modules' in self.mainParams:
             additional_modules = self.mainParams['add_modules']
@@ -855,6 +854,7 @@ class Simul():
         else:
             replay_params = None
 
+        init_calib_manager(self.mainParams['root_dir'])
         self.build_objects(params)
         self.create_input_list_inputs(params)
         self.connect_objects(params)

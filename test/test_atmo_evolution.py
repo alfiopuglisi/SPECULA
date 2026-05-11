@@ -7,7 +7,7 @@ specula.init(0)  # Default target device
 import unittest
 
 from specula import cpuArray
-from specula import np
+from specula import np, init_calib_manager
 
 from specula.data_objects.source import Source
 from specula.base_time_obj import BaseTimeObj
@@ -22,15 +22,17 @@ from test.specula_testlib import cpu_and_gpu
 
 class TestAtmoEvolution(unittest.TestCase):
 
-    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    @classmethod
+    def setUp(cls):
+        init_calib_manager(os.path.join(os.path.dirname(__file__), 'data'))
 
     @classmethod
     def tearDownClass(cls):
         """Clean up after all tests by removing generated files"""
         pattern = 'ps_seed*_pixpit0.050_L023.0000_*.fits'
-        for fpath in glob.glob(os.path.join(cls.data_dir, pattern)):
-            if os.path.exists(fpath):
-                os.remove(fpath)
+#        for fpath in glob.glob(os.path.join(cls.data_dir, pattern)):
+#            if os.path.exists(fpath):
+#                os.remove(fpath)
 
     @cpu_and_gpu
     def test_atmo(self, target_device_idx, xp):
@@ -46,7 +48,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                              L0=23,  # [m] Outer scale
-                             data_dir=self.data_dir,
                              heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                              Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                              fov = 120.0,
@@ -82,7 +83,6 @@ class TestAtmoEvolution(unittest.TestCase):
         with self.assertRaises(ValueError):
             atmo = AtmoEvolution(simulParams,
                                 L0=23,  # [m] Outer scale
-                                data_dir=self.data_dir,
                                 heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                                 Cn2 = [0.2, 0.2], # Cn2 weights (total must be eq 1)
                                 fov = 120.0,
@@ -91,7 +91,6 @@ class TestAtmoEvolution(unittest.TestCase):
         # Total is 1, no exception raised.
         atmo = AtmoEvolution(simulParams,
                             L0=23,  # [m] Outer scale
-                            data_dir=self.data_dir,
                             heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                             Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                             fov = 120.0,
@@ -104,7 +103,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                             L0=23,  # [m] Outer scale
-                            data_dir=self.data_dir,
                             heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                             Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                             fov = 120.0,
@@ -127,7 +125,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                              L0=23,  # [m] Outer scale
-                             data_dir=self.data_dir,
                              heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                              Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                              fov = 120.0,
@@ -167,7 +164,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                              L0=23,  # [m] Outer scale
-                             data_dir=self.data_dir,
                              heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                              Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                              fov = 120.0,
@@ -194,7 +190,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                              L0=23,  # [m] Outer scale
-                             data_dir=self.data_dir,
                              heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                              Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                              fov = 120.0,
@@ -221,7 +216,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                              L0=23,  # [m] Outer scale
-                             data_dir=self.data_dir,
                              heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                              Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                              fov = 120.0,
@@ -252,7 +246,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                             L0=23,  # [m] Outer scale
-                            data_dir=self.data_dir,
                             heights = [30.0000, 26500.0], # [m] layer heights at 0 zenith angle
                             Cn2 = [0.5, 0.5], # Cn2 weights (total must be eq 1)
                             fov = 120.0,
@@ -317,7 +310,6 @@ class TestAtmoEvolution(unittest.TestCase):
 
         atmo = AtmoEvolution(simulParams,
                             L0=23,  # [m] Outer scale
-                            data_dir=self.data_dir,
                             heights=[30.0, 7000.0, 10000.0, 26500.0],  # [m] layer heights at 0 zenith angle
                             Cn2=[0.25, 0.25, 0.25, 0.25],  # Cn2 weights (total must be eq 1)
                             fov=120.0,
@@ -378,7 +370,6 @@ class TestAtmoEvolution(unittest.TestCase):
         airmass = 1.0 / np.cos(np.radians(zenith))
         atmo = AtmoEvolution(simul_params,
                              L0=23,
-                             data_dir=self.data_dir,
                              heights=heights,
                              Cn2=[1/3, 1/3, 1/3],
                              fov=120.0,
