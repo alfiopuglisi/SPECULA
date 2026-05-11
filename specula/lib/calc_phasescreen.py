@@ -1,10 +1,11 @@
+from specula.data_objects.phasescreen import Phasescreen
 from specula.log import get_specula_logger
 from specula import cpuArray, float_dtype_list
 from specula import complex_dtype_list
 from specula.lib.calc_spatialfrequency import calc_spatialfrequency
 
 
-def calc_phasescreen(L0, dimension, pixel_pitch, xp, precision, seed=0):
+def calc_phasescreen(L0, dimension, pixel_pitch, xp, precision, seed=0, target_device_idx=None):
 
     logger = get_specula_logger(__name__)
 
@@ -93,4 +94,6 @@ def calc_phasescreen(L0, dimension, pixel_pitch, xp, precision, seed=0):
 
     phasescreen = xp.real(phasescreen)
 
-    return phasescreen
+    p = Phasescreen(dimension, dimension, L0=L0, seed=seed, target_device_idx=target_device_idx)
+    p.set_value(phasescreen)
+    return p

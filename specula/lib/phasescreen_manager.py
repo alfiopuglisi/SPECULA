@@ -47,7 +47,8 @@ def phasescreens_manager(L0, dimension, pixel_pitch, directory, xp, precision, s
         else:
             # Calculate the phase screen if it does not exist
             logger.info('Calculating phasescreen...')
-            phasescreen = calc_phasescreen(L0i, dimension, pixel_pitch, seed=element, precision=precision, xp=xp)
+            phasescreen_obj = calc_phasescreen(L0i, dimension, pixel_pitch, seed=element, precision=precision, xp=xp)
+            phasescreen = phasescreen_obj.phasescreen
             fits.writeto(os.path.join(directory, phasescreen_name), cpuArray(phasescreen), overwrite=True)
             logger.info('Done')
         
