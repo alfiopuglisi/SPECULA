@@ -2,7 +2,7 @@ from specula import cpuArray, ASEC2RAD, np
 from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.base_value import BaseValue
 from specula.data_objects.layer import Layer
-from specula.lib.phasescreen_manager import phasescreens_manager
+from specula.data_objects.phasescreen import Phasescreen
 from specula.connections import InputValue
 from specula.data_objects.simul_params import SimulParams
 
@@ -22,7 +22,6 @@ class AtmoEvolution(BaseProcessingObj):
                  L0: list,           # TODO =[1.0],
                  heights: list,      # TODO =[0.0],
                  Cn2: list,          # TODO =[1.0],
-                 data_dir: str = "", # TODO ="",
                  fov: float=0.0,
                  pixel_phasescreens: int=8192,
                  seed: int=1,
@@ -46,8 +45,6 @@ class AtmoEvolution(BaseProcessingObj):
             Heights of the atmospheric layers in meters (at zenith).
         Cn2 : list
             Fractional Cn2 values for each layer (must sum to 1.0).
-        data_dir : str
-            Directory path for storing/loading phase screen data (automatically set by simul.py).
         fov : float, optional
             Field of view in arcseconds. Default is 0.0.
         pixel_phasescreens : int, optional
@@ -114,7 +111,6 @@ class AtmoEvolution(BaseProcessingObj):
 
         self.L0 = L0
         self.Cn2 = np.array(Cn2, dtype=self.dtype)
-        self.data_dir = data_dir
 
         self.pixel_square_phasescreens = pixel_phasescreens
 
@@ -174,16 +170,18 @@ class AtmoEvolution(BaseProcessingObj):
             # Seed vector
             seed = self.xp.arange(self.seed, self.seed + int(n_ps))
 
-            # Square phasescreens
-            if hasattr(self.L0, '__len__'):
-                L0 = self.L0[0]
-            else:
-                L0 = self.L0
-            L0 = np.array([L0])
-            square_phasescreens = phasescreens_manager(L0, self.pixel_square_phasescreens,
-                                                        self.pixel_pitch, self.data_dir,
-                                                        seed=seed, precision=self.precision,
-                                                        xp=self.xp)
+            # Square phasescreens, all with same L0
+            L0 = np.repeat(np.atleast_1d(L0)[0], n_ps)
+            square_phasescreens = [
+                Phasescreen(dimx = self.pixel_square_phasescreen,
+                            dimy = self.pixel_square_phasescreen,
+                            L0=L0i,
+                            seed=seedi,
+                            pixel_pitch=self.pixel_pitch,
+                            precision=self.precision,
+                            target_device_idx=self.target_device_idx)
+                for L0i, seedi in zip(L0, seed)]
+
 
             square_ps_index = -1
             ps_index = 0
@@ -208,18 +206,19 @@ class AtmoEvolution(BaseProcessingObj):
                 raise ValueError('Number of elements in seed and L0 must be the same!')
 
             # Square phasescreens
-            square_phasescreens = phasescreens_manager(self.L0,
-                                                       self.pixel_square_phasescreens,
-                                                       self.pixel_pitch,
-                                                       self.data_dir,
-                                                       seed=seed,
-                                                       precision=self.precision,
-                                                       xp=self.xp)
+            square_phasescreens = [
+                Phasescreen(dimx=self.pixel_square_phasescreen,
+                            dimy=self.pixel_square_phasescreen,
+                            L0=L0i,
+                            seed=seedi,
+                            pixel_pitch=self.pixel_pitch,
+                            precision=self.precision,
+                            target_device_idx=self.target_device_idx)
+                 for L0i, seedi in zip(L0, seed)]
 
             for i in range(self.n_phasescreens):
                 temp_screen = square_phasescreens[i][ :int(self.pixel_phasescreens), :]
                 temp_screens.append(temp_screen)
-
 
         # Normalize all phasescreens
 

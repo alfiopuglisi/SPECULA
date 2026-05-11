@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 import time
 import types
@@ -5,7 +7,7 @@ import typing
 import importlib
 import warnings
 
-from specula import to_xp
+from specula import to_xp, cp, np
 from specula.lib.make_xy import make_xy
 
 
@@ -378,3 +380,36 @@ def resolve_type(tp, require_list=False, require_dict=False):
 
     return typ
 
+
+def generate_hash(items):
+    """
+    Generate a hash for the current kernel settings.
+    This is used to check if the kernel needs to be recalculated.
+
+    Returns:
+        str: A hash string representing the current kernel settings.
+    """
+    # Convert all numpy arrays and values to native Python types
+    hash_arr = []
+    for item in items:
+        if np is not None and isinstance(item, np.ndarray):
+            # Convert array to list of native Python types
+            hash_arr.append(item.tolist())
+        elif cp is not None and isinstance(item, cp.ndarray):
+            hash_arr.append(item.tolist())
+        elif isinstance(item, tuple):
+            # Convert tuple elements to native Python types
+            hash_arr.append([float(x) for x in item])
+        elif isinstance(item, type):
+            # This matches class types and dtypes as well
+            hash_arr.append(str(item))
+        elif hasattr(item, 'dtype') and hasattr(item, 'item'):
+            # Convert numpy scalars to Python types
+            hash_arr.append(item.item())
+        else:
+            hash_arr.append(item)
+
+    # Placeholder function to compute SHA1 hash
+    sha1 = hashlib.sha1()
+    sha1.update(json.dumps(hash_arr).encode('utf-8'))
+    return sha1.hexdigest()

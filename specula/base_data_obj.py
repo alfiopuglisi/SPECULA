@@ -1,10 +1,12 @@
 
+import os
 import warnings
 from copy import copy
 from functools import lru_cache
 
 from specula import cp, np, array_types
 from specula.base_time_obj import BaseTimeObj
+from specula.calib_manager import CalibManager
 
 
 # We use lru_cache() instead of cache() for python 3.8 compatibility
@@ -32,6 +34,7 @@ class BaseDataObj(BaseTimeObj):
         super().__init__(target_device_idx, precision)
         self.generation_time = -1
         self.tag = ''
+        self._cached_filename = None
 
     def transferDataTo(self, destobj, force_reallocation=False):
         '''
@@ -133,3 +136,35 @@ class BaseDataObj(BaseTimeObj):
 
             self.transferDataTo(cloned, force_reallocation=True)
             return cloned
+
+    def cache_filename(self):
+        raise NotImplementedError
+
+    def rebuild_with_cache(self, rebuild_func=None):
+
+        fname = self.cache_filename()
+        if type(fname) is str:
+            alternatives = []
+        else:
+            fname, *alternatives = fname
+
+        if fname == self._cached_filename:
+            # Nothing changed, nothing to do
+            return
+
+        cm = CalibManager()
+        fullpath = cm.filename(self.__class__.__name__, fname)
+        alternative_fullpaths = [cm.filename(self.__class.__name__, f) for f in alternatives]
+        for fullpath in [fullpath] + alternative_fullpaths:
+            if not fullpath.endswith('.fits'):
+                fullpath += '.fits'
+            if os.path.exists(fullpath):
+                self.restore(fullpath, update=self)
+                return
+
+        # Nothing found, rebuild our object and save it before returning
+        os.makedirs(os.path.dirname(fullpath), exist_ok=True)
+        if rebuild_func:
+            rebuild_func()
+        self.save(fullpath)
+

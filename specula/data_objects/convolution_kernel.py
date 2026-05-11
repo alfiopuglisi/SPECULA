@@ -1,6 +1,4 @@
 import os
-import json
-import hashlib
 
 import numpy as np
 from astropy.io import fits
@@ -8,6 +6,7 @@ from astropy.io import fits
 from specula import cpuArray, ASEC2RAD
 from specula.base_data_obj import BaseDataObj
 from specula.lib.rebin import rebin2d
+from specula.lib.utils import generate_hash
 
 
 def lgs_map_sh(nsh, diam, rl, zb, dz, profz, fwhmb, ps, ssp,
@@ -170,7 +169,7 @@ class ConvolutionKernel(BaseDataObj):
                                      dtype=dtype)
         self._kernel_fn = None
 
-    def build(self):
+    def cache_filename(self):
         if len(self.zlayer) != len(self.zprofile):
             raise ValueError("Number of elements of zlayer and zprofile must be the same")
 
@@ -189,7 +188,7 @@ class ConvolutionKernel(BaseDataObj):
                  zfocus, lay_heights, self.zprofile,
                  self.spot_size, self.pxscale, self.dimension,
                  self.oversampling, lgs_tt, self.dtype]
-        return 'ConvolutionKernel' + self.generate_hash(items)
+        return 'ConvolutionKernel' + generate_hash(items)
 
     def calculate_focus(self):
         return self.xp.sum(self.to_xp(self.zlayer) * self.to_xp(self.zprofile)) \
@@ -242,37 +241,6 @@ class ConvolutionKernel(BaseDataObj):
         self.last_seeing = self.seeing
         self.last_zlayer = self.zlayer
         self.last_zprofile = self.zprofile
-
-    def generate_hash(self, items):
-        """
-        Generate a hash for the current kernel settings.
-        This is used to check if the kernel needs to be recalculated.
-
-        Returns:
-            str: A hash string representing the current kernel settings.
-        """
-        # Convert all numpy arrays and values to native Python types
-        hash_arr = []
-        for item in items:
-            if isinstance(item, self.xp.ndarray):
-                # Convert array to list of native Python types
-                hash_arr.append(item.tolist())
-            elif isinstance(item, tuple):
-                # Convert tuple elements to native Python types
-                hash_arr.append([float(x) for x in item])
-            elif isinstance(item, type):
-                # This matches class types and dtypes as well
-                hash_arr.append(str(item))
-            elif hasattr(item, 'dtype') and hasattr(item, 'item'):
-                # Convert numpy scalars to Python types
-                hash_arr.append(item.item())
-            else:
-                hash_arr.append(item)
-
-        # Placeholder function to compute SHA1 hash
-        sha1 = hashlib.sha1()
-        sha1.update(json.dumps(hash_arr).encode('utf-8'))
-        return sha1.hexdigest()
 
     def process_kernels(self, return_fft=False):
         # Check for non-finite values
@@ -336,44 +304,15 @@ class ConvolutionKernel(BaseDataObj):
         hdul.writeto(filename, overwrite=True)
         hdul.close()  # Force close for Windows
 
-    def prepare_for_sh(self, sodium_altitude=None, sodium_intensity=None, current_time=None):
+    def prepare_for_sh(self, sodium_altitude=None, sodium_intensity=None):
         # Update the kernel parameters if provided
         if sodium_altitude is not None:
             self.zlayer = sodium_altitude
         if sodium_intensity is not None:
             self.zprofile = sodium_intensity
-
-        kernel_fn = self.build()
-
-        # Only reload or recalculate if the kernel has changed
-        if kernel_fn != self._kernel_fn:
-            self._kernel_fn = kernel_fn  # Update the stored kernel filename
-
-            # Build full path using data_dir
-            if self.data_dir:
-                full_path = os.path.join(self.data_dir, kernel_fn + '.fits')
-            else:
-                full_path = kernel_fn + '.fits'
-
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(full_path) if os.path.dirname(full_path)
-                        else '.', exist_ok=True)
-
-            if os.path.exists(full_path):
-                self.logger.info(f"Loading kernel from {full_path}")
-                self.restore(full_path, kernel_obj=self, target_device_idx=self.target_device_idx,
-                             return_fft=True)
-            else:
-                self.logger.info('Calculating kernel...')
-                self.calculate_lgs_map()
-                self.save(full_path)
-                self.logger.info('Done')
-
-            # free memory
-            self.real_kernels = None
-
-        if current_time is not None:
-            self.generation_time = current_time
+        self.rebuild_with_cache(rebuild_func=self.calculate_lgs_map)
+        # free memory
+        self.real_kernels = None
 
     @staticmethod
     def restore(filename, target_device_idx=None, kernel_obj=None, return_fft=False):

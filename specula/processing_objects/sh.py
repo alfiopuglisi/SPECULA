@@ -451,8 +451,8 @@ class SH(BaseProcessingObj):
         self._kernelobj.prepare_for_sh(
             sodium_altitude=sodium_altitude,
             sodium_intensity=sodium_intensity,
-            current_time=self.current_time
         )
+        self._kernelobj.generation_time = self.current_time
 
 
     def trigger_code(self):

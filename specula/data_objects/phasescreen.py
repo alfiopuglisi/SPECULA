@@ -3,6 +3,7 @@ from astropy.io import fits
 
 from specula import cpuArray
 from specula.base_data_obj import BaseDataObj
+from specula.lib.calc_phasescreen import calc_phasescreen
 
 class Phasescreen(BaseDataObj):
     """
@@ -13,6 +14,7 @@ class Phasescreen(BaseDataObj):
                  dimy: int,
                  L0: float,
                  seed: int,
+                 pixel_pitch: int,
                  target_device_idx: int=None, 
                  precision: int=None):
         """
@@ -21,7 +23,9 @@ class Phasescreen(BaseDataObj):
         super().__init__(target_device_idx=target_device_idx, precision=precision)
         self.L0 = L0
         self.seed = seed
+        self.pixel_pitch = pixel_pitch
         self.phasescreen = self.xp.zeros((dimy, dimx), dtype=self.dtype)
+        self.rebuild_with_cache(rebuild_func=self.rebuild)
 
     def get_value(self):
         '''
@@ -46,6 +50,7 @@ class Phasescreen(BaseDataObj):
         hdr['DIMY'] = self.phasescreen.shape[0]
         hdr['L0'] = self.L0
         hdr['SEED'] = self.seed
+        hdr['PIXPITCH'] = self.pixel_pitch
         return hdr
 
     def save(self, filename, overwrite=True):
@@ -64,7 +69,8 @@ class Phasescreen(BaseDataObj):
         dimy = hdr['DIMY']
         L0 = hdr['L0']
         seed = hdr['SEED']
-        intensity = Phasescreen(dimx, dimy, L0=L0, seed=seed, target_device_idx=target_device_idx)
+        pixel_pitch = hdr['PIXPITCH']
+        intensity = Phasescreen(dimx, dimy, L0=L0, pixel_pitch=pixel_pitch, seed=seed, target_device_idx=target_device_idx)
         return intensity
     
     @staticmethod
@@ -79,3 +85,24 @@ class Phasescreen(BaseDataObj):
 
     def array_for_display(self):
         return self.phasescreen
+
+    def cache_filename(self):
+        # Multiple filenames for PASSATA compatibility, first one used by default
+        dimension = self.phasescreen.shape[0]
+        pixel_pitch = self.pixel_pitch
+        precision_str = 'single' if self.precision==1 else 'double'
+        L0 = self.L0
+        xp = self.xp
+        name = f'ps_seed{xp.around(self.seed)}_dim{xp.around(dimension)}_pixpit{pixel_pitch:.3f}_L0{float(L0):.4f}_{precision_str}.fits'
+        name1 = f'ps_seed{xp.around(self.seed)}_dim{xp.around(dimension)}_pixpit{pixel_pitch:.3f}_L0{xp.around(L0):.4f}_{precision_str}.fits'
+        name2 = f'ps_seed{float(self.seed)}_dim{xp.around(dimension)}_pixpit{pixel_pitch:.3f}_L0{float(L0):.4f}_{precision_str}.fits'
+        name3 = f'ps_seed{float(self.seed)}_dim{xp.around(dimension)}_pixpit{pixel_pitch:.3f}_L0{xp.around(L0):.4f}_{precision_str}.fits'
+        return [name, name1, name2, name3]
+
+    def rebuild(self):
+        self.phasescreen[:] = calc_phasescreen(L0=self.L0,
+                                               dimension=self.phasescreen.shape[0],
+                                               pixel_pitch=self.pixel_pitch,
+                                               seed=self.seed,
+                                               xp=self.xp,
+                                               target_device_idx=self.target_device_idx)
