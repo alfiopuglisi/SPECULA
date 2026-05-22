@@ -51,22 +51,21 @@ def toccd(a, newshape, set_total=None, xp=None, out=None):
     out : array
         array for output data. Must have been already allocated with the correct shape and dtype.
         If not set, a new array will be allocated
-        Only used for GPU calculations, ignored for CPU.
 
     Returns
     -------
     array
-        resized array. Same as the "out" parameter, if set.
+        resized array. Same as the "out" parameter, if the latter has been set.
     '''
     newshape = tuple(cpuArray(newshape))  # Works for lists, tuples and any cupy/numpy array
 
     if a.shape == newshape:
         return a
 
-    if out and out.shape != newshape:
+    if out is not None and out.shape != newshape:
         raise ValueError(f'Output array has shape {out.shape} instead of {newshape}')
 
-    if out and out.dtype != a.dtype:
+    if out is not None and out.dtype != a.dtype:
         raise ValueError(f'Output array has dtype {out.dtype} instead of {a.dtype}')
 
     if xp == cp:
