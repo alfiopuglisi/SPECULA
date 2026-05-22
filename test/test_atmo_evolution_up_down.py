@@ -138,6 +138,16 @@ class TestAtmoEvolutionUpDown(unittest.TestCase):
             rtol=1e-8
         )
 
+        # After first trigger, check positions
+        wind_speed_values = cpuArray(wind_speed.output.value)
+
+        # Down should have no extra offset
+        np.testing.assert_allclose(atmo.last_position, 0.0, atol=1e-6)
+
+        # Up should have extra offset
+        expected_extra_offset_up = wind_speed_values * extra_delta_time_up / atmo.pixel_pitch
+        np.testing.assert_allclose(atmo.last_position_up, 0.0, atol=1e-6)
+
         # The phase screens should be different due to different sampling positions
         # (we can't directly compare phases because they're sampled from the same screens
         # at different positions)

@@ -4,7 +4,7 @@ from specula import complex_dtype_list
 from specula.lib.calc_spatialfrequency import calc_spatialfrequency
 
 
-def calc_phasescreen(L0, dimension, pixel_pitch, xp, precision, seed=0, target_device_idx=None):
+def calc_phasescreen(L0, dimension, pixel_pitch, xp, precision, seed=0):
 
     logger = get_specula_logger(__name__)
 
