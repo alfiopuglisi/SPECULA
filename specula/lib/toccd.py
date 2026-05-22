@@ -86,7 +86,7 @@ def toccd(a, newshape, set_total=None, xp=None, out=None):
     temp = rebin2d(a, (mcmx, a.shape[1]), sample=True, xp=xp)
     temp = rebin2d(temp, (newshape[0], a.shape[1]), xp=xp)
     temp = rebin2d(temp, (newshape[0], mcmy), sample=True, xp=xp)
-    if out:
+    if out is not None:
         out[:] = rebin2d(temp, newshape, xp=xp)
         rebinned = out
     else:
