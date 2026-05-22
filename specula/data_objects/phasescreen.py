@@ -39,7 +39,7 @@ class Phasescreen(BaseDataObj):
         Arrays are not reallocated
         '''
         assert v.shape == self.phasescreen.shape, \
-            f"Error: input array shape {v.shape} does not match phasescreen field shape {self.i.shape}"
+            f"Error: input array shape {v.shape} does not match phasescreen field shape {self.phasescreen.shape}"
         self.phasescreen[:]= self.to_xp(v)
 
     def get_fits_header(self):
