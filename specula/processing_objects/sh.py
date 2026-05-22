@@ -521,8 +521,10 @@ class SH(BaseProcessingObj):
             assert subap_cube_view.base is not None
 
         with show_in_profiler('toccd'):
-            self._out_i.i[:] = toccd(self._psfimage, (self._ccd_side, self._ccd_side), xp=self.xp)
-
+            toccd(self._psfimage,
+                 (self._ccd_side, self._ccd_side),
+                  xp=self.xp,
+                  out=self._out_i.i)
 
     def post_trigger(self):
         super().post_trigger()
