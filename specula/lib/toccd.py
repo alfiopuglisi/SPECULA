@@ -101,6 +101,7 @@ def toccd(a, newshape, set_total=None, xp=None, out=None):
 
     rebinned /= rebinned_sum
     rebinned *= set_total
+    return rebinned
 
 
 def toccd_gpu(a, newshape, set_total=None, out=None):
