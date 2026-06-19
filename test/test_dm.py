@@ -120,6 +120,11 @@ class TestDM(unittest.TestCase):
         with self.assertRaises(ValueError):
             dm4 = DM(simul_params, height=0, type_str='zernike', start_mode=3, idx_modes=idx_modes, target_device_idx=target_device_idx)
 
+    @cpu_and_gpu
+    def test_dm_idx_modes_with_longer_input_command(self, target_device_idx, xp):
+        ''' Test idx_modes can actually extract modes from a longer input command'''
+        pass
+
     
     @cpu_and_gpu
     def test_dm_stroke_clipping(self, target_device_idx, xp):

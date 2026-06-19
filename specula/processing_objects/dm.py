@@ -129,8 +129,7 @@ class DM(BaseProcessingObj):
             self.n_valid_modes = len(idx_modes)
         else:
             self._valid_modes = slice(start_mode, nmodes)
-            self.n_valid_modes = len(range(start_mode, nmodes))
-
+            self.n_valid_modes = nmodes - start_mode   # Input command vector is not supposed to include the modes before "start_mode"
         if m2c is not None:
             self.m2c = m2c.m2c
             nmodes_m2c = m2c.m2c[:, self._valid_modes].shape[1]
@@ -140,7 +139,7 @@ class DM(BaseProcessingObj):
             self.m2c = None
             self.m2c_commands = None
             out_comm_len = self.n_valid_modes
-        
+
         s = self._ifunc.mask_inf_func.shape
         nmodes_if = self._ifunc.nmodes()
         self.if_commands = self.xp.zeros(nmodes_if, dtype=self.dtype)
@@ -149,8 +148,6 @@ class DM(BaseProcessingObj):
 
         self.layer = Layer(s[0], s[1], self.pixel_pitch, height, target_device_idx=target_device_idx, precision=precision)
         self.layer.A = self._ifunc.mask_inf_func
-
-        self.nmodes = nmodes - start_mode   # Input command vector is not supposed to include the modes before "start_mode"
 
         # Default sign is -1 to take into account the reflection in the propagation
         self.sign = sign
@@ -185,14 +182,14 @@ class DM(BaseProcessingObj):
     def trigger_code(self):
         input_commands = self.local_inputs['in_command'].value
 
-        if self.nmodes is not None:
-            input_commands = input_commands[:self.nmodes]
+        input_commands = input_commands[:self.n_valid_modes]
 
         if self.m2c is not None:
             self.m2c_commands[:len(input_commands)] = input_commands
             cmd = self.m2c[:, self._valid_modes] @ self.m2c_commands
         else:
             cmd = input_commands
+
         # Perform clipping
         if self.stroke is not None: 
             cmd = self.xp.minimum(self.xp.maximum(-self.stroke[:len(cmd)],cmd),self.stroke[:len(cmd)])
@@ -203,6 +200,7 @@ class DM(BaseProcessingObj):
         else:
             self.layer.phaseInNm[self._ifunc.idx_inf_func] = \
                 self.if_commands[self.if_commands_selector] @ self._ifunc.influence_function[self._valid_modes, :]
+
         self.layer.generation_time = self.current_time
         self.clip_command.value[:len(cmd)] = cmd
         self.clip_command.generation_time = self.current_time
