@@ -2,6 +2,7 @@
 import sys
 
 from specula.lib.terminal_pane import spawn_input_pane, cleanup_input_pane
+from specula.lib.terminal_pane import _fifo_lines
 from specula.processing_objects.specula_input import SpeculaInput
 
 output_list_for_help = None
@@ -42,13 +43,14 @@ class TerminalInput(SpeculaInput):
 
         output_list_for_help = output_list
 
-        # If possible, run the interactive prompt in its own tmux pane
-        # (own tty, own stdin/stdout), so that it is physically isolated
-        # from simulation output: input and output never share the same
-        # terminal, so no coordination/locking is needed between them.
-        # Otherwise fall back to sharing the current terminal, exactly
-        # as before -- occasional visual interleaving with output is
-        # possible in that case, but reading input never blocks writers.
+        # If possible, run the interactive prompt in its own pane/console
+        # (own tty on POSIX via tmux, own console window on Windows), so
+        # that it is physically isolated from simulation output: input
+        # and output never share the same terminal, so no coordination/
+        # locking is needed between them. Otherwise fall back to sharing
+        # the current terminal, exactly as before -- occasional visual
+        # interleaving with output is possible in that case, but reading
+        # input never blocks writers.
         self.fifo_path = spawn_input_pane()
         self.set_input_task(terminal_task, self.fifo_path)
 
@@ -62,9 +64,9 @@ class TerminalInput(SpeculaInput):
 
 def terminal_task(q, fifo_path=None):
     """
-    Read command lines (either forwarded from a dedicated tmux pane
-    via "fifo_path", or directly from this process' own stdin), parse
-    them and put resulting (name, value) pairs on "q".
+    Read command lines (either forwarded from a dedicated input
+    pane/console via "fifo_path", or directly from this process' own
+    stdin), parse them and put resulting (name, value) pairs on "q".
     """
     if fifo_path:
         lines = _fifo_lines(fifo_path)
@@ -100,17 +102,6 @@ def _prompt_lines():
             return
         except Exception as e:
             print(e)
-
-
-def _fifo_lines(fifo_path):
-    """
-    Yield successive lines forwarded by the dedicated tmux input pane.
-    Opening the FIFO for reading blocks until the pane process opens
-    its write end, and iteration stops once the pane is closed (EOF).
-    """
-    with open(fifo_path, 'r') as f:
-        for line in f:
-            yield line.rstrip('\n')
 
 
 def print_help():
