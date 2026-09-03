@@ -2,7 +2,7 @@
 import sys
 import unittest
 
-from specula import terminal_io
+from specula.lib import terminal_io
 from specula.processing_objects.terminal_input import TerminalInput
 
 

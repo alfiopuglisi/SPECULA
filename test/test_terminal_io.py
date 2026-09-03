@@ -3,7 +3,7 @@ import logging
 import logging.handlers
 import unittest
 
-from specula import terminal_io
+from specula.lib import terminal_io
 
 
 class TestTerminalIO(unittest.TestCase):

@@ -1,7 +1,7 @@
 
 import sys
 
-from specula import terminal_io
+from specula.lib import terminal_io
 from specula.processing_objects.specula_input import SpeculaInput
 
 output_list_for_help = None
