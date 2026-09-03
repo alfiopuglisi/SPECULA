@@ -1,7 +1,7 @@
 
 import sys
 
-from specula.lib import terminal_io
+from specula.lib.terminal_pane import spawn_input_pane, cleanup_input_pane
 from specula.processing_objects.specula_input import SpeculaInput
 
 output_list_for_help = None
@@ -42,53 +42,76 @@ class TerminalInput(SpeculaInput):
 
         output_list_for_help = output_list
 
-        # Centralize all terminal writes (logging + stray print()) so
-        # that they cannot interleave with the input prompt handled by
-        # terminal_task() in the child process below. The lock is kept
-        # as an attribute for introspection/testing.
-        terminal_io.install()
-        self.lock = terminal_io.terminal_lock
-        self.set_input_task(terminal_task, self.lock)
+        # If possible, run the interactive prompt in its own tmux pane
+        # (own tty, own stdin/stdout), so that it is physically isolated
+        # from simulation output: input and output never share the same
+        # terminal, so no coordination/locking is needed between them.
+        # Otherwise fall back to sharing the current terminal, exactly
+        # as before -- occasional visual interleaving with output is
+        # possible in that case, but reading input never blocks writers.
+        self.fifo_path = spawn_input_pane()
+        self.set_input_task(terminal_task, self.fifo_path)
 
     def finalize(self):
         super().finalize()
-        terminal_io.uninstall()
         if self.p.is_alive():
             self.p.terminate()
             self.p.join(timeout=1.0)
+        cleanup_input_pane(self.fifo_path)
 
 
-def terminal_task(q, lock):
-    sys.stdin = open(0)
+def terminal_task(q, fifo_path=None):
+    """
+    Read command lines (either forwarded from a dedicated tmux pane
+    via "fifo_path", or directly from this process' own stdin), parse
+    them and put resulting (name, value) pairs on "q".
+    """
+    if fifo_path:
+        lines = _fifo_lines(fifo_path)
+    else:
+        sys.stdin = open(0)
+        lines = _prompt_lines()
 
+    for line in lines:
+        tokens = [x.strip() for x in line.split()]
+        if len(tokens) == 0:
+            continue
+        elif len(tokens) == 1:
+            if tokens[0] == 'help':
+                print_help()
+            else:
+                q.put((tokens[0], False))
+        elif len(tokens) == 2:
+            value = tokens[1]
+            q.put((tokens[0], value))
+        else:
+            print('Input not recognized')
+
+
+def _prompt_lines():
+    """
+    Yield successive input lines read directly from this process' own
+    terminal.
+    """
     while True:
         try:
-            # Hold the lock for the whole prompt/input cycle, so that no
-            # other terminal writer (logging or print()) can corrupt the
-            # prompt while the user is typing.
-            with lock:
-                tokens = [x.strip() for x in input('specula>').split()]
-            if len(tokens) == 0:
-                continue
-            elif len(tokens) == 1:
-                if tokens[0] == 'help':
-                    with lock:
-                        print_help()
-                else:
-                    q.put((tokens[0], False))
-            elif len(tokens) == 2:
-                value = tokens[1]
-                q.put((tokens[0], value))
-            else:
-                with lock:
-                    print('Input not recognized')
+            yield input('specula>')
         except EOFError:
-            break
+            return
         except Exception as e:
-            with lock:
-                print(e)
+            print(e)
+
+
+def _fifo_lines(fifo_path):
+    """
+    Yield successive lines forwarded by the dedicated tmux input pane.
+    Opening the FIFO for reading blocks until the pane process opens
+    its write end, and iteration stops once the pane is closed (EOF).
+    """
+    with open(fifo_path, 'r') as f:
+        for line in f:
+            yield line.rstrip('\n')
+
 
 def print_help():
     print(output_list_for_help)
-
-
