@@ -1,6 +1,7 @@
 
 import sys
 
+from specula import terminal_io
 from specula.processing_objects.specula_input import SpeculaInput
 
 output_list_for_help = None
@@ -40,31 +41,52 @@ class TerminalInput(SpeculaInput):
                          precision=precision)
 
         output_list_for_help = output_list
-        self.set_input_task(terminal_task)
+
+        # Centralize all terminal writes (logging + stray print()) so
+        # that they cannot interleave with the input prompt handled by
+        # terminal_task() in the child process below. The lock is kept
+        # as an attribute for introspection/testing.
+        terminal_io.install()
+        self.lock = terminal_io.terminal_lock
+        self.set_input_task(terminal_task, self.lock)
+
+    def finalize(self):
+        super().finalize()
+        terminal_io.uninstall()
+        if self.p.is_alive():
+            self.p.terminate()
+            self.p.join(timeout=1.0)
 
 
-def terminal_task(q):
+def terminal_task(q, lock):
     sys.stdin = open(0)
 
     while True:
         try:
-            tokens = [x.strip() for x in input('specula>').split()]
+            # Hold the lock for the whole prompt/input cycle, so that no
+            # other terminal writer (logging or print()) can corrupt the
+            # prompt while the user is typing.
+            with lock:
+                tokens = [x.strip() for x in input('specula>').split()]
             if len(tokens) == 0:
                 continue
             elif len(tokens) == 1:
                 if tokens[0] == 'help':
-                    print_help()
+                    with lock:
+                        print_help()
                 else:
                     q.put((tokens[0], False))
             elif len(tokens) == 2:
                 value = tokens[1]
                 q.put((tokens[0], value))
             else:
-                print('Input not recognized')
+                with lock:
+                    print('Input not recognized')
         except EOFError:
             break
         except Exception as e:
-            print(e)
+            with lock:
+                print(e)
 
 def print_help():
     print(output_list_for_help)
