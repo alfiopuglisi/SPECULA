@@ -48,15 +48,18 @@ class SpeculaInput(BaseProcessingObj):
             else:
                 raise ValueError(f'Unsupported type {typ} for output {real_name}')
 
-    def set_input_task(self, task):
+    def set_input_task(self, task, *task_args):
         """
         "task" must be a Python callable that accepts one argument.
         The argument will be set to a mp.Queue() instance, on which
         the callable must call put() with a tuple of two values:
         output name and output value.
+
+        Any additional positional arguments are passed to "task"
+        after the queue.
         """
         self.q = mp.Queue()
-        self.p = mp.Process(target=task, args=(self.q,))
+        self.p = mp.Process(target=task, args=(self.q, *task_args))
         self.p.start()
 
     def trigger_code(self):

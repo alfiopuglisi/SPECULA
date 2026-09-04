@@ -1,0 +1,396 @@
+"""
+True terminal separation for interactive input, using a dedicated
+console/pane on both POSIX and Windows.
+
+`TerminalInput` reads user commands from a subprocess that, by default,
+shares a terminal with the main SPECULA process. That process produces
+output via `logging` (from many different objects) and occasional
+stray `print()` calls. Without any coordination, these independent
+writers of the same terminal can interleave with the input prompt,
+corrupting whatever the user is currently typing. Any scheme that
+tries to fix this by serializing writes with a lock is fragile: if
+that lock is ever held across the (unbounded) blocking read used to
+collect a line of input, it stalls every other writer -- and,
+transitively, the whole simulation -- for as long as the user takes
+to type.
+
+The robust fix is to not share the terminal at all:
+
+- On POSIX, if the simulation is *already* running inside a tmux
+  session, we open a brand new pane dedicated to the interactive
+  prompt (own pty). Communication with the pane is done with a simple
+  FIFO: the pane process runs a tiny read-eval-print loop that writes
+  each completed line to the FIFO, and the caller reads lines back out
+  of it.
+- On POSIX but *not* inside tmux (the common case: SPECULA started
+  from a plain terminal), `tmux split-window` has nothing to split --
+  it only adds a pane to a window that a tmux client is already
+  attached to. If the `tmux` binary is nonetheless installed, we
+  instead create a brand new, independent, *detached* tmux session
+  (`tmux new-session -d`) running the same FIFO-based read-eval-print
+  loop, and print the `tmux attach` command the user needs to view/use
+  it. This works identically for local desktop use and headless/remote
+  use (e.g. over plain SSH, in a container), since it needs nothing
+  beyond the `tmux` binary itself -- no `DISPLAY`, no GUI.
+- If `tmux` isn't installed at all, but a graphical session is
+  available (`DISPLAY`/`WAYLAND_DISPLAY`) and a terminal emulator
+  binary can be found (`x-terminal-emulator`, `gnome-terminal`,
+  `konsole`, `xfce4-terminal` or `xterm`), a brand new terminal window
+  is launched instead, running the same FIFO-based read-eval-print
+  loop.
+- On Windows, tmux is not available, so instead a brand new console
+  window is spawned (`subprocess.Popen(..., creationflags=
+  subprocess.CREATE_NEW_CONSOLE)`) running the same kind of tiny
+  read-eval-print loop. There is no FIFO equivalent on Windows, so
+  communication uses a named pipe via
+  `multiprocessing.connection.Listener`/`Client` instead.
+
+In all cases the new pane/session/window/console has its own input
+surface, so keystrokes and prompt redraws are physically isolated from
+whatever the simulation prints in the original terminal -- no locking
+of any kind is needed between the two.
+
+If none of these mechanisms is usable (not on a real tty, no `tmux`
+binary and no terminal emulator/graphical session on POSIX, or unable
+to spawn a new console on Windows), `spawn_input_pane()` returns None
+and the caller should fall back to reading input on the current
+terminal.
+"""
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import uuid
+
+_logger = logging.getLogger(__name__)
+
+# Marker/prefix used to recognize the addresses returned for the
+# Windows named pipe transport, as opposed to plain POSIX FIFO paths.
+_WINDOWS_PIPE_MARKER = "\\\\.\\pipe\\"
+_WINDOWS_PIPE_PREFIX = _WINDOWS_PIPE_MARKER + "specula_terminal_"
+
+# Candidate terminal emulator binaries, in order of preference, used
+# to open a dedicated input window when neither an existing tmux
+# session nor the tmux binary itself is usable. Each maps to the
+# option used to tell it to run a command rather than an interactive
+# shell.
+_TERMINAL_EMULATORS = [
+    ('x-terminal-emulator', '-e'),
+    ('gnome-terminal', '--'),
+    ('konsole', '-e'),
+    ('xfce4-terminal', '-e'),
+    ('xterm', '-e'),
+]
+
+# Maps a FIFO path to the name of the standalone detached tmux session
+# that feeds it (see `_spawn_detached_tmux_session()`), so that
+# `cleanup_input_pane()` can kill it. Entries are removed on cleanup.
+# Guarded by `_detached_tmux_sessions_lock` in case spawn/cleanup are
+# ever invoked from different threads.
+_detached_tmux_sessions = {}
+_detached_tmux_sessions_lock = threading.Lock()
+
+
+def tmux_available():
+    """
+    Return True if we are running inside a tmux session (so that
+    `tmux split-window` can add a pane to it) and the `tmux` binary is
+    reachable.
+    """
+    return 'TMUX' in os.environ and shutil.which('tmux') is not None
+
+
+def _graphical_session_available():
+    """
+    Return True if a graphical (X11 or Wayland) session appears to be
+    available, i.e. a terminal emulator could plausibly open a new
+    window.
+    """
+    return bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+
+
+def _find_terminal_emulator():
+    """
+    Return (path, run_option) for the first available terminal
+    emulator binary from `_TERMINAL_EMULATORS`, or (None, None) if
+    none can be found.
+    """
+    for name, run_option in _TERMINAL_EMULATORS:
+        path = shutil.which(name)
+        if path is not None:
+            return path, run_option
+    return None, None
+
+
+def _is_windows_pipe_address(address):
+    return isinstance(address, str) and address.startswith(_WINDOWS_PIPE_MARKER)
+
+
+def spawn_input_pane(prompt='specula> '):
+    """
+    Try to open a new pane/session/window/console dedicated to
+    interactive input.
+
+    Returns an opaque address that the caller can pass to
+    `terminal_task`/`_fifo_lines` to read completed input lines back
+    (a FIFO path on POSIX, a named pipe address on Windows), or None
+    if a dedicated pane could not be created, in which case the caller
+    should fall back to reading input on the current terminal.
+    """
+    if not sys.stdout.isatty():
+        return None
+
+    if sys.platform == 'win32':
+        return _spawn_windows_console_pane(prompt)
+
+    if tmux_available():
+        return _spawn_tmux_pane(prompt)
+
+    if shutil.which('tmux') is not None:
+        return _spawn_detached_tmux_session(prompt)
+
+    return _spawn_terminal_emulator_pane(prompt)
+
+
+def _fifo_pane_script(fifo_path, prompt):
+    """
+    Minimal read-eval-print loop shared by every FIFO-based pane
+    (tmux pane or standalone terminal emulator window): just prompt
+    for lines and forward them verbatim to the FIFO. All command
+    parsing (tokens, "help", error handling) still happens on the
+    reading side, in the main process.
+    """
+    return (
+        "import sys\n"
+        f"with open({fifo_path!r}, 'w') as f:\n"
+        "    while True:\n"
+        "        try:\n"
+        f"            line = input({prompt!r})\n"
+        "        except EOFError:\n"
+        "            break\n"
+        "        f.write(line + chr(10))\n"
+        "        f.flush()\n"
+    )
+
+
+def _spawn_tmux_pane(prompt):
+    """
+    Split the current tmux window and forward completed input lines
+    through a FIFO. Only usable when already running inside a tmux
+    session (see `tmux_available()`).
+    """
+    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
+    fifo_path = os.path.join(fifo_dir, 'input.fifo')
+    os.mkfifo(fifo_path)
+
+    pane_script = _fifo_pane_script(fifo_path, prompt)
+
+    try:
+        subprocess.run(
+            ['tmux', 'split-window', '-d', sys.executable, '-c', pane_script],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        cleanup_input_pane(fifo_path)
+        return None
+
+    return fifo_path
+
+
+def _spawn_detached_tmux_session(prompt):
+    """
+    Create a brand new, independent, detached tmux session dedicated
+    to interactive input, and forward completed input lines through a
+    FIFO. This is the fallback used on POSIX when SPECULA is *not*
+    already running inside a tmux session but the `tmux` binary is
+    nonetheless installed: unlike `_spawn_tmux_pane()`, this does not
+    require an existing attached session to split, so it works over a
+    plain SSH connection or in a container with no graphical session
+    at all. The user must manually attach to view/use it.
+    """
+    session_name = 'specula_' + uuid.uuid4().hex[:8]
+
+    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
+    fifo_path = os.path.join(fifo_dir, 'input.fifo')
+    os.mkfifo(fifo_path)
+
+    pane_script = _fifo_pane_script(fifo_path, prompt)
+
+    try:
+        subprocess.run(
+            ['tmux', 'new-session', '-d', '-s', session_name,
+             sys.executable, '-c', pane_script],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        cleanup_input_pane(fifo_path)
+        return None
+
+    with _detached_tmux_sessions_lock:
+        _detached_tmux_sessions[fifo_path] = session_name
+    _logger.info(
+        'Interactive input available - attach with: tmux attach -t %s',
+        session_name)
+
+    return fifo_path
+
+
+def _spawn_terminal_emulator_pane(prompt):
+    """
+    Open a brand new terminal emulator window and forward completed
+    input lines through a FIFO. This is the last-resort fallback used
+    on POSIX when SPECULA is *not* already running inside a tmux
+    session and the `tmux` binary itself isn't installed either,
+    requiring a graphical session (`DISPLAY`/`WAYLAND_DISPLAY`) and a
+    known terminal emulator binary.
+    """
+    if not _graphical_session_available():
+        return None
+
+    terminal, run_option = _find_terminal_emulator()
+    if terminal is None:
+        return None
+
+    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
+    fifo_path = os.path.join(fifo_dir, 'input.fifo')
+    os.mkfifo(fifo_path)
+
+    pane_script = _fifo_pane_script(fifo_path, prompt)
+
+    try:
+        subprocess.Popen(
+            [terminal, run_option, sys.executable, '-c', pane_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        cleanup_input_pane(fifo_path)
+        return None
+
+    return fifo_path
+
+
+def _spawn_windows_console_pane(prompt):
+    """
+    Windows implementation: open a brand new console window and
+    forward completed input lines through a named pipe.
+
+    There is no FIFO-style blocking-open on Windows to naturally
+    synchronize the two ends, so the spawned console retries
+    connecting to the named pipe for a few seconds, giving the
+    reading side (which starts listening afterwards, in the
+    `terminal_task` child process) time to become ready.
+    """
+    create_new_console = getattr(subprocess, 'CREATE_NEW_CONSOLE', None)
+    if create_new_console is None:
+        return None
+
+    address = _WINDOWS_PIPE_PREFIX + uuid.uuid4().hex
+
+    pane_script = (
+        "import time\n"
+        "from multiprocessing.connection import Client\n"
+        "conn = None\n"
+        "for _ in range(100):\n"
+        "    try:\n"
+        f"        conn = Client({address!r}, family='AF_PIPE')\n"
+        "        break\n"
+        "    except OSError:\n"
+        "        time.sleep(0.1)\n"
+        "if conn is None:\n"
+        "    raise SystemExit(1)\n"
+        "try:\n"
+        "    while True:\n"
+        "        try:\n"
+        f"            line = input({prompt!r})\n"
+        "        except EOFError:\n"
+        "            break\n"
+        "        conn.send(line)\n"
+        "finally:\n"
+        "    conn.close()\n"
+    )
+
+    try:
+        subprocess.Popen(
+            [sys.executable, '-c', pane_script],
+            creationflags=create_new_console,
+        )
+    except OSError:
+        return None
+
+    return address
+
+
+def _fifo_lines(fifo_path):
+    """
+    Yield successive lines forwarded by the dedicated input pane,
+    whether it is a POSIX FIFO or a Windows named pipe.
+    """
+    if _is_windows_pipe_address(fifo_path):
+        yield from _windows_pipe_lines(fifo_path)
+        return
+
+    with open(fifo_path, 'r') as f:
+        for line in f:
+            yield line.rstrip('\n')
+
+
+def _windows_pipe_lines(address):
+    """
+    Yield successive lines received over the named pipe identified by
+    "address". Listening is set up here (in the reader, i.e. the
+    `terminal_task` child process) rather than in
+    `_spawn_windows_console_pane`, since the pane's `Client` retries
+    connecting until this listener is ready.
+    """
+    from multiprocessing.connection import Listener
+
+    with Listener(address, family='AF_PIPE') as listener:
+        with listener.accept() as conn:
+            while True:
+                try:
+                    yield conn.recv()
+                except EOFError:
+                    return
+
+
+def cleanup_input_pane(fifo_path):
+    """
+    Release resources created by `spawn_input_pane()`: kill the
+    standalone detached tmux session (if one was created for
+    "fifo_path") and remove the FIFO (and its containing temporary
+    directory) on POSIX, or do nothing on Windows (the named pipe is
+    torn down automatically when the listener/connection are closed).
+    Safe to call even if the resources no longer exist, or if
+    "fifo_path" is None.
+    """
+    if not fifo_path or _is_windows_pipe_address(fifo_path):
+        return
+
+    with _detached_tmux_sessions_lock:
+        session_name = _detached_tmux_sessions.pop(fifo_path, None)
+    if session_name is not None:
+        try:
+            subprocess.run(
+                ['tmux', 'kill-session', '-t', session_name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            pass
+
+    try:
+        os.remove(fifo_path)
+    except OSError:
+        pass
+    try:
+        os.rmdir(os.path.dirname(fifo_path))
+    except OSError:
+        pass
