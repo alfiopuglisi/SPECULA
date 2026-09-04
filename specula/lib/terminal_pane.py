@@ -16,11 +16,20 @@ to type.
 
 The robust fix is to not share the terminal at all:
 
-- On POSIX, if the simulation is running inside a tmux session, we
-  open a brand new pane dedicated to the interactive prompt (own pty).
-  Communication with the pane is done with a simple FIFO: the pane
-  process runs a tiny read-eval-print loop that writes each completed
-  line to the FIFO, and the caller reads lines back out of it.
+- On POSIX, if the simulation is *already* running inside a tmux
+  session, we open a brand new pane dedicated to the interactive
+  prompt (own pty). Communication with the pane is done with a simple
+  FIFO: the pane process runs a tiny read-eval-print loop that writes
+  each completed line to the FIFO, and the caller reads lines back out
+  of it.
+- On POSIX but *not* inside tmux (the common case: SPECULA started
+  from a plain terminal), tmux has nothing to split -- `tmux
+  split-window` only adds a pane to a window that a tmux client is
+  already attached to. Instead, if a graphical session is available
+  (`DISPLAY`/`WAYLAND_DISPLAY`) and a terminal emulator binary can be
+  found (`x-terminal-emulator`, `gnome-terminal`, `konsole`,
+  `xfce4-terminal` or `xterm`), a brand new terminal window is
+  launched, running the same FIFO-based read-eval-print loop.
 - On Windows, tmux is not available, so instead a brand new console
   window is spawned (`subprocess.Popen(..., creationflags=
   subprocess.CREATE_NEW_CONSOLE)`) running the same kind of tiny
@@ -28,15 +37,15 @@ The robust fix is to not share the terminal at all:
   communication uses a named pipe via
   `multiprocessing.connection.Listener`/`Client` instead.
 
-In both cases the new pane/console has its own input surface, so
+In all cases the new pane/window/console has its own input surface, so
 keystrokes and prompt redraws are physically isolated from whatever
 the simulation prints in the original terminal -- no locking of any
 kind is needed between the two.
 
-If neither mechanism is usable (not on a real tty, not inside tmux on
-POSIX, or unable to spawn a new console on Windows), `spawn_input_pane()`
-returns None and the caller should fall back to reading input on the
-current terminal.
+If none of these mechanisms is usable (not on a real tty, not inside
+tmux and no terminal emulator/graphical session on POSIX, or unable to
+spawn a new console on Windows), `spawn_input_pane()` returns None and
+the caller should fall back to reading input on the current terminal.
 """
 import os
 import shutil
@@ -50,6 +59,18 @@ import uuid
 _WINDOWS_PIPE_MARKER = "\\\\.\\pipe\\"
 _WINDOWS_PIPE_PREFIX = _WINDOWS_PIPE_MARKER + "specula_terminal_"
 
+# Candidate terminal emulator binaries, in order of preference, used
+# to open a dedicated input window when not already running inside
+# tmux. Each maps to the option used to tell it to run a command
+# rather than an interactive shell.
+_TERMINAL_EMULATORS = [
+    ('x-terminal-emulator', '-e'),
+    ('gnome-terminal', '--'),
+    ('konsole', '-e'),
+    ('xfce4-terminal', '-e'),
+    ('xterm', '-e'),
+]
+
 
 def tmux_available():
     """
@@ -60,13 +81,36 @@ def tmux_available():
     return 'TMUX' in os.environ and shutil.which('tmux') is not None
 
 
+def _graphical_session_available():
+    """
+    Return True if a graphical (X11 or Wayland) session appears to be
+    available, i.e. a terminal emulator could plausibly open a new
+    window.
+    """
+    return bool(os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'))
+
+
+def _find_terminal_emulator():
+    """
+    Return (path, run_option) for the first available terminal
+    emulator binary from `_TERMINAL_EMULATORS`, or (None, None) if
+    none can be found.
+    """
+    for name, run_option in _TERMINAL_EMULATORS:
+        path = shutil.which(name)
+        if path is not None:
+            return path, run_option
+    return None, None
+
+
 def _is_windows_pipe_address(address):
     return isinstance(address, str) and address.startswith(_WINDOWS_PIPE_MARKER)
 
 
 def spawn_input_pane(prompt='specula> '):
     """
-    Try to open a new pane/console dedicated to interactive input.
+    Try to open a new pane/window/console dedicated to interactive
+    input.
 
     Returns an opaque address that the caller can pass to
     `terminal_task`/`_fifo_lines` to read completed input lines back
@@ -79,26 +123,22 @@ def spawn_input_pane(prompt='specula> '):
 
     if sys.platform == 'win32':
         return _spawn_windows_console_pane(prompt)
-    return _spawn_tmux_pane(prompt)
+
+    if tmux_available():
+        return _spawn_tmux_pane(prompt)
+
+    return _spawn_terminal_emulator_pane(prompt)
 
 
-def _spawn_tmux_pane(prompt):
+def _fifo_pane_script(fifo_path, prompt):
     """
-    POSIX implementation: split the current tmux window and forward
-    completed input lines through a FIFO.
+    Minimal read-eval-print loop shared by every FIFO-based pane
+    (tmux pane or standalone terminal emulator window): just prompt
+    for lines and forward them verbatim to the FIFO. All command
+    parsing (tokens, "help", error handling) still happens on the
+    reading side, in the main process.
     """
-    if not tmux_available():
-        return None
-
-    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
-    fifo_path = os.path.join(fifo_dir, 'input.fifo')
-    os.mkfifo(fifo_path)
-
-    # Minimal read-eval-print loop for the new pane: just prompt for
-    # lines and forward them verbatim to the FIFO. All command parsing
-    # (tokens, "help", error handling) still happens on the reading
-    # side, in the main process.
-    pane_script = (
+    return (
         "import sys\n"
         f"with open({fifo_path!r}, 'w') as f:\n"
         "    while True:\n"
@@ -110,6 +150,19 @@ def _spawn_tmux_pane(prompt):
         "        f.flush()\n"
     )
 
+
+def _spawn_tmux_pane(prompt):
+    """
+    Split the current tmux window and forward completed input lines
+    through a FIFO. Only usable when already running inside a tmux
+    session (see `tmux_available()`).
+    """
+    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
+    fifo_path = os.path.join(fifo_dir, 'input.fifo')
+    os.mkfifo(fifo_path)
+
+    pane_script = _fifo_pane_script(fifo_path, prompt)
+
     try:
         subprocess.run(
             ['tmux', 'split-window', '-d', sys.executable, '-c', pane_script],
@@ -118,6 +171,42 @@ def _spawn_tmux_pane(prompt):
             stderr=subprocess.DEVNULL,
         )
     except (subprocess.CalledProcessError, OSError):
+        cleanup_input_pane(fifo_path)
+        return None
+
+    return fifo_path
+
+
+def _spawn_terminal_emulator_pane(prompt):
+    """
+    Open a brand new terminal emulator window and forward completed
+    input lines through a FIFO. This is the fallback used on POSIX
+    when SPECULA is *not* already running inside a tmux session --
+    `tmux split-window` has no window to split in that case, so
+    instead a standalone window is opened, requiring a graphical
+    session (`DISPLAY`/`WAYLAND_DISPLAY`) and a known terminal
+    emulator binary.
+    """
+    if not _graphical_session_available():
+        return None
+
+    terminal, run_option = _find_terminal_emulator()
+    if terminal is None:
+        return None
+
+    fifo_dir = tempfile.mkdtemp(prefix='specula_terminal_')
+    fifo_path = os.path.join(fifo_dir, 'input.fifo')
+    os.mkfifo(fifo_path)
+
+    pane_script = _fifo_pane_script(fifo_path, prompt)
+
+    try:
+        subprocess.Popen(
+            [terminal, run_option, sys.executable, '-c', pane_script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
         cleanup_input_pane(fifo_path)
         return None
 

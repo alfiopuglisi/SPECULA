@@ -25,7 +25,7 @@ class TestTerminalPane(unittest.TestCase):
         with mock.patch('sys.stdout.isatty', return_value=False):
             self.assertIsNone(terminal_pane.spawn_input_pane())
 
-    def test_spawn_input_pane_returns_none_without_tmux_session(self):
+    def test_spawn_input_pane_returns_none_without_tmux_session_or_display(self):
         with mock.patch('sys.stdout.isatty', return_value=True):
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertIsNone(terminal_pane.spawn_input_pane())
@@ -137,3 +137,76 @@ class TestTerminalPane(unittest.TestCase):
             terminal_pane.cleanup_input_pane(r'\\.\pipe\specula_terminal_abc')
         remove.assert_not_called()
         rmdir.assert_not_called()
+
+    # --- Standalone terminal emulator fallback (POSIX, not in tmux) ---
+
+    def test_graphical_session_available_false_without_display(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(terminal_pane._graphical_session_available())
+
+    def test_graphical_session_available_true_with_display(self):
+        with mock.patch.dict(os.environ, {'DISPLAY': ':0'}):
+            self.assertTrue(terminal_pane._graphical_session_available())
+
+    def test_graphical_session_available_true_with_wayland_display(self):
+        with mock.patch.dict(os.environ, {'WAYLAND_DISPLAY': 'wayland-0'}, clear=True):
+            self.assertTrue(terminal_pane._graphical_session_available())
+
+    def test_find_terminal_emulator_returns_none_when_none_installed(self):
+        with mock.patch('shutil.which', return_value=None):
+            path, run_option = terminal_pane._find_terminal_emulator()
+        self.assertIsNone(path)
+        self.assertIsNone(run_option)
+
+    def test_find_terminal_emulator_returns_first_match(self):
+        def fake_which(name):
+            return '/usr/bin/xterm' if name == 'xterm' else None
+
+        with mock.patch('shutil.which', side_effect=fake_which):
+            path, run_option = terminal_pane._find_terminal_emulator()
+        self.assertEqual(path, '/usr/bin/xterm')
+        self.assertEqual(run_option, '-e')
+
+    def test_spawn_input_pane_falls_back_to_terminal_emulator_without_tmux(self):
+        with mock.patch('sys.stdout.isatty', return_value=True):
+            with mock.patch.dict(os.environ, {}, clear=True):
+                with mock.patch.object(
+                        terminal_pane, '_spawn_terminal_emulator_pane',
+                        return_value='sentinel') as spawn_emulator:
+                    result = terminal_pane.spawn_input_pane()
+        spawn_emulator.assert_called_once()
+        self.assertEqual(result, 'sentinel')
+
+    def test_spawn_terminal_emulator_pane_returns_none_without_display(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            result = terminal_pane._spawn_terminal_emulator_pane('specula> ')
+        self.assertIsNone(result)
+
+    def test_spawn_terminal_emulator_pane_returns_none_without_binary(self):
+        with mock.patch.dict(os.environ, {'DISPLAY': ':0'}):
+            with mock.patch('shutil.which', return_value=None):
+                result = terminal_pane._spawn_terminal_emulator_pane('specula> ')
+        self.assertIsNone(result)
+
+    def test_spawn_terminal_emulator_pane_returns_fifo_on_success(self):
+        with mock.patch.dict(os.environ, {'DISPLAY': ':0'}):
+            with mock.patch('shutil.which',
+                             side_effect=lambda n: '/usr/bin/xterm' if n == 'x-terminal-emulator' else None):
+                with mock.patch.object(terminal_pane.subprocess, 'Popen') as popen:
+                    fifo_path = terminal_pane._spawn_terminal_emulator_pane('specula> ')
+
+        self.assertIsNotNone(fifo_path)
+        self.assertTrue(os.path.exists(fifo_path))
+        popen.assert_called_once()
+        args, _ = popen.call_args
+        self.assertEqual(args[0][:2], ['/usr/bin/xterm', '-e'])
+        terminal_pane.cleanup_input_pane(fifo_path)
+
+    def test_spawn_terminal_emulator_pane_returns_none_when_popen_fails(self):
+        with mock.patch.dict(os.environ, {'DISPLAY': ':0'}):
+            with mock.patch('shutil.which',
+                             side_effect=lambda n: '/usr/bin/xterm' if n == 'x-terminal-emulator' else None):
+                with mock.patch.object(terminal_pane.subprocess, 'Popen',
+                                        side_effect=OSError('boom')):
+                    fifo_path = terminal_pane._spawn_terminal_emulator_pane('specula> ')
+        self.assertIsNone(fifo_path)
