@@ -28,7 +28,8 @@ class TestTerminalPane(unittest.TestCase):
     def test_spawn_input_pane_returns_none_without_tmux_session_or_display(self):
         with mock.patch('sys.stdout.isatty', return_value=True):
             with mock.patch.dict(os.environ, {}, clear=True):
-                self.assertIsNone(terminal_pane.spawn_input_pane())
+                with mock.patch('shutil.which', return_value=None):
+                    self.assertIsNone(terminal_pane.spawn_input_pane())
 
     def test_spawn_input_pane_returns_none_when_tmux_command_fails(self):
         with mock.patch('sys.stdout.isatty', return_value=True):
@@ -170,12 +171,64 @@ class TestTerminalPane(unittest.TestCase):
     def test_spawn_input_pane_falls_back_to_terminal_emulator_without_tmux(self):
         with mock.patch('sys.stdout.isatty', return_value=True):
             with mock.patch.dict(os.environ, {}, clear=True):
-                with mock.patch.object(
-                        terminal_pane, '_spawn_terminal_emulator_pane',
-                        return_value='sentinel') as spawn_emulator:
-                    result = terminal_pane.spawn_input_pane()
+                with mock.patch('shutil.which', return_value=None):
+                    with mock.patch.object(
+                            terminal_pane, '_spawn_terminal_emulator_pane',
+                            return_value='sentinel') as spawn_emulator:
+                        result = terminal_pane.spawn_input_pane()
         spawn_emulator.assert_called_once()
         self.assertEqual(result, 'sentinel')
+
+    def test_spawn_input_pane_dispatches_to_detached_tmux_session(self):
+        with mock.patch('sys.stdout.isatty', return_value=True):
+            with mock.patch.dict(os.environ, {}, clear=True):
+                with mock.patch('shutil.which', return_value='/usr/bin/tmux'):
+                    with mock.patch.object(
+                            terminal_pane, '_spawn_detached_tmux_session',
+                            return_value='sentinel') as spawn_detached:
+                        result = terminal_pane.spawn_input_pane()
+        spawn_detached.assert_called_once()
+        self.assertEqual(result, 'sentinel')
+
+    def test_spawn_detached_tmux_session_returns_fifo_on_success(self):
+        with mock.patch.object(terminal_pane.subprocess, 'run') as run:
+            fifo_path = terminal_pane._spawn_detached_tmux_session('specula> ')
+
+        self.assertIsNotNone(fifo_path)
+        self.assertTrue(os.path.exists(fifo_path))
+        run.assert_called_once()
+        args, kwargs = run.call_args
+        cmd = args[0]
+        self.assertEqual(cmd[:4], ['tmux', 'new-session', '-d', '-s'])
+        self.assertTrue(cmd[4].startswith('specula_'))
+        self.assertEqual(cmd[5:7], [terminal_pane.sys.executable, '-c'])
+        self.assertTrue(kwargs.get('check'))
+        self.assertIn(fifo_path, terminal_pane._detached_tmux_sessions)
+        terminal_pane.cleanup_input_pane(fifo_path)
+
+    def test_spawn_detached_tmux_session_returns_none_when_command_fails(self):
+        with mock.patch.object(terminal_pane.subprocess, 'run',
+                                side_effect=OSError('boom')):
+            fifo_path = terminal_pane._spawn_detached_tmux_session('specula> ')
+        self.assertIsNone(fifo_path)
+        self.assertEqual(terminal_pane._detached_tmux_sessions, {})
+
+    def test_cleanup_input_pane_kills_detached_tmux_session(self):
+        with mock.patch.object(terminal_pane.subprocess, 'run') as run:
+            fifo_path = terminal_pane._spawn_detached_tmux_session('specula> ')
+        session_name = terminal_pane._detached_tmux_sessions[fifo_path]
+        run.reset_mock()
+
+        with mock.patch.object(terminal_pane.subprocess, 'run') as kill_run:
+            terminal_pane.cleanup_input_pane(fifo_path)
+
+        kill_run.assert_called_once_with(
+            ['tmux', 'kill-session', '-t', session_name],
+            stdout=terminal_pane.subprocess.DEVNULL,
+            stderr=terminal_pane.subprocess.DEVNULL,
+        )
+        self.assertNotIn(fifo_path, terminal_pane._detached_tmux_sessions)
+        self.assertFalse(os.path.exists(fifo_path))
 
     def test_spawn_terminal_emulator_pane_returns_none_without_display(self):
         with mock.patch.dict(os.environ, {}, clear=True):
