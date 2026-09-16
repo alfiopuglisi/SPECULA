@@ -158,7 +158,7 @@ class ModulatedPyramid(BaseProcessingObj):
                                         min_pup_dist=min_pup_dist)
 
         fov_res = result['fov_res']
-        self.fp_masking = result['fp_masking']
+        self.fp_masking = result['fp_masking']   # Stored in self to aid in code inspection by tests
         fft_res = result['fft_res']
         tilt_scale = result['tilt_scale']
         fft_sampling = result['fft_sampling']
@@ -260,7 +260,7 @@ class ModulatedPyramid(BaseProcessingObj):
         self.outputs['out_flux_frac_inside_detector'] = self.flux_frac_inside_ccd
 
         # Generate the geometric phase map of the pyramid faces
-        self.pyr_tlt = self.get_pyr_tlt(fft_sampling, fft_padding)
+        pyr_tlt = self.get_pyr_tlt(fft_sampling, fft_padding)
         # Sub-pixel shift phase to align the pyramid tip with the FFT grid center
         self.tlt_f = self.get_tlt_f(fft_sampling, fft_padding)
         # Orthogonal tilt maps used to generate the tip-tilt modulation path
@@ -269,7 +269,7 @@ class ModulatedPyramid(BaseProcessingObj):
         self.fp_mask = self.get_fp_mask(fft_totsize, self.fp_masking, obsratio=fp_obsratio)
 
         iu = self.xp.array(1j, dtype=self.complex_dtype)  # complex unit
-        myexp = self.xp.exp(-2 * self.xp.pi * iu * self.pyr_tlt, dtype=self.complex_dtype)
+        myexp = self.xp.exp(-2 * self.xp.pi * iu * pyr_tlt, dtype=self.complex_dtype)
         # FFT shifted complex phase delay of the pyramid prism and field stop
         self.shifted_masked_exp = self.xp.fft.fftshift(myexp * self.fp_mask)
 

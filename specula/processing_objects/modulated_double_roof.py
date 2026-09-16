@@ -80,7 +80,7 @@ class ModulatedDoubleRoof(ModulatedPyramid):
         self.pup_diam = pup_diam
         self.pup_dist = pup_dist
 
-        # After initialization, create the second roof's exponential
+        # After initialization, create both roof exponentials
         iu = self.xp.array(1j, dtype=self.complex_dtype)  # complex unit
         roof1_exp = self.xp.exp(-2 * self.xp.pi * iu * self.roof1_tlt, dtype=self.complex_dtype)
         roof2_exp = self.xp.exp(-2 * self.xp.pi * iu * self.roof2_tlt, dtype=self.complex_dtype)
@@ -91,10 +91,6 @@ class ModulatedDoubleRoof(ModulatedPyramid):
         # Pre-allocate arrays to avoid memory allocation in trigger_code
         self.roof1_image = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
         self.roof2_image = self.xp.zeros((self.fft_totsize, self.fft_totsize), dtype=self.dtype)
-
-        # Pre-calculate mid points
-        self.mid_h = self.fft_totsize // 2
-        self.mid_w = self.fft_totsize // 2
 
     def get_pyr_tlt(self, p, c):
         A = int((p + c) // 2)
@@ -116,7 +112,7 @@ class ModulatedDoubleRoof(ModulatedPyramid):
             # Second roof: vertical separation (top/bottom)
             roof2_tlt = self.xp.rot90(roof1_tlt)
 
-            # add to roof1_tlt a tilt in the other direction to shift the image on one side
+            # add to roof1_tlt a tilt in one direction to shift the image on one side
             roof1_tlt += A - 1 - 0.5*y
 
             # add to roof2_tlt a tilt in the other direction to shift the image on one side
@@ -149,9 +145,9 @@ class ModulatedDoubleRoof(ModulatedPyramid):
         self.roof1_tlt = roof1_tlt / self.tilt_scale
         self.roof2_tlt = roof2_tlt / self.tilt_scale
 
-        # Return the first roof for compatibility (the second will be accessed directly)
-        return self.roof1_tlt
-
+        # Return a correctly-sized zero array for compatibility
+        # with the standard pyramid code
+        return self.roof1_tlt * 0
 
     def trigger_code(self):
         u_tlt_const = self.ef * self.tlt_f
