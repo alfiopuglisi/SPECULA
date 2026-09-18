@@ -14,6 +14,7 @@ from specula.data_objects.electric_field import ElectricField
 from specula.processing_objects.psf import PSF
 from specula.data_objects.pixels import Pixels
 from specula.data_objects.slopes import Slopes
+from specula.display.base_display import BaseDisplay
 from specula.display.phase_display import PhaseDisplay
 from specula.display.pixels_display import PixelsDisplay
 from specula.display.slopec_display import SlopecDisplay
@@ -34,6 +35,26 @@ class TestDisplays(unittest.TestCase):
         self.pixel_pupil = 64
         self.pixel_pitch = 0.1
         self.S0 = 1.0
+
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
+    @pytest.mark.filterwarnings('ignore:.*Matplotlib is currently using agg*:UserWarning')
+    def test_default_window_numbers_are_progressive(self):
+        saved_next = BaseDisplay._BaseDisplay__next_window
+        try:
+            BaseDisplay._BaseDisplay__next_window = 1
+
+            d1 = PhaseDisplay(title='Window 1')
+            d2 = PhaseDisplay(title='Window 2')
+            d3 = PhaseDisplay(title='Window 3', window=10)
+            d4 = PhaseDisplay(title='Window 4')
+
+            self.assertEqual(d1.window, 1)
+            self.assertEqual(d2.window, 2)
+            self.assertEqual(d3.window, 10)
+            self.assertEqual(d4.window, 11)
+        finally:
+            BaseDisplay._BaseDisplay__next_window = saved_next
+            matplotlib.pyplot.close('all')
 
     @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @pytest.mark.filterwarnings('ignore:.*Matplotlib is currently using agg*:UserWarning')

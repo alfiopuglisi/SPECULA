@@ -14,6 +14,18 @@ def runningOnNotebook():
 class BaseDisplay(BaseProcessingObj):
 
     __plot_completed = {}
+    __next_window = 1
+
+    @classmethod
+    def _next_window_number(cls):
+        window = cls.__next_window
+        cls.__next_window += 1
+        return window
+
+    @classmethod
+    def _register_window_number(cls, window):
+        if isinstance(window, int) and window >= cls.__next_window:
+            cls.__next_window = window + 1
 
     def __init__(self,
                  title='',
@@ -23,7 +35,9 @@ class BaseDisplay(BaseProcessingObj):
         super().__init__()
 
         if window is None:
-            window = id(self)
+            window = self._next_window_number()
+        else:
+            self._register_window_number(window)
 
         self.window = window
         self.figsize = figsize
