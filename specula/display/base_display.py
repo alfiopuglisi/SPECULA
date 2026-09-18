@@ -15,7 +15,6 @@ def runningOnNotebook():
 class BaseDisplay(BaseProcessingObj):
 
     __plot_completed = {}
-    __next_window = 1
 
     def __init__(self,
                  title='',
@@ -24,13 +23,13 @@ class BaseDisplay(BaseProcessingObj):
                  figsize=(8, 6)):
         super().__init__()
 
-        if window is None:
-            window = self.__next_window
-            BaseDisplay.__next_window += 1
-        elif isinstance(window, Integral) and not isinstance(window, bool) and window >= 1:
+        if isinstance(window, Integral) and not isinstance(window, bool) and window >= 1:
             window = int(window)
-            if window >= self.__next_window:
-                BaseDisplay.__next_window = window + 1
+            if window in self.__plot_completed.keys():
+                raise ValueError(f'window {window} already exists')
+        elif window is None:
+            # Find an unused window number
+            window = max(self.__plot_completed.keys(), default=0) + 1
         else:
             raise ValueError('window must be a positive integer')
 
