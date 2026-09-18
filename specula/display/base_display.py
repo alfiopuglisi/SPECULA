@@ -17,21 +17,6 @@ class BaseDisplay(BaseProcessingObj):
     __plot_completed = {}
     __next_window = 1
 
-    @classmethod
-    def _next_window_number(cls):
-        window = cls.__next_window
-        cls.__next_window += 1
-        return window
-
-    @classmethod
-    def _register_window_number(cls, window):
-        if window >= cls.__next_window:
-            cls.__next_window = window + 1
-
-    @staticmethod
-    def _is_valid_window_number(window):
-        return isinstance(window, Integral) and not isinstance(window, bool) and window >= 1
-
     def __init__(self,
                  title='',
                  window: int=None,
@@ -39,11 +24,15 @@ class BaseDisplay(BaseProcessingObj):
                  figsize=(8, 6)):
         super().__init__()
 
-        if self._is_valid_window_number(window):
+        if window is None:
+            window = self.__next_window
+            BaseDisplay.__next_window += 1
+        elif isinstance(window, Integral) and not isinstance(window, bool) and window >= 1:
             window = int(window)
-            self._register_window_number(window)
+            if window >= self.__next_window:
+                BaseDisplay.__next_window = window + 1
         else:
-            window = self._next_window_number()
+            raise ValueError('window must be a positive integer')
 
         self.window = window
         self.figsize = figsize
