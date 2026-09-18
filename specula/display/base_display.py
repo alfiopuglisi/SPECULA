@@ -42,6 +42,8 @@ class BaseDisplay(BaseProcessingObj):
 
         if window is None:
             window = self._next_window_number()
+        elif isinstance(window, int) and window < 1:
+            window = self._next_window_number()
         else:
             self._register_window_number(window)
 

@@ -49,11 +49,15 @@ class TestDisplays(unittest.TestCase):
             d2 = PhaseDisplay(title='Window 2')
             d3 = PhaseDisplay(title='Window 3', window=10)
             d4 = PhaseDisplay(title='Window 4')
+            d5 = PhaseDisplay(title='Window 5', window=0)
+            d6 = PhaseDisplay(title='Window 6')
 
             self.assertEqual(d1.window, 1)
             self.assertEqual(d2.window, 2)
             self.assertEqual(d3.window, 10)
             self.assertEqual(d4.window, 11)
+            self.assertEqual(d5.window, 12)
+            self.assertEqual(d6.window, 13)
         finally:
             with window_lock:
                 BaseDisplay._BaseDisplay__next_window = saved_next
