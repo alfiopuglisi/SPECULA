@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import threading
 
 from specula.scalar_values import IntValue
 from specula.base_processing_obj import BaseProcessingObj
@@ -15,17 +16,22 @@ class BaseDisplay(BaseProcessingObj):
 
     __plot_completed = {}
     __next_window = 1
+    __window_lock = threading.Lock()
 
     @classmethod
     def _next_window_number(cls):
-        window = cls.__next_window
-        cls.__next_window += 1
+        with cls.__window_lock:
+            window = cls.__next_window
+            cls.__next_window += 1
         return window
 
     @classmethod
     def _register_window_number(cls, window):
-        if isinstance(window, int) and window >= cls.__next_window:
-            cls.__next_window = window + 1
+        if not isinstance(window, int):
+            return
+        with cls.__window_lock:
+            if window >= cls.__next_window:
+                cls.__next_window = window + 1
 
     def __init__(self,
                  title='',
