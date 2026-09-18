@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-import threading
+from numbers import Integral
 
 from specula.scalar_values import IntValue
 from specula.base_processing_obj import BaseProcessingObj
@@ -16,22 +16,21 @@ class BaseDisplay(BaseProcessingObj):
 
     __plot_completed = {}
     __next_window = 1
-    __window_lock = threading.Lock()
 
     @classmethod
     def _next_window_number(cls):
-        with cls.__window_lock:
-            window = cls.__next_window
-            cls.__next_window += 1
+        window = cls.__next_window
+        cls.__next_window += 1
         return window
 
     @classmethod
     def _register_window_number(cls, window):
-        if not isinstance(window, int):
-            return
-        with cls.__window_lock:
-            if window >= cls.__next_window:
-                cls.__next_window = window + 1
+        if window >= cls.__next_window:
+            cls.__next_window = window + 1
+
+    @staticmethod
+    def _is_valid_window_number(window):
+        return isinstance(window, Integral) and not isinstance(window, bool) and window >= 1
 
     def __init__(self,
                  title='',
@@ -40,12 +39,11 @@ class BaseDisplay(BaseProcessingObj):
                  figsize=(8, 6)):
         super().__init__()
 
-        if window is None:
-            window = self._next_window_number()
-        elif isinstance(window, int) and window < 1:
-            window = self._next_window_number()
-        else:
+        if self._is_valid_window_number(window):
+            window = int(window)
             self._register_window_number(window)
+        else:
+            window = self._next_window_number()
 
         self.window = window
         self.figsize = figsize

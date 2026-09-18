@@ -39,10 +39,8 @@ class TestDisplays(unittest.TestCase):
     @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @pytest.mark.filterwarnings('ignore:.*Matplotlib is currently using agg*:UserWarning')
     def test_default_window_numbers_are_progressive(self):
-        window_lock = BaseDisplay._BaseDisplay__window_lock
-        with window_lock:
-            saved_next = BaseDisplay._BaseDisplay__next_window
-            BaseDisplay._BaseDisplay__next_window = 1
+        saved_next = BaseDisplay._BaseDisplay__next_window
+        BaseDisplay._BaseDisplay__next_window = 1
 
         try:
             d1 = PhaseDisplay(title='Window 1')
@@ -51,6 +49,9 @@ class TestDisplays(unittest.TestCase):
             d4 = PhaseDisplay(title='Window 4')
             d5 = PhaseDisplay(title='Window 5', window=0)
             d6 = PhaseDisplay(title='Window 6')
+            d7 = PhaseDisplay(title='Window 7', window=True)
+            d8 = PhaseDisplay(title='Window 8', window=np.int64(20))
+            d9 = PhaseDisplay(title='Window 9')
 
             self.assertEqual(d1.window, 1)
             self.assertEqual(d2.window, 2)
@@ -58,9 +59,11 @@ class TestDisplays(unittest.TestCase):
             self.assertEqual(d4.window, 11)
             self.assertEqual(d5.window, 12)
             self.assertEqual(d6.window, 13)
+            self.assertEqual(d7.window, 14)
+            self.assertEqual(d8.window, 20)
+            self.assertEqual(d9.window, 21)
         finally:
-            with window_lock:
-                BaseDisplay._BaseDisplay__next_window = saved_next
+            BaseDisplay._BaseDisplay__next_window = saved_next
             matplotlib.pyplot.close('all')
 
     @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
