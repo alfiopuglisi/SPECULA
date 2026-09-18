@@ -39,8 +39,8 @@ class TestDisplays(unittest.TestCase):
     @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
     @pytest.mark.filterwarnings('ignore:.*Matplotlib is currently using agg*:UserWarning')
     def test_default_window_numbers_are_progressive(self):
-        saved_next = BaseDisplay._BaseDisplay__next_window
-        BaseDisplay._BaseDisplay__next_window = 1
+        saved_plot_completed = dict(BaseDisplay._BaseDisplay__plot_completed)
+        BaseDisplay._BaseDisplay__plot_completed = {}
 
         try:
             d1 = PhaseDisplay(title='Window 1')
@@ -63,7 +63,22 @@ class TestDisplays(unittest.TestCase):
             self.assertEqual(d5.window, 20)
             self.assertEqual(d6.window, 21)
         finally:
-            BaseDisplay._BaseDisplay__next_window = saved_next
+            BaseDisplay._BaseDisplay__plot_completed = saved_plot_completed
+            matplotlib.pyplot.close('all')
+
+    @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
+    @pytest.mark.filterwarnings('ignore:.*Matplotlib is currently using agg*:UserWarning')
+    def test_existing_window_number_raises(self):
+        saved_plot_completed = dict(BaseDisplay._BaseDisplay__plot_completed)
+        BaseDisplay._BaseDisplay__plot_completed = {}
+
+        try:
+            d1 = PhaseDisplay(title='Window 1', window=7)
+            with self.assertRaises(ValueError):
+                PhaseDisplay(title='Window 2', window=7)
+            self.assertEqual(d1.window, 7)
+        finally:
+            BaseDisplay._BaseDisplay__plot_completed = saved_plot_completed
             matplotlib.pyplot.close('all')
 
     @pytest.mark.filterwarnings('ignore:.*FigureCanvasAgg is non-interactive.*:UserWarning')
