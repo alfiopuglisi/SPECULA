@@ -144,8 +144,11 @@ class ModulatedPyramid(BaseProcessingObj):
                  yShiftPhInPixel: float = 0.0,
                  magnification: float = 1.0,
                  force_extrapolation: bool = False,
-                 target_device_idx: int = None,
-                 precision: int = None
+                focal_plane_mask_type: str = 'pyramid',
+                spot_radius_lambda: float = 1.0,
+                phase_shift_pi: float = 0.5,
+                target_device_idx: int = None,
+                precision: int = None
                 ):
         super().__init__(target_device_idx=target_device_idx, precision=precision)
 
@@ -201,6 +204,15 @@ class ModulatedPyramid(BaseProcessingObj):
         self.magnification = magnification
         self.force_extrapolation = force_extrapolation
         self.pup_shifts = pup_shifts
+        self.focal_plane_mask_type = focal_plane_mask_type
+        self.spot_radius_lambda = spot_radius_lambda
+        self.phase_shift_pi = phase_shift_pi
+
+        valid_mask_types = ['pyramid', 'zernike_spot']
+        if self.focal_plane_mask_type not in valid_mask_types:
+            raise ValueError(
+                f"focal_plane_mask_type must be one of {valid_mask_types}, got {self.focal_plane_mask_type}"
+            )
 
         # interpolation settings
         self.pup_shift_interp = None
@@ -390,6 +402,9 @@ class ModulatedPyramid(BaseProcessingObj):
         return result
 
     def get_pyr_tlt(self, p, c):
+        if self.focal_plane_mask_type == 'zernike_spot':
+            return self._get_zernike_spot_mask(p, c)
+
         A = int(round((p + c) / 2.0))
         pyr_tlt = self.xp.zeros((2 * A, 2 * A), dtype=self.dtype)
         y, x = self.xp.mgrid[0:A,0:A]
@@ -447,6 +462,15 @@ class ModulatedPyramid(BaseProcessingObj):
                 )
 
         return pyr_tlt / self.tilt_scale
+
+    def _get_zernike_spot_mask(self, p, c):
+        A = int((p + c) // 2)
+        xx, yy = self.xp.mgrid[-A:A, -A:A].astype(self.dtype)
+        spot_radius_pixels = self.spot_radius_lambda * float(1 + c / p)
+
+        dpix = 0.5
+        rr = self.xp.sqrt((xx + dpix) ** 2 + (yy + dpix) ** 2)
+        return self.xp.where(rr < spot_radius_pixels, self.phase_shift_pi / 2, 0.0)
 
     def get_tlt_f(self, p, c):
         """Generate tilt factor for pyramid de-rotation"""        

@@ -38,38 +38,9 @@ class ZernikeSensor(ModulatedPyramid):
             min_pup_dist=0,
             fov_errinf=0.1,
             fov_errsup=10.0,
+            focal_plane_mask_type='zernike_spot',
+            spot_radius_lambda=spot_radius_lambda,
+            phase_shift_pi=phase_shift_pi,
             target_device_idx=target_device_idx,
             precision=precision
-        )        
-
-
-    def get_pyr_tlt(self, p, c):
-        """
-        Creates a phase-shifting focal-plane spot of self.phase_delay π.
-        This introduces a self.phase_delay π phase shift in a circular region
-        centered on the focal plane, replacing the traditional pyramid structure.
-        
-        Args:
-            p: FFT sampling parameter
-            c: FFT padding parameter
-            
-        Returns:
-            phase_mask: 2D array with phase shift in central spot
-        """
-        A = int((p + c) // 2)
-        xx, yy = self.xp.mgrid[-A:A, -A:A].astype(self.dtype)
-        # Convert radius from λ/D units to pixels
-        # In focal plane, 1 λ/D corresponds to fft_totsize/fft_sampling pixels
-        fft_sampling = p
-        fft_padding = c
-        spot_radius_pixels = self.spot_radius_lambda * float(1+fft_padding/fft_sampling)
-
-        # Calculate distance from center
-        dpix = 0.5
-        rr = self.xp.sqrt((xx+dpix)**2 + (yy+dpix)**2)
-
-        # Create phase mask: self.phase_shift_pi
-        phase_mask = self.xp.where(rr < spot_radius_pixels,
-                                   self.phase_shift_pi/2, # phase is multiplied by 2π during super().__init__
-                                   0.0)
-        return phase_mask
+        )

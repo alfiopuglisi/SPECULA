@@ -1,12 +1,14 @@
 import copy
 
-from specula.base_processing_obj import BaseProcessingObj
+from specula.base_value import BaseValue
+from specula.connections import InputValue
 from specula.data_objects.laser_launch_telescope import LaserLaunchTelescope
 from specula.processing_objects.sh import SH
+from specula.processing_objects.sh_wrapper import SHWrapper
 from specula import cp
 
 
-class DistributedSH(SH):
+class DistributedSH(SHWrapper):
     """
     SH class that distributes work on multiple devices.
 
@@ -40,9 +42,17 @@ class DistributedSH(SH):
         subaps_per_sh = subap_on_diameter // n_slices
         del args['n_slices']
 
-        # Initialize base class - we do not use the calculation routines,
-        # but it is needed for inputs and outputs
-        super().__init__(**args)
+        ccd_side = subap_on_diameter * subap_npx
+        super().__init__(
+            ccd_side=ccd_side,
+            target_device_idx=target_device_idx,
+            precision=precision,
+        )
+        self._subap_npx = subap_npx
+
+        if laser_launch_tel is not None:
+            self.inputs['sodium_altitude'] = InputValue(type=BaseValue, optional=True)
+            self.inputs['sodium_intensity'] = InputValue(type=BaseValue, optional=True)
 
         self.slices = []
         for i in range(n_slices):
@@ -57,87 +67,38 @@ class DistributedSH(SH):
                 num_devices = cp.cuda.runtime.getDeviceCount()
                 args['target_device_idx'] = (target_device_idx + i) % num_devices
             args['subap_rows_slice'] = self.slices[i]
-            self.sub_sh.append( SH(**args))
+            self.sub_sh.append(SH(**args))
+        self._wfs_instances = self.sub_sh
 
     @classmethod
     def input_names(cls):
-        return super().input_names()
+        return SH.input_names()
 
     @classmethod
     def output_names(cls):
-        return super().output_names()
+        return SH.output_names()
 
-    def setup(self):
-        '''
-        Skip the SH method for this object, since we do not perform
-        any calculation, but call the BaseProcessingObj one for housekeeping.
-        Then set inputs on all sub-SHs
-        '''
-        BaseProcessingObj.setup(self)
-
+    def setup_child_inputs(self):
         # Copy our inputs into all sub-SH
         for i, sh in enumerate(self.sub_sh):
             sh.name = f'subsh{i}'
             for k, v in self.inputs.items():
                 if len(v.input_values) > 0:
                     sh.inputs[k].set(v.input_values[0].cloned_value)
-            sh.setup()
 
-    def check_ready(self, t):
-        '''
-        Skip the SH method for this object, since we do not perform
-        any calculation, but call the BaseProcessingObj one for housekeeping.
-        Then call all sub-SHs
-        '''
-        BaseProcessingObj.check_ready(self, t)
-        for sh in self.sub_sh:
-            sh.check_ready(t)
-
-    def prepare_trigger(self, t):
-        '''
-        Skip the SH method for this object, since we do not perform
-        any calculation, but call the BaseProcessingObj one for housekeeping.
-        Then call all sub-SHs
-        '''
-        BaseProcessingObj.prepare_trigger(self, t)
-        for sh in self.sub_sh:
-            sh.prepare_trigger(t)
-   
     def trigger(self):
-        '''
-        Skip the SH method for this object, since we do not perform
-        any calculation, but call the BaseProcessingObj one for housekeeping.
-        Then call all sub-SHs
-        '''
-        BaseProcessingObj.trigger(self)
+        super(SHWrapper, self).trigger()
         for sh in self.sub_sh:
             sh.trigger()
 
-    def trigger_code(self):
-        '''
-        Nothing to do in the distributed SH. The Sub-SH will run
-        the regular SH implementation.
-        '''
-        return
-
-    def post_trigger(self):
-        '''
-        Skip the SH method for this object, but call the 
-        BaseProcessingObj one for housekeeping.
-        Then gather results from the sub-SH and perform
-        the final normalization
-        '''
-        BaseProcessingObj.post_trigger(self)
-
+    def accumulate_output(self):
         # Collect results from the other SHs into our Intensity result
         for s, sh in zip(self.slices, self.sub_sh):
             y1 = self._subap_npx * s.start
             y2 = self._subap_npx * s.stop
             self._out_i.i[y1:y2] = sh._out_i.i[y1:y2]
 
+    def finalize_output(self):
         in_ef = self.local_inputs['in_ef']
         phot = in_ef.S0 * in_ef.masked_area()
         self._out_i.i *= phot / self._out_i.i.sum()
-        self._out_i.generation_time = self.current_time
-
-

@@ -1,11 +1,9 @@
 from specula import RAD2ASEC
-from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
-from specula.connections import InputValue
 from specula.data_objects.electric_field import ElectricField
-from specula.data_objects.intensity import Intensity
 from specula.lib.make_xy import make_xy
+from specula.processing_objects.sh_wrapper import SHWrapper
 
-class PolyChromWFS(BaseProcessingObj):
+class PolyChromWFS(SHWrapper):
     """     
     Poly-chromatic WFS abstract processing object.    
     Base class for polychromatic wavefront sensors which handles 
@@ -20,7 +18,11 @@ class PolyChromWFS(BaseProcessingObj):
                  target_device_idx: int = None,
                  precision: int = None
                 ):
-        super().__init__(target_device_idx=target_device_idx, precision=precision)
+        super().__init__(
+            ccd_side=ccd_side,
+            target_device_idx=target_device_idx,
+            precision=precision,
+        )
 
         n_wavelengths = len(wavelengthInNm)
         if len(flux_factor) != n_wavelengths:
@@ -40,22 +42,6 @@ class PolyChromWFS(BaseProcessingObj):
         self._unit_tilt_y = None
         self.flux_factor_normalized = None
         self._modified_efs = []
-        self._wfs_instances = []
-
-        self._out_i = Intensity(ccd_side, ccd_side,
-                                precision=self.precision,
-                                target_device_idx=self.target_device_idx)
-        self.outputs['out_i'] = self._out_i
-
-        self.inputs['in_ef'] = InputValue(type=ElectricField)
-
-    @classmethod
-    def input_names(cls):
-        return {'in_ef': InputDesc(ElectricField, 'Input electric field from the telescope pupil')}
-
-    @classmethod
-    def output_names(cls):
-        return {'out_i': OutputDesc(Intensity, 'Output intensity on the detector')}
 
     def _create_unit_tilts(self, in_ef_size, in_ef_pixel_pitch):
         """Create unit tilt phase arrays (1 pixel tilt) in nm."""
@@ -82,9 +68,7 @@ class PolyChromWFS(BaseProcessingObj):
 
         return unit_tilt_x_nm, unit_tilt_y_nm
 
-    def setup(self):
-        super().setup()
-
+    def setup_child_inputs(self):
         # Get input electric field to determine size
         in_ef = self.local_inputs['in_ef']
 
@@ -103,28 +87,17 @@ class PolyChromWFS(BaseProcessingObj):
             )
             self._modified_efs.append(modified_ef)
 
-        # Setup all SH instances with their modified EFs
+        # Connect all WFS instances to their modified EFs
         for i, wfs in enumerate(self._wfs_instances):
             wfs.inputs['in_ef'].set(self._modified_efs[i])
-            wfs.setup()
 
-        # Normalize flux factors
         total_flux = self.xp.sum(self.flux_factor)
         if total_flux > 0:
             self.flux_factor_normalized = self.flux_factor / total_flux
         else:
             self.flux_factor_normalized = self.flux_factor
 
-    def check_ready(self, t):
-        super().check_ready(t)
-
-        # Check if all SH are ready
-        for wfs in self._wfs_instances:
-            wfs.check_ready(t)
-
-    def prepare_trigger(self, t):
-        super().prepare_trigger(t)
-
+    def prepare_child_inputs(self):
         in_ef = self.local_inputs['in_ef']
 
         # Update all modified EFs
@@ -146,35 +119,14 @@ class PolyChromWFS(BaseProcessingObj):
             # update generation time
             modified_ef.generation_time = in_ef.generation_time
 
-        # Prepare all SH instances
-        for wfs in self._wfs_instances:
-            wfs.prepare_trigger(t)
-
-    def trigger_code(self):
-        # Reset output intensity
-        self._out_i.i[:] = 0.0
-
-        # Trigger each SH
-        for wfs in self._wfs_instances:
-            wfs.trigger_code()
-
-    def post_trigger(self):
-        super().post_trigger()
-
-        # Post-process all SH instances
-        for wfs in self._wfs_instances:
-            wfs.post_trigger()
-
+    def accumulate_output(self):
         # Accumulate results on output intensity
         for i, wfs in enumerate(self._wfs_instances):
             # Add weighted contribution
             flux_factor = self.flux_factor_normalized[i]
             self._out_i.i += wfs.outputs['out_i'].i * flux_factor
 
-        # Set generation time
-        self._out_i.generation_time = self.current_time
-
-        # Optional: normalize total intensity to match input photon flux
+    def finalize_output(self):
         in_ef = self.local_inputs['in_ef']
         total_input_flux = in_ef.S0 * in_ef.masked_area()
         current_total = self.xp.sum(self._out_i.i)
