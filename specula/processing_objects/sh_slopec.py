@@ -1,4 +1,6 @@
 
+import logging
+
 import numpy as np
 
 from specula import fuse
@@ -19,9 +21,14 @@ def clamp_generic_less(x, c, y, xp):
     y[:] = xp.where(y < x, c, y)
 
 
-@fuse(kernel_name='clamp_generic_more')
-def clamp_generic_more(x, c, y, xp):
-    y[:] = xp.where(y > x, c, y)
+@fuse(kernel_name='normalize_cog')
+def normalize_cog(subap_tot, mean_subap_tot, sxy, xp):
+    """
+    In-place normalization of the (2, n_subaps) weighted sums *sxy*
+    by the per-subaperture flux *subap_tot*. Subapertures with flux
+    not above 1e-3 times the mean flux get zero slopes.
+    """
+    sxy[:] = xp.where(subap_tot > mean_subap_tot * 1e-3, sxy / subap_tot, 0)
 
 class ShSlopec(Slopec):
     """ 
@@ -116,6 +123,16 @@ class ShSlopec(Slopec):
             self.xweights_flat = self.xweights.reshape(self.subapdata.np_sub * self.subapdata.np_sub, 1)
             self.yweights_flat = self.yweights.reshape(self.subapdata.np_sub * self.subapdata.np_sub, 1)
             self.mask_weighted_flat = self.mask_weighted.reshape(self.subapdata.np_sub * self.subapdata.np_sub, 1)
+
+            # Stacked weights (3, np_sub*np_sub): a single matrix product with the
+            # (np_sub*np_sub, n_subaps) pixel matrix gives the flux denominator
+            # and the x/y weighted sums of all subapertures at once.
+            self.cog_weights = self.xp.ascontiguousarray(self.xp.stack(
+                [self.mask_weighted_flat[:, 0], self.xweights_flat[:, 0], self.yweights_flat[:, 0]]
+            ).astype(self.dtype, copy=False))
+            # Output buffer, allocated once (set_xy_weights() may be called again at runtime)
+            if getattr(self, 'cog_sums', None) is None:
+                self.cog_sums = self.xp.empty((3, self.subapdata.n_subaps), dtype=self.dtype)
 
     def computeXYweights(self, np_sub, exp_weight, weightedPixRad, quadcell_mode=False, windowing=False):
         """
@@ -269,20 +286,17 @@ class ShSlopec(Slopec):
         if self.store_thr_mask_cube:
             thr_mask_cube = thr.reshape(np_sub, np_sub, n_subaps)
 
-        # Compute denominator for slopes
-        subap_tot = self.xp.sum(pixels * self.mask_weighted_flat, axis=0)
-        mean_subap_tot = self.xp.mean(subap_tot)
-        factor = 1.0 / subap_tot
+        # Denominator and x/y weighted sums with one matrix product,
+        # written into a preallocated buffer: rows are [subap_tot, sx, sy]
+        self.xp.matmul(self.cog_weights, pixels, out=self.cog_sums)
+        subap_tot = self.cog_sums[0]
+        sxy = self.cog_sums[1:]
 
-# TEST replacing these three lines with clamp_generic_more
-#        idx_le_0 = self.xp.where(subap_tot <= mean_subap_tot * 1e-3)[0]
-#        if len(idx_le_0) > 0:
-#            factor[idx_le_0] = 0.0
-        clamp_generic_more( 1.0 / (mean_subap_tot * 1e-3), 0, factor, xp=self.xp)
-
-        # Compute slopes
-        sx = self.xp.sum(pixels * self.xweights_flat * factor[self.xp.newaxis, :], axis=0)
-        sy = self.xp.sum(pixels * self.yweights_flat * factor[self.xp.newaxis, :], axis=0)
+        # Since the normalization factor is constant within each subaperture,
+        # sum(pixels * w * factor) == factor * sum(pixels * w): normalize the
+        # sums in place, zeroing subapertures with too little flux.
+        normalize_cog(subap_tot, self.xp.mean(subap_tot), sxy, xp=self.xp)
+        sx, sy = sxy
 
         if self.mult_factor != 0:
             sx *= self.mult_factor
@@ -301,7 +315,8 @@ class ShSlopec(Slopec):
         self.total_counts.value[0] = self.xp.sum(flux_per_subaperture_vector)
         self.subap_counts.value[0] = self.xp.mean(flux_per_subaperture_vector)
 
-        self.logger.debug(f"Slopes min, max and rms : {self.xp.min(sx)}, {self.xp.max(sx)}, {self.xp.sqrt(self.xp.mean(sx ** 2))}")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Slopes min, max and rms : {self.xp.min(sx)}, {self.xp.max(sx)}, {self.xp.sqrt(self.xp.mean(sx ** 2))}")
 
     def psf_gaussian(self, np_sub, fwhm):
         """Generates a 2D Gaussian PSF.
