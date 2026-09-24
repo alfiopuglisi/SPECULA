@@ -163,7 +163,7 @@ class ModalAnalysis(BaseProcessingObj):
 
         # Calculate the Divergence (right-hand side of Poisson equation)
         rows, cols = phase_wrap.shape
-        rho = self.xp.zeros((rows, cols))
+        rho = self.xp.zeros((rows, cols), dtype=phase_wrap.dtype)
         rho[:, 1:-1] = self.xp.diff(dx, axis=1)
         rho[1:-1, :] += self.xp.diff(dy, axis=0)
 
@@ -177,8 +177,8 @@ class ModalAnalysis(BaseProcessingObj):
         dct_rho = self.dct(self.dct(rho, axis=0, norm='ortho'), axis=1, norm='ortho')
 
         # Create the Eigenvalues of the Laplacian in DCT domain
-        v = self.xp.cos(np.pi * self.xp.arange(rows) / rows)
-        u = self.xp.cos(np.pi * self.xp.arange(cols) / cols)
+        v = self.xp.cos(np.pi * self.xp.arange(rows, dtype=phase_wrap.dtype) / rows)
+        u = self.xp.cos(np.pi * self.xp.arange(cols, dtype=phase_wrap.dtype) / cols)
 
         # Finite difference Laplacian
         denom = 2 * (v.reshape(-1, 1) + u - 2)
@@ -215,7 +215,7 @@ class ModalAnalysis(BaseProcessingObj):
         else:
             if self.wavelengthInNm > 0:
                 phase_in_rad = self.in_ef.phaseInNm * (2 * self.xp.pi / self.wavelengthInNm)
-                phase_in_rad *= self.phase2modes.mask_inf_func.astype(float)
+                phase_in_rad *= self.phase2modes.mask_inf_func.astype(self.dtype)
                 phase_in_rad = self.unwrap_2d(phase_in_rad)
                 phase_in_nm = phase_in_rad * (self.wavelengthInNm / (2 * self.xp.pi))
                 ph = phase_in_nm[self.phase2modes.idx_inf_func]
@@ -233,7 +233,7 @@ class ModalAnalysis(BaseProcessingObj):
             else:
                 if self.wavelengthInNm > 0:
                     phase_in_rad = current_ef.phaseInNm * (2 * self.xp.pi / self.wavelengthInNm)
-                    phase_in_rad *= self.phase2modes.mask_inf_func.astype(float)
+                    phase_in_rad *= self.phase2modes.mask_inf_func.astype(self.dtype)
                     phase_in_rad = self.unwrap_2d(phase_in_rad)
                     phase_in_nm = phase_in_rad * (self.wavelengthInNm / (2 * self.xp.pi))
                     ph = phase_in_nm[self.phase2modes.idx_inf_func]

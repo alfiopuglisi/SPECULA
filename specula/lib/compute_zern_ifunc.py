@@ -8,7 +8,7 @@ def compute_zern_ifunc(dim, nzern, xp, dtype, obsratio=0.0, diaratio=1.0, start_
     if mask is None:
         mask, idx = make_mask(dim, obsratio, diaratio, get_idx=True, xp=xp)
     else:
-        mask = mask.astype(float)
+        mask = mask.astype(dtype)
         idx = xp.where(mask)
 
     mask = mask.astype(dtype)

@@ -65,7 +65,7 @@ class PushPullGenerator(BaseGenerator):
         else:
             raise ValueError(f'Unknown push_pull_type: {push_pull_type}')
         
-        self.time_hist = self.to_xp(time_hist)
+        self.time_hist = self.to_xp(time_hist, dtype=self.dtype)
 
     def trigger_code(self):
         self.output.value[:] = self.time_hist[self.iter_counter]

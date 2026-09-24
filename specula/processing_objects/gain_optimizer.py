@@ -223,7 +223,7 @@ class GainOptimizer(BaseProcessingObj):
         )
 
         # Apply the maximum gain factor safety margin
-        gmax_vec = self.to_xp(gmax_vec) * self.max_gain_factor
+        gmax_vec = self.to_xp(gmax_vec, dtype=self.dtype) * self.max_gain_factor
 
         self.logger.info("Maximum stable gains calculated:")
         self.logger.info(f"  Raw max gains: mean={float(self.xp.mean(gmax_vec/self.max_gain_factor)):.4f}, "
@@ -254,7 +254,7 @@ class GainOptimizer(BaseProcessingObj):
                 psd_pseudo_ol = (psd_pseudo_ol + self.psd_ol[:, mode]) / 2.0
 
         # t_intst different gain values
-        gains = self.xp.linspace(gmax/self.ngains, gmax, self.ngains)
+        gains = self.xp.linspace(gmax/self.ngains, gmax, self.ngains, dtype=self.dtype)
         totals = self.xp.zeros(self.ngains, dtype=self.dtype)
 
         for i, gain in enumerate(gains):

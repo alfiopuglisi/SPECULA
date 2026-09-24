@@ -21,7 +21,7 @@ class TimeHistoryGenerator(BaseGenerator):
             precision=precision
         )
 
-        self.time_hist = self.to_xp(time_history_array)
+        self.time_hist = self.to_xp(time_history_array, dtype=self.dtype)
 
     def trigger_code(self):
         # time_hist might be either 1d or 2d, indexing syntax is the same.

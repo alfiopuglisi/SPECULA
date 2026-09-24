@@ -48,7 +48,7 @@ class RoundToMultiple(BaseProcessingObj):
         super().setup()
 
         in_value = self.local_inputs['in_value']
-        self.out_value.value = self.xp.zeros_like(in_value.get_value())
+        self.out_value.value = self.xp.zeros_like(in_value.get_value(), dtype=self.dtype)
 
     def trigger_code(self):
         in_value = self.local_inputs['in_value'].get_value()

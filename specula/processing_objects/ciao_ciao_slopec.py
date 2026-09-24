@@ -159,7 +159,7 @@ class CiaoCiaoSlopec(Slopec):
             phase_cpu = cpuArray(phase)
             unwrapped_phase_cpu = unwrap_phase(phase_cpu)
             # Move it back to the current device (CPU/GPU)
-            phase = self.to_xp(unwrapped_phase_cpu)
+            phase = self.to_xp(unwrapped_phase_cpu, dtype=self.dtype)
 
         # 7. Convert to OPD (wrapped or unwrapped)
         opd = phase * self.wavelength / (2 * self.xp.pi)

@@ -69,7 +69,7 @@ def compute_zonal_ifunc(dim, n_act, xp=np, dtype=np.float32, circ_geom:bool=Fals
     if mask is None:
         mask, idx = make_mask(dim, obsratio, diaratio, get_idx=True, xp=xp)
     else:
-        mask = mask.astype(float)
+        mask = mask.astype(dtype)
         idx = xp.where(mask)
 
     logger = get_specula_logger(__name__)

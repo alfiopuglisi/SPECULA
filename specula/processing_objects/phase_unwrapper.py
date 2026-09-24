@@ -212,7 +212,7 @@ class PhaseUnwrapper(BaseProcessingObj):
         -------
         estimate, confidence, residual
         """
-        k_values = self.xp.arange(-self.max_k, self.max_k + 1, dtype=self.xp.int32)
+        k_values = self.xp.arange(-self.max_k, self.max_k + 1, dtype=self.dtype)
         candidates = p1_val + k_values * self.lambda_1
         wrapped_candidates = self.wrap_phase(candidates, self.lambda_2)
 

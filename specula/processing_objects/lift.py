@@ -218,7 +218,7 @@ class Lift(BaseProcessingObj):
         D = phase_sampling * pixel_pitch
         lmbda = wavelengthInNm * 1e-9
         sampling_ratio = ((lmbda / D) * rad2arcsec) / pix_scale 
-        ref_samp = np.max([2,np.ceil(sampling_ratio+1e-6)])
+        ref_samp = float(np.max([2,np.ceil(sampling_ratio+1e-6)]))
         if fft_res is not None:
             if fft_res > ref_samp: ref_samp = fft_res
         if sampling_ratio < ref_samp:
@@ -364,7 +364,7 @@ class Lift(BaseProcessingObj):
         return (DeltaI.ravel()**2 * Rinv).sum() / (self.gridSize**2)
 
     def setPsf(self, psf):
-        psf = self.xp.array(psf)
+        psf = self.xp.array(psf, dtype=self.dtype)
         center = self.computeCoG(psf)
         frame = self.crop_or_enlarge_around_peak(psf, int(self.npix_side),
                                                  peak_index=(self.xp.round(center[0]).astype(int), self.xp.round(center[1]).astype(int)))
@@ -478,7 +478,7 @@ class Lift(BaseProcessingObj):
         '''
         Backward compatibility, called from example/test
         '''
-        phase = self.xp.array(phase)
+        phase = self.xp.array(phase, dtype=self.dtype)
         complexField, complexFieldFFT = self.complexField(phase)
         return self.focalPlaneImageFromFFT(complexFieldFFT, set_flux=set_flux)
 
@@ -525,7 +525,7 @@ class Lift(BaseProcessingObj):
         xx, yy = self.xp.meshgrid(self.xp.arange(-pupil_size // 2, pupil_size // 2), self.xp.arange(-pupil_size // 2, pupil_size // 2))
         tlt_g = xx + yy
         tlt_f = -2 * self.xp.pi * tlt_g / (2*fft_size)
-        return tlt_f
+        return tlt_f.astype(self.dtype)
 
     def trigger(self):
 

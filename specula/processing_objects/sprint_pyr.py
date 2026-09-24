@@ -149,7 +149,8 @@ class SprintPyr(BaseSprintEstimator):
             precision=self.precision
         )
         self.internal_command = BaseValue(self.xp.zeros(self.dm.nmodes, dtype=self.dtype),
-                                          target_device_idx=self.target_device_idx)
+                                          target_device_idx=self.target_device_idx,
+                                          precision=self.precision)
         self.internal_dm.inputs['in_command'].set(self.internal_command)
         self.internal_dm.setup()
         self.internal_dm.outputs['out_layer'].S0 = 1e10  # High flux for accurate IM estimation

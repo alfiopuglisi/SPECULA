@@ -55,7 +55,7 @@ def compute_petal_ifunc(dim, n_petals, xp=np, dtype=np.float32, angle_offset=0,
                              spider=spider, spider_width=spider_width,
                              n_petals=n_petals, angle_offset=angle_offset)
     else:
-        mask = mask.astype(float)
+        mask = mask.astype(dtype)
         idx = xp.where(mask)
 
     # Center coordinates

@@ -189,7 +189,7 @@ class ElectricField(BaseDataObj):
             slicey = np.s_[:]
         if slicex is None:
             slicex = np.s_[:]
-        return self.field[1, slicey, slicex] * ((2 * self.xp.pi) / wavelengthInNm)
+        return self.field[1, slicey, slicex] * ((2 * self.xp.pi) / float(wavelengthInNm))
 
     def ef_at_lambda(self, wavelengthInNm, slicey=None, slicex=None, out=None):
         """
@@ -293,6 +293,7 @@ class ElectricField(BaseDataObj):
             yfrom, yto = self.xp.min(idx[1]), self.xp.max(idx[1])
         sub_ef = ElectricField(xto - xfrom, yto - yfrom, self.pixel_pitch,
                        target_device_idx=self.target_device_idx,
+                       precision=self.precision,
                        wavelengthInNm=self.wavelength_in_nm,
                        wavelengthToleranceInNm=self.wavelength_tolerance_in_nm)
         sub_ef.field[0, :] = self.field[0, xfrom:xto, yfrom:yto]
@@ -378,7 +379,7 @@ class ElectricField(BaseDataObj):
         frame : xp.ndarray
             2D array of phase values (in nm), mean-subtracted over nonzero amplitude pixels.
         """
-        frame = self.field[1] * (self.field[0] > 0).astype(float)
+        frame = self.field[1] * (self.field[0] > 0).astype(self.dtype)
         idx = self.xp.where(self.field[0] > 0)[0]
         # Remove average phase
         frame[idx] -= self.xp.mean(frame[idx])

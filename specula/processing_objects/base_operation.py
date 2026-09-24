@@ -153,23 +153,23 @@ class BaseOperation(BaseProcessingObj):
         self.constant_mul = 1
 
         if constant_sum is not None:
-            self.constant_sum += self.to_xp(self.xp.atleast_1d(constant_sum))
+            self.constant_sum += self.to_xp(self.xp.atleast_1d(constant_sum), dtype=self.dtype)
         if constant_sub is not None:
-            self.constant_sum -= self.to_xp(self.xp.atleast_1d(constant_sub))
+            self.constant_sum -= self.to_xp(self.xp.atleast_1d(constant_sub), dtype=self.dtype)
 
         if constant_mul is not None:
-            self.constant_mul *= self.to_xp(self.xp.atleast_1d(constant_mul))
+            self.constant_mul *= self.to_xp(self.xp.atleast_1d(constant_mul), dtype=self.dtype)
         if constant_div is not None:
-            self.constant_mul /= self.to_xp(self.xp.atleast_1d(constant_div))
+            self.constant_mul /= self.to_xp(self.xp.atleast_1d(constant_div), dtype=self.dtype)
 
         # Max and min are treated separately
         if constant_max is not None:
-            self.constant_max = self.to_xp(self.xp.atleast_1d(constant_max))
+            self.constant_max = self.to_xp(self.xp.atleast_1d(constant_max), dtype=self.dtype)
         else:
             self.constant_max = None
 
         if constant_min is not None:
-            self.constant_min = self.to_xp(self.xp.atleast_1d(constant_min))
+            self.constant_min = self.to_xp(self.xp.atleast_1d(constant_min), dtype=self.dtype)
         else:
             self.constant_min = None
 
@@ -207,7 +207,7 @@ class BaseOperation(BaseProcessingObj):
 
         # Allocate output value
         if self.concat:
-            self.out_value.value = self.xp.empty(len(value1.value) + len(value2.value))
+            self.out_value.value = self.xp.empty(len(value1.value) + len(value2.value), dtype=self.dtype)
         else:
             self.out_value.value = self.xp.empty_like(value1.value)
 

@@ -45,7 +45,7 @@ class SpatioTempArray(BaseDataObj):
         super().__init__(target_device_idx=target_device_idx, precision=precision)
 
         self.time_vector = self.to_xp(time_vector)
-        input_array = self.to_xp(array)
+        input_array = self.to_xp(array, dtype=self.dtype)
 
         if time_axis not in (0, -1):
             raise ValueError(f"Unsupported time_axis={time_axis}. Supported values are 0 and -1")

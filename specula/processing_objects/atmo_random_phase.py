@@ -76,7 +76,7 @@ class AtmoRandomPhase(BaseProcessingObj):
         self.inputs['seeing'] = InputValue(type=BaseValue)
 
         if zenithAngleInDeg is not None:
-            self.airmass = 1.0 / np.cos(np.radians(zenithAngleInDeg))
+            self.airmass = float(1.0 / np.cos(np.radians(zenithAngleInDeg)))
             self.logger.info(f'AtmoRandomPhase: zenith angle is defined as: {zenithAngleInDeg} deg')
             self.logger.info(f'AtmoRandomPhase: airmass is: {self.airmass}')
         else:
@@ -99,7 +99,7 @@ class AtmoRandomPhase(BaseProcessingObj):
             layer = Layer(self.pixel_pupil, self.pixel_pupil, self.pixel_pitch, layer_height,
                           precision=self.precision, target_device_idx=self.target_device_idx)
             ef = ElectricField(self.pixel_pupil, self.pixel_pupil, self.pixel_pitch,
-                               target_device_idx=self.target_device_idx)
+                               precision=self.precision, target_device_idx=self.target_device_idx)
             # The electric field output shares the same array as the layer output
             ef.field = layer.field
             if source is not None:

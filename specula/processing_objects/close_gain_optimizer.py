@@ -126,7 +126,7 @@ class CloseGainOptimizer(BaseProcessingObj):
             # Asymmetry application: 
             # If the normalized correlation is less than the setpoint r, it implies 
             # ringing/overshooting, so we use the more aggressive q_minus. Otherwise, q_plus.
-            q_array = self.xp.where(corr_diff < 0, self.q_minus, self.q_plus)
+            q_array = self.xp.where(corr_diff < 0, self.dtype(self.q_minus), self.dtype(self.q_plus))
 
             current_gain = self.optimized_gain.value
             new_gain = current_gain * (1.0 + q_array * corr_diff)

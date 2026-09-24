@@ -1,4 +1,5 @@
 import os
+import math
 import json
 import hashlib
 
@@ -43,6 +44,12 @@ def lgs_map_sh(nsh, diam, rl, zb, dz, profz, fwhmb, ps, ssp,
     """
 
     theta = cpuArray(theta)
+    # Use python floats for scalar parameters, to avoid upcasting
+    # float32 arrays with numpy/cupy float64 scalars
+    zb = float(zb)
+    fwhmb = float(fwhmb)
+    dz = [float(x) for x in cpuArray(dz)]
+    profz = [float(x) for x in cpuArray(profz)]
     # Oversampling and lenslet grid setup
     ossp = ssp * overs
 
@@ -51,7 +58,7 @@ def lgs_map_sh(nsh, diam, rl, zb, dz, profz, fwhmb, ps, ssp,
     xfov, yfov = xp.meshgrid(xp.linspace(-ssp * ps / 2, ssp * ps / 2, ossp, dtype=dtype),
                              xp.linspace(-ssp * ps / 2, ssp * ps / 2, ossp, dtype=dtype))
     # Gaussian parameters for the sodium layer
-    sigma = (fwhmb * ASEC2RAD * zb) / (2 * xp.sqrt(2 * xp.log(2)))
+    sigma = (fwhmb * ASEC2RAD * zb) / (2 * math.sqrt(2 * math.log(2)))
     one_over_sigma2 = 1.0 / sigma**2
     exp_sigma = -0.5 * one_over_sigma2
     rb = xp.array([theta[0] * ASEC2RAD * zb, theta[1] * ASEC2RAD * zb, 0], dtype=dtype)
@@ -74,9 +81,9 @@ def lgs_map_sh(nsh, diam, rl, zb, dz, profz, fwhmb, ps, ssp,
     nz = len(dz)
     # Gaussian or top-hat profile choice for LGS beam
     if rprof_type == 0:
-        gnorm = 1.0 / (sigma * xp.pi * xp.sqrt(2.0))  # Gaussian
+        gnorm = 1.0 / (sigma * math.pi * math.sqrt(2.0))  # Gaussian
     elif rprof_type == 1:
-        gnorm = 1.0 / (xp.pi / 4 * (fwhmb * ASEC2RAD * zb)**2)  # Top-hat
+        gnorm = 1.0 / (math.pi / 4 * (fwhmb * ASEC2RAD * zb)**2)  # Top-hat
     else:
         raise ValueError("Unsupported radial profile type")
 

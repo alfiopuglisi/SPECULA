@@ -471,7 +471,7 @@ class ModulatedPyramid(BaseProcessingObj):
 
     def get_modulation_tilts(self, p):
         p = int(p)
-        xx, yy = make_xy(p, p // 2, xp=self.xp)
+        xx, yy = make_xy(p, p // 2, xp=self.xp, dtype=self.dtype)
         xmin = self.xp.min(xx)
         xmax = self.xp.max(xx)
         tilt_x = xx * self.xp.pi / ((xmax - xmin) / 2)

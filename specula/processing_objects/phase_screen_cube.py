@@ -102,9 +102,10 @@ class PhaseScreenCube(BaseProcessingObj):
         idx_last_non_positive = idx_first_positive - 1
 
         # Linear interpolation between two time steps
-        time_step = self.time_vector[idx_first_positive] - self.time_vector[idx_last_non_positive]
-        self.cur_screen = self.scale_factor/time_step*(dt[idx_first_positive]*self.phasescreens[idx_last_non_positive, :, :] + 
-                        np.abs(dt[idx_last_non_positive])*self.phasescreens[idx_first_positive, :, :])
+        # python floats, so that float64 time values do not upcast float32 phase screens
+        time_step = float(self.time_vector[idx_first_positive] - self.time_vector[idx_last_non_positive])
+        self.cur_screen = self.scale_factor/time_step*(float(dt[idx_first_positive])*self.phasescreens[idx_last_non_positive, :, :] +
+                        abs(float(dt[idx_last_non_positive]))*self.phasescreens[idx_first_positive, :, :])
 
         in_ef = ElectricField(self.cur_screen.shape[0], self.cur_screen.shape[1], self.pixel_scale,
                                target_device_idx=self.target_device_idx)

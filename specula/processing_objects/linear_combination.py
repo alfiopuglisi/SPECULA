@@ -36,9 +36,9 @@ class LinearCombination(BaseProcessingObj):
 
         if dm1 is not None and dm3 is not None:
             # 0 because we looked at a single DM
-            self.ps_coeff = self.xp.array(platescale_coeff([dm1,dm3], start_modes, self.pixel_pupil)[0])
+            self.ps_coeff = self.xp.array(platescale_coeff([dm1,dm3], start_modes, self.pixel_pupil)[0], dtype=self.dtype)
         else:
-            self.ps_coeff = self.xp.zeros(3)
+            self.ps_coeff = self.xp.zeros(3, dtype=self.dtype)
 
     @classmethod
     def input_names(cls):

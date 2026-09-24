@@ -101,7 +101,10 @@ class IFuncInv(BaseDataObj):
         with fits.open(filename) as hdul:
             ifunc_inv = hdul[exten].data.T
             mask = hdul[exten+1].data
-        return IFuncInv(ifunc_inv, mask, target_device_idx=target_device_idx)
+        ifunc_inv_obj = IFuncInv(ifunc_inv, mask, target_device_idx=target_device_idx)
+        # Data read from file may be float64 regardless of the requested precision
+        ifunc_inv_obj.ifunc_inv = ifunc_inv_obj.to_xp(ifunc_inv_obj.ifunc_inv, dtype=ifunc_inv_obj.dtype)
+        return ifunc_inv_obj
 
     def get_value(self):
         return self.ifunc_inv

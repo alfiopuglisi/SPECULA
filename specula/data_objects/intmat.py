@@ -61,7 +61,7 @@ class Intmat(BaseDataObj):
         """
         super().__init__(target_device_idx=target_device_idx, precision=precision)
         if intmat is not None:
-            self.intmat = self.to_xp(intmat)
+            self.intmat = self.to_xp(intmat, dtype=self.dtype)
         else:
             if nmodes is None or nslopes is None:
                 raise ValueError('nmode sand nslopes must set if intmat is not passed')
@@ -178,7 +178,7 @@ class Intmat(BaseDataObj):
         else:
             intmat = self.intmat
         recmat = self.pseudo_invert(self.to_xp(intmat), n_modes_to_drop=cut_modes, w_vec=w_vec, interactive=interactive)
-        rec = Recmat(recmat, target_device_idx=self.target_device_idx)
+        rec = Recmat(recmat, target_device_idx=self.target_device_idx, precision=self.precision)
         rec.im_tag = self.norm_factor  # TODO wrong
         return rec
 
@@ -241,7 +241,7 @@ class Intmat(BaseDataObj):
                                             self.dtype, noise_variance=noise_variance,
                                             c_noise=c_noise_mat,
                                             c_inverse=False)
-        rec = Recmat(recmat, target_device_idx=self.target_device_idx)
+        rec = Recmat(recmat, target_device_idx=self.target_device_idx, precision=self.precision)
         return rec
 
     def pseudo_invert(self, matrix, n_modes_to_drop=0, w_vec=None, interactive=False):

@@ -1,3 +1,5 @@
+import math
+
 from astropy.io import fits
 
 from specula import cpuArray
@@ -207,7 +209,7 @@ class Slopes(BaseDataObj):
         """
         sx = self.xslopes
         sy = self.yslopes
-        alpha = self.xp.arctan2(sy, sx) + self.xp.radians(angle)
+        alpha = self.xp.arctan2(sy, sx) + math.radians(angle)
         modulus = self.xp.sqrt(sx**2 + sy**2)
         signx = -1 if flipx else 1
         signy = -1 if flipy else 1

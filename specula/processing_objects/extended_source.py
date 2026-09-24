@@ -114,7 +114,7 @@ class ExtendedSource(BaseProcessingObj):
         self.inputs['psf'] = InputValue(type=BaseValue, optional=True)
 
         # Outputs
-        self.outputs['coeff'] = BaseValue(target_device_idx=self.target_device_idx)
+        self.outputs['coeff'] = BaseValue(target_device_idx=self.target_device_idx, precision=precision)
 
         # Compute coefficients
         self.compute()

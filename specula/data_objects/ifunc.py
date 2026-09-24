@@ -85,7 +85,7 @@ class IFunc(BaseDataObj):
                 raise ValueError(f'Invalid ifunc type {type_str}')
 
         ifunc = self.to_xp(ifunc)
-        mask = self.to_xp(mask)
+        mask = self.to_xp(mask, dtype=self.dtype)
 
         self._influence_function = ifunc
         self._mask_inf_func = mask

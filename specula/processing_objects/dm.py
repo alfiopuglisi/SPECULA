@@ -132,7 +132,7 @@ class DM(BaseProcessingObj):
             self.n_valid_modes = len(range(start_mode, nmodes))
 
         if m2c is not None:
-            self.m2c = m2c.m2c
+            self.m2c = self.to_xp(m2c.m2c, dtype=self.dtype)
             nmodes_m2c = m2c.m2c[:, self._valid_modes].shape[1]
             self.m2c_commands = self.xp.zeros(nmodes_m2c, dtype=self.dtype)
             out_comm_len = self.m2c.shape[0]
@@ -160,9 +160,9 @@ class DM(BaseProcessingObj):
             if isinstance(stroke,list):
                 if out_comm_len != len(stroke):
                     raise ValueError(f'Stroke is a list of {len(stroke)} elements, but {out_comm_len} coefficients are expected')
-                self.stroke = self.xp.array(stroke)
+                self.stroke = self.xp.array(stroke, dtype=self.dtype)
             else:
-                self.stroke = self.xp.ones(out_comm_len)*stroke
+                self.stroke = self.xp.ones(out_comm_len, dtype=self.dtype)*stroke
         
         self.clip_command = BaseValue(
             target_device_idx=target_device_idx,

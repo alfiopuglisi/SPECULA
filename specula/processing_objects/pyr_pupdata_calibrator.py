@@ -182,9 +182,9 @@ class PyrPupdataCalibrator(BaseProcessingObj):
         # Create PupData (reorder to match IDL)
         pup_order = [1, 0, 2, 3]
         self.pupdata.ind_pup = ind_pup[:, pup_order]
-        self.pupdata.radius = radii[pup_order]
-        self.pupdata.cx = centers[pup_order, 0]
-        self.pupdata.cy = centers[pup_order, 1]
+        self.pupdata.radius = radii[pup_order].astype(self.dtype)
+        self.pupdata.cx = centers[pup_order, 0].astype(self.dtype)
+        self.pupdata.cy = centers[pup_order, 1].astype(self.dtype)
         self.pupdata.framesize = image.shape
         self.pupdata.slopes_from_intensity = self.slopes_from_intensity
         self.pupdata.generation_time = self.current_time

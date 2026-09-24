@@ -42,7 +42,7 @@ class PowerLoss(BaseProcessingObj):
         self.sr = BaseValue(target_device_idx=self.target_device_idx)
         self.outputs['out_sr'] = self.sr
         self.psf = BaseValue(target_device_idx=self.target_device_idx)
-        self.psf.value = self.xp.zeros([self.pad_size, self.pad_size])
+        self.psf.value = self.xp.zeros([self.pad_size, self.pad_size], dtype=self.dtype)
         self.outputs['out_psf'] = self.psf
 
     @classmethod

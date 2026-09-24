@@ -71,5 +71,5 @@ class ZernikeSensor(ModulatedPyramid):
         # Create phase mask: self.phase_shift_pi
         phase_mask = self.xp.where(rr < spot_radius_pixels,
                                    self.phase_shift_pi/2, # phase is multiplied by 2π during super().__init__
-                                   0.0)
+                                   0.0).astype(self.dtype)
         return phase_mask

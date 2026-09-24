@@ -72,12 +72,14 @@ class ImCalibrator(BaseProcessingObj):
         self.inputs['in_slopes'] = InputValue(type=Slopes)
         self.inputs['in_commands'] = InputValue(type=BaseValue)
 
-        self.intmat = Intmat(nmodes=nmodes, nslopes=0, target_device_idx=self.target_device_idx)
+        self.intmat = Intmat(nmodes=nmodes, nslopes=0, target_device_idx=self.target_device_idx,
+                             precision=self.precision)
         self.outputs['out_intmat'] = self.intmat
 
         if self.compute_single_im:
             self.single_im = [Intmat(nmodes=1, nslopes=0,
-                                     target_device_idx=self.target_device_idx) for i in range(nmodes)]
+                                     target_device_idx=self.target_device_idx,
+                                     precision=self.precision) for i in range(nmodes)]
         else:
             self.single_im = []
         self.outputs['out_single_im'] = self.single_im

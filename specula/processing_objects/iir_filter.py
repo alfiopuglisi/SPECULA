@@ -50,11 +50,11 @@ class IirFilter(BaseFilter):
         self.inputs['in_ost'] = InputValue(type=BaseValue, optional=True)
 
         # IIR-specific state
-        self._ist = self.xp.zeros_like(iir_filter_data.num)
-        self._ost = self.xp.zeros_like(iir_filter_data.den)
+        self._ist = self.xp.zeros_like(iir_filter_data.num, dtype=self.dtype)
+        self._ost = self.xp.zeros_like(iir_filter_data.den, dtype=self.dtype)
 
         # Integration control
-        self._den_mask = self.xp.ones_like(self.iir_filter_data.den)
+        self._den_mask = self.xp.ones_like(self.iir_filter_data.den, dtype=self.dtype)
         if not integration:
             self._den_mask[:, :-1] = 0
 

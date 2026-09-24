@@ -146,7 +146,8 @@ class InfinitePhaseScreen(BaseDataObj):
         self.xp.fill_diagonal(L_mat, self.xp.sqrt(W))
         # Now use sqrt(eigenvalues) to get B matrix
         B_mat = u.dot(L_mat)
-        return A_mat, B_mat
+        # Covariance math above is done in double precision, cast at the boundary
+        return A_mat.astype(self.dtype), B_mat.astype(self.dtype)
 
     def setup(self):
         # set X coords
@@ -164,7 +165,7 @@ class InfinitePhaseScreen(BaseDataObj):
         self.B_mat.append(B_mat)
         # make initial screen
         tmp, _, _ = ft_phase_screen0( turbolenceFormulas, self.r0, self.stencil_size, self.pixel_scale, self.L0, seed=self.random_seed)
-        self.full_scrn = self.to_xp(tmp)
+        self.full_scrn = self.to_xp(tmp, dtype=self.dtype)
         self.full_scrn *= (2 * np.pi) ** (11/6) # this is to compensate SYMAO bug that uses PSD(k) instead of PSD(f)
         self.full_scrn -= self.xp.mean(self.full_scrn[:self.requested_mx_size, :self.requested_mx_size])
         # self.logger.debug(self.full_scrn.shape)
@@ -172,7 +173,7 @@ class InfinitePhaseScreen(BaseDataObj):
     def prepare_random_data_col(self):
         if self.random_data_col is None:
 #            self.logger.debug('generating new random data col')
-            self.random_data_col = self.rng.standard_normal(size=self.stencil_size)
+            self.random_data_col = self.rng.standard_normal(size=self.stencil_size).astype(self.dtype)
         else:
             pass
 #            self.logger.debug('using old random data col')
@@ -180,7 +181,7 @@ class InfinitePhaseScreen(BaseDataObj):
     def prepare_random_data_row(self):
         if self.random_data_row is None:
 #            self.logger.debug('generating new random data row')
-            self.random_data_row = self.rng.standard_normal(size=self.stencil_size)
+            self.random_data_row = self.rng.standard_normal(size=self.stencil_size).astype(self.dtype)
         else:
             pass
 #            self.logger.debug('using old random data row')

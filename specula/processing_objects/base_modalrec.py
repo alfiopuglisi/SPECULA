@@ -47,9 +47,9 @@ class BaseModalrec(BaseProcessingObj):
             raise ValueError("Either 'in_slopes' or 'in_slopes_list' must be given as an input")
 
         if slopes is None:
-            self.slopes = self.xp.hstack([x.slopes for x in slopes_list])
+            self.slopes = self.xp.hstack([x.slopes for x in slopes_list]).astype(self.dtype, copy=False)
         else:
-            self.slopes = self.to_xp(slopes.slopes.copy())
+            self.slopes = self.to_xp(slopes.slopes, dtype=self.dtype, force_copy=True)
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)

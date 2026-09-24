@@ -289,6 +289,10 @@ class AtmoPropagation(BaseProcessingObj):
                 "Thus it is reduced from " + str(z_in) + "m to " + str(z) +
                 "m. Consider increasing zero padding.")
 
+        # Propagators are computed in double precision, cast to the runtime dtype
+        propagator = [p.astype(self.complex_dtype, copy=False) if p is not None else None
+                      for p in propagator]
+
         return propagator, far_field
 
     def doFresnel_setup(self):

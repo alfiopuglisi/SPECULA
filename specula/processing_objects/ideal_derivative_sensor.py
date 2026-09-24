@@ -220,7 +220,7 @@ class IdealDerivativeSensor(BaseProcessingObj):
         dy_sums = self.xp.sum(dy_masked, axis=1)
 
         # Avoid division by zero
-        valid_counts = self.xp.where(valid_counts > 0, valid_counts, 1)
+        valid_counts = self.xp.where(valid_counts > 0, valid_counts, 1).astype(self.dtype)
 
         self.sx[:] = (dx_sums / valid_counts) * self.slope_factor
         self.sy[:] = (dy_sums / valid_counts) * self.slope_factor

@@ -110,8 +110,8 @@ class CurWfsSlopec(Slopec):
 
     def trigger_code(self):
         # Extract valid pixels according to PupData
-        i1 = self.flat_p1[self.pup_idx].astype(self.xp.float32)
-        i2 = self.flat_p2[self.pup_idx].astype(self.xp.float32)
+        i1 = self.flat_p1[self.pup_idx].astype(self.dtype)
+        i2 = self.flat_p2[self.pup_idx].astype(self.dtype)
 
         # Compute Curvature Signal: S = (I1 - I2) / (I1 + I2)
         sum_i = i1 + i2

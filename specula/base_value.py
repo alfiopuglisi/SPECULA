@@ -56,7 +56,8 @@ class BaseValue(BaseDataObj):
         v = BaseValue(target_device_idx=target_device_idx)
 
         if hdr['NDARRAY']:
-            v.value = data.copy()
+            dtype = v.dtype if np.issubdtype(data.dtype, np.floating) else None
+            v.value = v.to_xp(data, force_copy=True, dtype=dtype)
         else:
             value_str = hdr.get('VALUE', None)
             if value_str is not None:

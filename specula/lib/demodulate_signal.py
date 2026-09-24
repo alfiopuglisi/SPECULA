@@ -112,8 +112,8 @@ def demodulate_signal(signal_data, carrier_freq, sampling_freq,
 
     if cumulated:
         # Cumulated demodulation with progressive windows
-        qa = xp.zeros((nt, nsignals), dtype=xp.float32)
-        pa = xp.zeros((nt, nsignals), dtype=xp.float32)
+        qa = xp.zeros((nt, nsignals), dtype=dtype)
+        pa = xp.zeros((nt, nsignals), dtype=dtype)
 
         for j in range(2, nt):
             # Window from start to j (all signals at once)
@@ -139,8 +139,8 @@ def demodulate_signal(signal_data, carrier_freq, sampling_freq,
             pphi = xp.mean(pphi_temp[start_idx:end_idx, :],
                                   axis=0)  # Shape: (nsignals,)
         else:
-            value = data_dem_temp[-1, :] if len(data_dem_temp) > 0 else xp.zeros(nsignals)
-            pphi = pphi_temp[-1, :] if len(pphi_temp) > 0 else xp.zeros(nsignals)
+            value = data_dem_temp[-1, :] if len(data_dem_temp) > 0 else xp.zeros(nsignals, dtype=dtype)
+            pphi = pphi_temp[-1, :] if len(pphi_temp) > 0 else xp.zeros(nsignals, dtype=dtype)
     else:
         # Simple demodulation (single pass, vectorized)
         qa = xp.mean(cur_data * dem_sin, axis=0)  # Shape: (nsignals,)

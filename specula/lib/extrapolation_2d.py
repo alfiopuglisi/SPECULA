@@ -421,7 +421,7 @@ class EFInterpolator():
 
         # Phase: apply an intermediate extrapolation to avoid edge effects
         self.phase_extrapolated[:] = self.in_ef.phaseInNm * \
-            (self.in_ef.A >= self.mask_threshold).astype(int)
+            (self.in_ef.A >= self.mask_threshold).astype(self.in_ef.phaseInNm.dtype)
 
         _ = _apply_extrapolation(
             self.in_ef.phaseInNm,

@@ -287,7 +287,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
                 phase_screen.add_line(0, scf, False)
 
             phase_screen1 = phase_screen.scrnRaw
-            interpfactor = np.sqrt(frac_rows**2 + frac_cols**2)
+            interpfactor = self.dtype(np.sqrt(frac_rows**2 + frac_cols**2))
 
             # Use the buckup to compute the interpolated phase
             layer_phase = interpfactor * phase_screen1 \
