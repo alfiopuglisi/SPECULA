@@ -170,7 +170,9 @@ class Intmat(BaseDataObj):
                 slope_rms = hdul[3].data.copy()
             else:
                 slope_mm = slope_rms = None
-        return Intmat(intmat, slope_mm, slope_rms, pupdata_tag, subapdata_tag, norm_factor, target_device_idx=target_device_idx)
+        return Intmat(intmat, slope_mm=slope_mm, slope_rms=slope_rms,
+                      pupdata_tag=pupdata_tag, subapdata_tag=subapdata_tag,
+                      norm_factor=norm_factor, target_device_idx=target_device_idx)
 
     def generate_rec(self, nmodes=None, cut_modes=0, w_vec=None, interactive=False):
         if nmodes is not None:

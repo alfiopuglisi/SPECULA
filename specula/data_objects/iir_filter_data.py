@@ -805,7 +805,7 @@ class IirFilterData(BaseDataObj):
         return num, den
 
     @staticmethod
-    def from_gain_and_ff(gain, ff=None, target_device_idx=None):
+    def from_gain_and_ff(gain, ff=None, target_device_idx=None, precision=None):
         '''Build an IirFilterData object from a gain value/vector
         and an optional forgetting factor value/vector'''
 
@@ -837,10 +837,11 @@ class IirFilterData(BaseDataObj):
             den[i, 1] = 1
             ord_den[i] = 2
 
-        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx)
+        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx,
+                             precision=precision)
 
     @staticmethod
-    def lpf_from_fc(fc, fs, n_ord=2, target_device_idx=None):
+    def lpf_from_fc(fc, fs, n_ord=2, target_device_idx=None, precision=None):
         '''Build an IirFilterData object from a cut off frequency value/vector
         and a filter order value (must be even)'''
 
@@ -907,10 +908,11 @@ class IirFilterData(BaseDataObj):
             ord_num[i] = len(num_total)
             ord_den[i] = len(den_total)
 
-        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx)
+        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx,
+                             precision=precision)
 
     @staticmethod
-    def lpf_from_fc_and_ampl(fc, ampl, fs, target_device_idx=None):
+    def lpf_from_fc_and_ampl(fc, ampl, fs, target_device_idx=None, precision=None):
         '''Build an IirFilterData object from a cut off frequency value/vector
         and amplification    value/vector'''
 
@@ -959,7 +961,8 @@ class IirFilterData(BaseDataObj):
             ord_num[i] = len(num_total)
             ord_den[i] = len(den_total)
 
-        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx)
+        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx,
+                             precision=precision)
 
 # -- Additional methods for control library integration - -
 
@@ -1031,12 +1034,13 @@ class IirFilterData(BaseDataObj):
         return tf_list
 
     @staticmethod
-    def from_control_tf(tf_list, target_device_idx: int = None):
+    def from_control_tf(tf_list, target_device_idx: int = None, precision: int = None):
         """Create IirFilterData from control.TransferFunction objects.
 
         Args:
             tf_list: Single control.TransferFunction or list of control.TransferFunction objects
             target_device_idx: Target device index (default: None)
+            precision: Precision (0=double, 1=single, default: global precision)
 
         Returns:
             IirFilterData: New IirFilterData object
@@ -1079,7 +1083,8 @@ class IirFilterData(BaseDataObj):
             num[i, max_len - len(num_coeffs):] = num_coeffs[::-1]
             den[i, max_len - len(den_coeffs):] = den_coeffs[::-1]
 
-        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx)
+        return IirFilterData(ord_num, ord_den, num, den, target_device_idx=target_device_idx,
+                             precision=precision)
 
     def bode_plot(self, mode: int = 0, dt: float = None, omega: np.ndarray = None,
                   plot: bool = True, **kwargs):

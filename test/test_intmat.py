@@ -36,6 +36,31 @@ class TestIntmat(unittest.TestCase):
 
         np.testing.assert_array_equal(cpuArray(im.intmat), cpuArray(im2.intmat))
 
+    @cpu_and_gpu
+    def test_save_restore_roundtrip_with_metadata(self, target_device_idx, xp):
+        '''
+        Test that slope_mm, slope_rms, tags and norm_factor survive
+        a save/restore roundtrip and end up in the right attributes.
+        '''
+        im_data = xp.arange(10).reshape((5, 2))
+        slope_mm = np.array([[-1.0, 1.0], [-2.0, 2.0]])
+        slope_rms = np.array([0.1, 0.2])
+        im = Intmat(im_data, slope_mm=slope_mm, slope_rms=slope_rms,
+                    pupdata_tag='pup_tag', subapdata_tag='sa_tag', norm_factor=3.5,
+                    target_device_idx=target_device_idx)
+
+        im.save(self.filename)
+        im2 = Intmat.restore(self.filename, target_device_idx=target_device_idx)
+
+        np.testing.assert_array_equal(cpuArray(im.intmat), cpuArray(im2.intmat))
+        np.testing.assert_array_equal(cpuArray(im2.slope_mm), slope_mm)
+        np.testing.assert_array_equal(cpuArray(im2.slope_rms), slope_rms)
+        assert im2.pupdata_tag == 'pup_tag'
+        assert im2.subapdata_tag == 'sa_tag'
+        assert im2.norm_factor == 3.5
+        assert im2.nmodes == 2
+        assert im2.nslopes == 5
+
     def tearDown(self):
         try:
             os.unlink(self.filename)

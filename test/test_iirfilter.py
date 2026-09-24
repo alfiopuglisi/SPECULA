@@ -73,6 +73,26 @@ class TestIirFilterData(unittest.TestCase):
         np.testing.assert_array_equal(cpuArray(filt.ordden), cpuArray(restored.ordden))
 
     @cpu_and_gpu
+    def test_factory_methods_precision(self, target_device_idx, xp):
+        '''Test that the factory methods honour the precision argument'''
+        for precision, dtype in [(0, xp.float64), (1, xp.float32)]:
+            filters = [
+                IirFilterData.from_gain_and_ff([0.5, 0.3], ff=[0.99, 0.98],
+                                               target_device_idx=target_device_idx,
+                                               precision=precision),
+                IirFilterData.lpf_from_fc(50, 1000, n_ord=2,
+                                          target_device_idx=target_device_idx,
+                                          precision=precision),
+                IirFilterData.lpf_from_fc_and_ampl(50, 2, 1000,
+                                                   target_device_idx=target_device_idx,
+                                                   precision=precision),
+            ]
+            for f in filters:
+                assert f.precision == precision
+                assert f.num.dtype == dtype
+                assert f.den.dtype == dtype
+
+    @cpu_and_gpu
     def test_numerator_from_gain_and_ff(self, target_device_idx, xp):
         gain = 0.2
         nmodes = 10

@@ -25,10 +25,12 @@ class LowPassFilter(IirFilter):
             if n_ord is not None:
                 raise ValueError('Only one of amplif_fact and n_ord can be specified')
             iir_filter_data = IirFilterData.lpf_from_fc_and_ampl(cutoff_freq, amplif_fact,
-                                               samp_freq, target_device_idx=target_device_idx)
+                                               samp_freq, target_device_idx=target_device_idx,
+                                               precision=precision)
         else:
             iir_filter_data = IirFilterData.lpf_from_fc(cutoff_freq, samp_freq, n_ord=n_ord,
-                                                        target_device_idx=target_device_idx)
+                                                        target_device_idx=target_device_idx,
+                                                        precision=precision)
 
         # Initialize IirFilter object
         super().__init__(iir_filter_data, delay=delay,

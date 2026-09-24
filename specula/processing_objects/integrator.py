@@ -47,7 +47,8 @@ class Integrator(IirFilter):
                 ff = [val for i, val in enumerate(ff) for _ in range(n_modes[i])]
 
         iir_filter_data = IirFilterData.from_gain_and_ff(int_gain, ff=ff,
-                                               target_device_idx=target_device_idx)
+                                               target_device_idx=target_device_idx,
+                                               precision=precision)
 
         # Initialize IirFilter object
         super().__init__(iir_filter_data, delay=delay, integration=integration,

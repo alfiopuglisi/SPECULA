@@ -120,10 +120,10 @@ class PyrSlopec(Slopec):
         self.flat_pixels -= self.threshold
 
         clamp_generic_less(0,0,self.flat_pixels, xp=self.xp)
-        A = self.flat_pixels[self.pup_idx0].astype(self.xp.float32)
-        B = self.flat_pixels[self.pup_idx1].astype(self.xp.float32)
-        C = self.flat_pixels[self.pup_idx2].astype(self.xp.float32)
-        D = self.flat_pixels[self.pup_idx3].astype(self.xp.float32)
+        A = self.flat_pixels[self.pup_idx0].astype(self.dtype)
+        B = self.flat_pixels[self.pup_idx1].astype(self.dtype)
+        C = self.flat_pixels[self.pup_idx2].astype(self.dtype)
+        D = self.flat_pixels[self.pup_idx3].astype(self.dtype)
 
         # Compute flux per subaperture (sum of all 4 pupils)
         flux_per_subap = A + B + C + D
@@ -183,10 +183,10 @@ class PyrSlopec(Slopec):
         # self.flat_pixels, which trigger_code() has already thresholded
         # and clamped in place by the time post_trigger() runs.
         raw_pixels = self.local_inputs['in_pixels'].pixels.ravel()
-        raw_A = raw_pixels[self.pup_idx0].astype(self.xp.float32)
-        raw_B = raw_pixels[self.pup_idx1].astype(self.xp.float32)
-        raw_C = raw_pixels[self.pup_idx2].astype(self.xp.float32)
-        raw_D = raw_pixels[self.pup_idx3].astype(self.xp.float32)
+        raw_A = raw_pixels[self.pup_idx0].astype(self.dtype)
+        raw_B = raw_pixels[self.pup_idx1].astype(self.dtype)
+        raw_C = raw_pixels[self.pup_idx2].astype(self.dtype)
+        raw_D = raw_pixels[self.pup_idx3].astype(self.dtype)
         self.xp.put(self.pixels_subap.value[0], self.subap_map_idx, raw_A)
         self.xp.put(self.pixels_subap.value[1], self.subap_map_idx, raw_B)
         self.xp.put(self.pixels_subap.value[2], self.subap_map_idx, raw_C)
