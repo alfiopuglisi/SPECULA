@@ -237,7 +237,8 @@ class ConvolutionKernel(BaseDataObj):
         self.real_kernels = lgs_map_sh(
             self.dimx, self.pupil_size_m, self.launcher_pos, zfocus, layer_offsets,
             self.zprofile, self.spot_size, self.pxscale, self.dimension,
-            overs=self.oversampling, theta=lgs_tt, doCube=True, xp=self.xp
+            overs=self.oversampling, theta=lgs_tt, doCube=True,
+            dtype=self.dtype, xp=self.xp
         )
 
         # Process the kernels - apply FFT if needed

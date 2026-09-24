@@ -761,8 +761,9 @@ class TestKernel(unittest.TestCase):
             self.assertLess(memory_after, memory_before,
                           "Memory usage should decrease after deallocation")
 
-            # Expected savings: size of real_kernels (float32)
-            expected_savings = dimx * dimy * dimension * dimension * 4  # 4 bytes for float32
+            # Expected savings: size of real_kernels
+            itemsize = np.dtype(kernel.dtype).itemsize
+            expected_savings = dimx * dimy * dimension * dimension * itemsize
             actual_savings = memory_before - memory_after
 
             # Should be close to expected (within 10% tolerance)
