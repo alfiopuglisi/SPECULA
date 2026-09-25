@@ -159,12 +159,12 @@ class InfinitePhaseScreen(BaseDataObj):
 
     def setup(self):
         # set X coords
-        self.new_col_coords1 = self.xp.zeros((self.stencil_size, 2))
-        self.new_col_coords1[:, 0] = -1
-        self.new_col_coords1[:, 1] = self.xp.arange(self.stencil_size)
-        self.new_col_positions1 = self.new_col_coords1 * self.pixel_scale
+        new_col_coords1 = self.xp.zeros((self.stencil_size, 2))
+        new_col_coords1[:, 0] = -1
+        new_col_coords1[:, 1] = self.xp.arange(self.stencil_size)
+        new_col_positions1 = new_col_coords1 * self.pixel_scale
         # calc separations
-        positions1 = self.xp.concatenate((self.stencil_positions[0], self.new_col_positions1), axis=0)
+        positions1 = self.xp.concatenate((self.stencil_positions[0], new_col_positions1), axis=0)
         cache_key = (self.mx_size, self.stencil_size, self.stencil_size_factor,
                      float(self.pixel_scale), float(self.r0), float(self.L0),
                      self.target_device_idx, self.xp.__name__, self.dtype)
