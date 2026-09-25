@@ -11,6 +11,7 @@
 
 - Added `pyr_max_side_ld` to `ModulatedPyramid` and its derived classes to cap the radial support of the pyramid surface in lambda/D units, forcing values outside the support radius to zero and enabling a central fifth pupil.
 - Added `compute_single_im` (bool, default True) to `ImCalibrator` to optionally skip populating the `out_single_im` per-mode output (the output itself is always present, empty when disabled). When True (default, unchanged behavior) this costs an O(nmodes) Python loop on every `trigger_code()` call (not just push-pull events) plus roughly double the fixed memory (one extra Intmat per mode); set to False to skip that loop/memory when nothing downstream consumes `out_single_im` (only `out_intmat` is used elsewhere in this codebase) -- needed for large-nmodes, long calibrations.
+- `TerminalInput` now keeps the input prompt on the last line of the terminal while log output scrolls above it (using `prompt_toolkit`, new dependency). `SpeculaInput` now reads input in a background thread instead of a separate process: `set_input_task()` is replaced by the thread-safe `put_input()`, which validates values immediately.
 
 ### Other
 
@@ -20,6 +21,7 @@
 - `IFunc.inverse()` now computes the pseudoinverse via the smaller of the two Gram matrices (`specula.lib.fast_pinv`) instead of calling `xp.linalg.pinv` directly on the full influence-function matrix. Mathematically identical result (including in the rank-deficient case), but substantially faster for the typical case of many pixels and few modes -- measured 3x-8x on real KL/zonal influence-function bases, with the speedup growing with pixel count. Added test\_fast\_pinv.py.
 - Fixed test\_im\_sh\_synim\_generator.py: on a machine with a GPU, the reference IM computed directly via `synim.interaction_matrix()` came back as a cupy array regardless of the test's own `target_device_idx`/`xp` (SynIM's backend is bound once at process start, see synim\_utils.py), crashing the comparison against the always-numpy generated IM with a cupy TypeError; also loosened test\_im\_generator\_no\_misreg/test\_im\_generator\_with\_misreg tolerances from 1e-10/1e-7 to 1e-6, since those paths go through `ImShSynimGenerator`'s float32 (`precision=1`) cast and cannot match a float64 reference to 1e-10 (CI failure was a real ~2.7e-8 relative mismatch, not a fluke).
 - Implemented `InfinitePhaseScreen` cache for A/B extrusion matrices, saves about one minute in tests
+- Removed duplicated calculation in `ModalAnalysis.trigger_code()`
 - Fixed ExtSourcePyramid with cuda_stream_enable=True: the CUDA graphs kept reading the data from frame 0, but with FROM_PSF a coeff array is computed for every new PSF. Now a recapturing is performed if necessary.
 
 ## [1.0.4] - 2026-08-19
