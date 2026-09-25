@@ -1,3 +1,5 @@
+import weakref
+
 from seeing.integrator import evaluateFormula, cpulib
 from symao.turbolence import createTurbolenceFormulary, ft_phase_screen0
 
@@ -5,6 +7,18 @@ from specula.base_data_obj import BaseDataObj
 from specula import ASEC2RAD, RAD2ASEC, cpuArray, np
 
 turbolenceFormulas = createTurbolenceFormulary()
+
+
+class _ABMatrices:
+    '''Holder for the A and B matrices, shared by phase screens with the same geometry.'''
+    def __init__(self, A_mat, B_mat):
+        self.A_mat = A_mat
+        self.B_mat = B_mat
+
+# A and B matrices are expensive to compute and depend only on the screen geometry
+# and turbulence parameters, not on the random seed. Entries are dropped
+# as soon as no phase screen references them anymore.
+_AB_cache = weakref.WeakValueDictionary()
 
 
 def seeing_to_r0(seeing, wvl=500.e-9):
@@ -156,8 +170,15 @@ class InfinitePhaseScreen(BaseDataObj):
         self.new_col_positions1 = self.new_col_coords1 * self.pixel_scale
         # calc separations
         positions1 = self.xp.concatenate((self.stencil_positions[0], self.new_col_positions1), axis=0)
+        cache_key = (self.mx_size, self.stencil_size, self.stencil_size_factor,
+                     float(self.pixel_scale), float(self.r0), float(self.L0),
+                     self.target_device_idx, self.xp.__name__, self.dtype)
+        self._AB = _AB_cache.get(cache_key)  # the reference keeps the cache entry alive
+        if self._AB is None:
+            self._AB = _ABMatrices(*self.AB_from_positions(positions1))
+            _AB_cache[cache_key] = self._AB
         self.A_mat, self.B_mat = [], []
-        A_mat, B_mat = self.AB_from_positions(positions1)
+        A_mat, B_mat = self._AB.A_mat, self._AB.B_mat
         self.A_mat.append(A_mat)
         self.B_mat.append(B_mat)
         self.A_mat.append(self.xp.fliplr(self.xp.flipud(A_mat)))
