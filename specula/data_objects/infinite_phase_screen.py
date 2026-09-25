@@ -67,11 +67,6 @@ class InfinitePhaseScreen(BaseDataObj):
         self.stencil_coords = None
         self.stencil_positions = None
         self.n_stencils = 0
-        self.cov_mat = None
-        self.cov_mat_zz = None
-        self.cov_mat_xx = None
-        self.cov_mat_zx = None
-        self.cov_mat_xz = None
         self.full_scrn = None
         self.A_mat = None
         self.B_mat = None
@@ -143,17 +138,17 @@ class InfinitePhaseScreen(BaseDataObj):
         delta_x_grid = delta_x_grid_a - delta_x_grid_b
         delta_y_grid = delta_y_grid_a - delta_y_grid_b
         seperations = self.xp.sqrt(delta_x_grid ** 2 + delta_y_grid ** 2)
-        self.cov_mat = self.phase_covariance(seperations, self.r0, self.L0)
-        self.cov_mat_zz = self.cov_mat[:self.n_stencils, :self.n_stencils]
-        self.cov_mat_xx = self.cov_mat[self.n_stencils:, self.n_stencils:]
-        self.cov_mat_zx = self.cov_mat[:self.n_stencils, self.n_stencils:]
-        self.cov_mat_xz = self.cov_mat[self.n_stencils:, :self.n_stencils]
+        cov_mat = self.phase_covariance(seperations, self.r0, self.L0)
+        cov_mat_zz = cov_mat[:self.n_stencils, :self.n_stencils]
+        cov_mat_xx = cov_mat[self.n_stencils:, self.n_stencils:]
+        cov_mat_zx = cov_mat[:self.n_stencils, self.n_stencils:]
+        cov_mat_xz = cov_mat[self.n_stencils:, :self.n_stencils]
         # Cholesky solve can fail - so do brute force inversion
-        cf = self._lu_factor(self.cov_mat_zz)
-        inv_cov_zz = self._lu_solve(cf, self.xp.identity(self.cov_mat_zz.shape[0]))
-        A_mat = self.cov_mat_xz.dot(inv_cov_zz)
+        cf = self._lu_factor(cov_mat_zz)
+        inv_cov_zz = self._lu_solve(cf, self.xp.identity(cov_mat_zz.shape[0]))
+        A_mat = cov_mat_xz.dot(inv_cov_zz)
         # Can make initial BBt matrix first
-        BBt = self.cov_mat_xx - A_mat.dot(self.cov_mat_zx)
+        BBt = cov_mat_xx - A_mat.dot(cov_mat_zx)
         # Then do SVD to get B matrix
         u, W, ut = self.xp.linalg.svd(BBt)
         L_mat = self.xp.zeros((self.stencil_size, self.stencil_size))
