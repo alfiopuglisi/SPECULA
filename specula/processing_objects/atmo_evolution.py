@@ -243,65 +243,29 @@ class AtmoEvolution(BaseProcessingObj):
         self.phasescreens_sizes = []
 
         self.pixel_phasescreens = int(self.xp.max(self.pixel_layer))
-        temp_screens = []
 
-        if len(self.xp.unique(self.to_xp(self.L0))) == 1:
-            # Number of rectangular phase screens from a single square phasescreen
-            n_ps_from_square_ps = self.xp.floor(
-                self.pixel_square_phasescreens / self.pixel_phasescreens
-            )
-            # Number of square phasescreens
-            n_ps = self.xp.ceil(float(self.n_phasescreens) / n_ps_from_square_ps)
-
-            # Seed vector
-            seed = self.xp.arange(self.seed, self.seed + int(n_ps))
-
-            # Square phasescreens
-            if hasattr(self.L0, '__len__'):
-                L0 = self.L0[0]
-            else:
-                L0 = self.L0
-            L0 = np.array([L0])
-            square_phasescreens = phasescreens_manager(L0, self.pixel_square_phasescreens,
-                                                        self.pixel_pitch, self.data_dir,
-                                                        seed=seed, precision=self.precision,
-                                                        xp=self.xp)
-
-            square_ps_index = -1
-            ps_index = 0
-
-            for i in range(self.n_phasescreens):
-                # Increase square phase-screen index
-                if i % n_ps_from_square_ps == 0:
-                    square_ps_index += 1
-                    ps_index = 0
-
-                temp_screen = square_phasescreens[square_ps_index][
-                    int(self.pixel_phasescreens) * ps_index:
-                    int(self.pixel_phasescreens) * (ps_index + 1), :
-                ]
-                temp_screens.append(temp_screen)
-                ps_index += 1
-
+        # Each layer is a strip of pixel_phasescreens rows of a square phase screen.
+        # With a single L0, several strips are cut from each square phase screen;
+        # otherwise each layer uses the first strip of its own square phase screen.
+        if len(np.unique(self.L0)) == 1:
+            strips_per_square = self.pixel_square_phasescreens // self.pixel_phasescreens
+            square_L0 = np.atleast_1d(self.L0)[:1]
         else:
-            seed = self.seed + self.xp.arange(self.n_phasescreens)
-
-            if len(seed) != len(self.L0):
+            if len(self.L0) != self.n_phasescreens:
                 raise ValueError('Number of elements in seed and L0 must be the same!')
+            strips_per_square = 1
+            square_L0 = self.L0
+        n_squares = -(-self.n_phasescreens // strips_per_square)
 
-            # Square phasescreens
-            square_phasescreens = phasescreens_manager(self.L0,
-                                                       self.pixel_square_phasescreens,
-                                                       self.pixel_pitch,
-                                                       self.data_dir,
-                                                       seed=seed,
-                                                       precision=self.precision,
-                                                       xp=self.xp)
-
-            for i in range(self.n_phasescreens):
-                temp_screen = square_phasescreens[i][ :int(self.pixel_phasescreens), :]
-                temp_screens.append(temp_screen)
-
+        # Square phasescreens
+        square_phasescreens = phasescreens_manager(square_L0, self.pixel_square_phasescreens,
+                                                   self.pixel_pitch, self.data_dir,
+                                                   seed=self.seed + self.xp.arange(n_squares),
+                                                   precision=self.precision, xp=self.xp)
+        rows = self.pixel_phasescreens
+        temp_screens = [square_phasescreens[i // strips_per_square][
+                            (i % strips_per_square) * rows:(i % strips_per_square + 1) * rows, :]
+                        for i in range(self.n_phasescreens)]
 
         # Normalize all phasescreens
 
