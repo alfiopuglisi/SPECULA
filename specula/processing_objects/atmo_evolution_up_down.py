@@ -134,17 +134,17 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         })
         return result
     
-    def _update_positions(self, wind_speed, delta_position):
+    def _update_positions(self, wind_speed, delta_position, extra_delta_time,
+                          last_position, shift_matrix):
         """Update positions and shift matrices for both downward and upward propagation.
 
-        Called by AtmoEvolution.prepare_trigger(): the down list uses
-        self.shift_matrix_cpu[0] (base class), the up list self.shift_matrix_cpu[1].
+        Called by AtmoEvolution.prepare_trigger() with the arguments of the down list
+        (self.shift_matrix_cpu[0]); the up list uses self.shift_matrix_cpu[1].
         """
-        super()._update_positions(wind_speed, delta_position)
-        self._update_shift(
-            wind_speed, delta_position, self.extra_delta_time_up,
-            self.last_position_up, self.shift_matrix_cpu[1]
-        )
+        super()._update_positions(wind_speed, delta_position, extra_delta_time,
+                                  last_position, shift_matrix)
+        super()._update_positions(wind_speed, delta_position, self.extra_delta_time_up,
+                                  self.last_position_up, self.shift_matrix_cpu[1])
 
     def trigger_code(self):
         """Update both downward and upward layer lists with different time offsets.

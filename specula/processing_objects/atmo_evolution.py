@@ -351,19 +351,12 @@ class AtmoEvolution(BaseProcessingObj):
         # Compute the delta position in pixels (time evolution)
         delta_position = wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
 
-        self._update_positions(wind_speed, delta_position)
-        if self._trigger_buffer is not self._trigger_buffer_cpu:
-            self._trigger_buffer.set(self._trigger_buffer_cpu)
+        self._update_positions(wind_speed, delta_position, self.extra_delta_time,
+                               self.last_position, self.shift_matrix_cpu[0])
+        self.last_effective_position[:] = self.shift_matrix_cpu[0, :, 1, 2]
 
-    def _update_positions(self, wind_speed, delta_position):
-        """Update positions and shift matrices of all layer lists.
-
-        Derived classes with more layer lists override this method.
-        """
-        self.last_effective_position[:] = self._update_shift(
-            wind_speed, delta_position, self.extra_delta_time,
-            self.last_position, self.shift_matrix_cpu[0]
-        )
+        # Upload to GPU (no effect if on CPU)
+        self._trigger_buffer[:] = self.to_xp(self._trigger_buffer_cpu)
 
     def trigger_code(self):
         """Compute the layers from the arrays uploaded by prepare_trigger().
@@ -381,13 +374,14 @@ class AtmoEvolution(BaseProcessingObj):
             for layer in layer_list:
                 layer.generation_time = self.current_time
 
-    def _update_shift(self, wind_speed, delta_position, extra_delta_time,
-                      last_position, shift_matrix):
+    def _update_positions(self, wind_speed, delta_position, extra_delta_time,
+                          last_position, shift_matrix):
         """Update positions and shift matrices for a layer list.
 
         Runs on the host (numpy) in prepare_trigger(). Positions are accumulated
         and cycled; the effective position (including the extra offset) is the
-        x offset of the shift matrices.
+        x offset of the shift matrices. Derived classes with more layer lists
+        override this method.
 
         Parameters
         ----------
@@ -418,13 +412,10 @@ class AtmoEvolution(BaseProcessingObj):
             )
 
         # Effective position = accumulated position + constant offset
-        effective_position = new_position + extra_offset  # [pixel]
-        shift_matrix[:, 1, 2] = effective_position
+        shift_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
 
         # Update position in place
         last_position[:] = new_position
-
-        return effective_position
 
     def _update_layer_list(self, layer_list, shift_matrix):
         """Update a layer list using the arrays computed by prepare_trigger().
