@@ -286,7 +286,7 @@ class TestAtmoEvolution(unittest.TestCase):
 
         # After second trigger, verify that:
         # 1. delta_time does not contain extra_delta_time
-        assert atmo.delta_time[0] == delta_time
+        assert atmo.delta_time == delta_time
 
         # 2. last_position has accumulated only delta_position (not extra_offset)
         expected_last_position = wind_speed_values * delta_time / atmo.pixel_pitch
@@ -350,7 +350,7 @@ class TestAtmoEvolution(unittest.TestCase):
 
         # After second trigger, verify that:
         # 1. delta_time does not contain extra_delta_time
-        assert np.all(atmo.delta_time == delta_time)
+        assert atmo.delta_time == delta_time
         
         # 2. last_position has accumulated only delta_position (not extra_offset)
         expected_last_position = wind_speed_values * delta_time / atmo.pixel_pitch

@@ -334,9 +334,7 @@ class AtmoEvolution(BaseProcessingObj):
         positions), and uploads them to the device with a single host-to-device copy.
         """
         super().prepare_trigger(t)
-        self.delta_time = cpuArray(
-            self.n_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
-        )
+        self.delta_time = np.float64(self.t_to_seconds(self.current_time - self.last_t))
         # Copy in a fixed buffer: the CUDA graph reads it at a fixed address
         self.seeing[:] = self.local_inputs['seeing'].value
 
