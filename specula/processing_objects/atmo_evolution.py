@@ -11,12 +11,33 @@ from specula.data_objects.simul_params import SimulParams
 # Phasescreens are always defined at 500 nm
 ATMO_WAVELENGTH = 500.0
 
+# rot90() of a square array expressed as index transformation matrices, for k=0..3
+_ROT90 = np.array([np.linalg.matrix_power([[0, 1], [-1, 0]], k) for k in range(4)])
+
 
 class AtmoEvolution(BaseProcessingObj):
     """
     Atmospheric turbulence evolution processing object.
     Generates and evolves atmospheric phase screens based on input parameters such as
     seeing, wind speed, and wind direction.
+
+    Each time step is split so that trigger_code() can be captured in a CUDA graph
+    (see BaseProcessingObj.build_stream(), called in setup()):
+
+    - prepare_trigger() does all the host-side work: it reads the seeing, wind speed
+      and wind direction inputs, updates the layer positions (including screen
+      cycling), and computes the rotation matrix, window shift and scale coefficient
+      of each layer (_update_params()). These are packed in the self.params_cpu array,
+      which is transferred to the device array self.params with a single copy.
+    - trigger_code() computes each layer with two ndimage affine_transform() calls
+      (window interpolation, then rotation) and a multiplication by the scale
+      coefficient, all reading their parameters from the device array self.params.
+      No host values or transfers are involved, so the captured graph stays valid
+      when positions, wind direction or seeing change.
+    - post_trigger() updates the host-side state: last_t and the generation_time
+      of the output layers.
+
+    The same code runs on CPU, using scipy instead of cupyx.
     """
     def __init__(self,
                  simul_params: SimulParams,
@@ -135,6 +156,16 @@ class AtmoEvolution(BaseProcessingObj):
             self.layer_list.append(layer)
         self.outputs['layer_list'] = self.layer_list
 
+        # Per-layer parameters with shape (n_layer_lists, n_phasescreens, 13), computed
+        # in prepare_trigger() by _update_params() and uploaded to self.params
+        # (which is the same array on CPU): see _update_params() for the columns
+        self.params_cpu = np.zeros((1, self.n_phasescreens, 13))
+        self.params = self.to_xp(self.params_cpu)
+        # Interpolated (not rotated) layer windows
+        self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
+        # Coordinates in double precision as in scipy
+        self.affine_kwargs = {'float64_coords': True} if self.target_device_idx >= 0 else {}
+
         self.seed = seed
         self.scale_coeff = 1.0
 
@@ -237,7 +268,8 @@ class AtmoEvolution(BaseProcessingObj):
             if i % 2 != 0:
                 temp_screen = self.xp.flip(temp_screen, axis=1)
 
-            self.phasescreens.append(temp_screen)
+            # Contiguous, otherwise affine_transform() makes a copy at each call
+            self.phasescreens.append(self.xp.ascontiguousarray(temp_screen))
             self.phasescreens_sizes.append(temp_screen.shape[1])
 
         self.phasescreens_sizes_array = np.asarray(self.phasescreens_sizes)
@@ -255,7 +287,15 @@ class AtmoEvolution(BaseProcessingObj):
         if len(self.local_inputs['wind_direction'].value) != self.n_phasescreens:
             raise ValueError('Wind direction input must be a {self.n_phasescreens}-elements array')
 
+        self.build_stream()
+
     def prepare_trigger(self, t):
+        """Host-side part of the time step.
+
+        Reads the inputs, computes the seeing scale coefficient, updates the
+        positions and layer parameters (_update_positions()) and uploads the
+        parameters to the device with a single host-to-device copy.
+        """
         super().prepare_trigger(t)
         self.delta_time = cpuArray(
             self.n_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
@@ -267,55 +307,71 @@ class AtmoEvolution(BaseProcessingObj):
         else:
             self.scale_coeff = 0.0
 
-
-    def trigger_code(self):
         wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
 
         # Compute the delta position in pixels (time evolution)
         delta_position = wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
 
-        # Get quotient and remainder for wind direction
-        wdf, wdi = np.modf(wind_direction / 90.0)
-        wdf_full = wdf * 90
+        self._update_positions(wind_speed, wind_direction, delta_position)
+        if self.params is not self.params_cpu:
+            self.params.set(self.params_cpu)
 
-        # Update layer list
-        new_position, effective_position = self._update_layer_list(
-            wind_speed=wind_speed,
-            delta_position=delta_position,
-            extra_delta_time=self.extra_delta_time,
-            last_position=self.last_position,
-            layer_list=self.layer_list,
-            wdi=wdi,
-            wdf_full=wdf_full
+    def _update_positions(self, wind_speed, wind_direction, delta_position):
+        """Update positions and parameters (self.params_cpu) of all layer lists.
+
+        Derived classes with more layer lists override this method.
+        """
+        self.last_effective_position[:] = self._update_params(
+            wind_speed, wind_direction, delta_position, self.extra_delta_time,
+            self.last_position, self.params_cpu[0]
         )
 
-        # Update tracking
-        self.last_position[:] = new_position
-        self.last_effective_position[:] = effective_position
+    def trigger_code(self):
+        """Compute the layers from the parameters uploaded by prepare_trigger().
+
+        On GPU, only kernel launches are performed, so that this method
+        can be captured in a CUDA graph.
+        """
+        self._update_layer_list(self.layer_list, self.params[0])
+
+    def post_trigger(self):
+        """Host-side state update: last_t and generation_time of all output layers."""
+        super().post_trigger()
         self.last_t = self.current_time
+        for layer_list in self.outputs.values():
+            for layer in layer_list:
+                layer.generation_time = self.current_time
 
+    def _update_params(self, wind_speed, wind_direction, delta_position, extra_delta_time,
+                       last_position, params):
+        """Update positions and compute the layer parameters for a layer list.
 
-    def _update_layer_list(self, wind_speed, delta_position, extra_delta_time,
-                          last_position, layer_list, wdi, wdf_full):
-        """Update a layer list with given extra_delta_time.
-        
+        Runs on the host (numpy) in prepare_trigger(). Positions are accumulated
+        and cycled as before; the effective position (including the extra offset)
+        gives the (2, 3) affine matrix that extracts the layer window from the phase
+        screen with linear interpolation (params[:, 0:6]). The wind direction is
+        split in a rot90() count and a residual angle, which are combined in the
+        (2, 3) affine matrix [A | offset] of a rotation around the layer center,
+        with A = R90^k @ R(residual) (params[:, 6:12]). This is the same index
+        transformation as rot90() followed by ndimage rotate(), and A is an exact
+        permutation when the residual angle is zero. params[:, 12] is the scale
+        coefficient.
+
         Parameters
         ----------
         wind_speed : array [m/s]
             Wind speed for each layer [m/s]
+        wind_direction : array [deg]
+            Wind direction for each layer [deg]
         delta_position : array [pixels]
             Position change since last frame [pixels]
         extra_delta_time : array [s]
             Extra time offset for each layer [s]
         last_position : array [pixels]
             Last accumulated position (will be updated in place)
-        layer_list : list [1]
-            List of Layer objects to update
-        wdi : array [deg]
-            Integer part of wind direction / 90
-        wdf_full : array [1]
-            Fractional part of wind direction in degrees
+        params : array [1]
+            Layer parameters array (will be updated in place)
         """
 
         # Compute extra offset that doesn't get accumulated
@@ -335,30 +391,43 @@ class AtmoEvolution(BaseProcessingObj):
         # Effective position = accumulated position + constant offset
         effective_position = new_position + extra_offset  # [pixel]
 
-        effective_position_quo = np.floor(effective_position).astype(np.int64)
-        effective_position_rem = (effective_position - effective_position_quo).astype(self.dtype)
+        # Get quotient and remainder for wind direction
+        wdf, wdi = np.modf(wind_direction / 90.0)
+        wdf_rad = np.radians(wdf * 90)
+        cos, sin = np.cos(wdf_rad), np.sin(wdf_rad)
 
-        # Update each layer
-        for ii, p in enumerate(self.phasescreens):
-            pos = int(effective_position_quo[ii])
-            ipli = int(self.pixel_layer[ii])
-            ipli_p = int(pos + self.pixel_layer[ii])
-
-            # Linear interpolation between positions
-            layer_phase = (1.0 - effective_position_rem[ii]) * p[0:ipli, pos:ipli_p] \
-                        + effective_position_rem[ii] * p[0:ipli, pos + 1:ipli_p + 1]
-
-            # Apply wind direction rotation
-            layer_phase = self.xp.rot90(layer_phase, wdi[ii])
-            if not wdf_full[ii] == 0:
-                layer_phase = self.ndimage_rotate(
-                    layer_phase, wdf_full[ii], reshape=False, order=1
-                )
-
-            layer_list[ii].phaseInNm[:] = layer_phase * self.scale_coeff
-            layer_list[ii].generation_time = self.current_time
+        # Index transformation of rot90() followed by ndimage.rotate() around the layer center
+        mat = _ROT90[wdi.astype(int) % 4] @ np.moveaxis([[cos, sin], [-sin, cos]], -1, 0)
+        center = (self.pixel_layer - 1) / 2
+        params[:, 0:6] = [1, 0, 0, 0, 1, 0]
+        params[:, 5] = effective_position
+        offset = center[:, None] * (1 - mat.sum(axis=2))
+        params[:, 6:12] = np.concatenate([mat, offset[:, :, None]], axis=2).reshape(-1, 6)
+        params[:, 12] = self.scale_coeff
 
         # Update position in place
         last_position[:] = new_position
 
-        return new_position, effective_position
+        return effective_position
+
+    def _update_layer_list(self, layer_list, params):
+        """Update a layer list using the parameters computed by _update_params().
+
+        For each layer: window extraction with linear interpolation along x,
+        rotation (both with affine_transform(order=1), parameters read from
+        params) and multiplication by the scale coefficient.
+
+        Parameters
+        ----------
+        layer_list : list [1]
+            List of Layer objects to update
+        params : array [1]
+            Parameters of this layer list (a slice of self.params)
+        """
+        for ii, (p, window) in enumerate(zip(self.phasescreens, self.windows)):
+            phase = layer_list[ii].phaseInNm
+            self.ndimage_affine_transform(p, params[ii, 0:6].reshape(2, 3), output=window,
+                                          output_shape=window.shape, order=1, **self.affine_kwargs)
+            self.ndimage_affine_transform(window, params[ii, 6:12].reshape(2, 3), output=phase,
+                                          order=1, **self.affine_kwargs)
+            phase *= params[ii, 12]

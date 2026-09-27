@@ -125,10 +125,8 @@ class AtmoInfiniteEvolutionUpDown(AtmoInfiniteEvolution):
     def trigger_code(self):
         """Update both lists by saving/restoring phase screen state."""
 
-        wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
-        wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
-
-        delta_position = wind_speed * self.delta_time / self.pixel_pitch
+        wind_speed, wind_direction = self.wind_speed, self.wind_direction
+        delta_position = self.delta_position
 
         # Determine which direction to process first based on extra_delta_time
         # Process the one with smaller extra_delta_time first (earlier in time)
@@ -182,8 +180,6 @@ class AtmoInfiniteEvolutionUpDown(AtmoInfiniteEvolution):
             # Let's always keep down state
             if not down_first:
                 pass  # Already at down state
-
-        self.last_t = self.current_time
 
     def _save_phase_screen_states(self):
         """Save current state using references."""

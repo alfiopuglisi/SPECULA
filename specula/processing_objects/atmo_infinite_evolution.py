@@ -15,6 +15,11 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
     Atmospheric infinite phase screens evolution processing object.
     Generates and evolves atmospheric phase screens based on input parameters such as
     seeing, wind speed, and wind direction.
+
+    The inputs are read in prepare_trigger() and last_t is updated in post_trigger().
+    trigger_code() is not captured in a CUDA graph, because the number of lines added
+    to each InfinitePhaseScreen (and therefore the sequence of GPU operations) depends
+    on the wind speed and direction and changes at every time step.
     """
     def __init__(self,
                  simul_params: SimulParams,
@@ -205,6 +210,7 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
                              f' {self.n_infinite_phasescreens}-elements array')
 
     def prepare_trigger(self, t):
+        """Read the inputs and compute the scale coefficient and delta position."""
         super().prepare_trigger(t)
         self.delta_time = cpuArray(
             self.n_infinite_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
@@ -221,21 +227,24 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
         scale_wvl = self.ref_wavelengthInNm / (2 * np.pi)
         self.scale_coeff = scale_r0 * scale_wvl
 
-    def trigger_code(self):
-        wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
-        wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
+        self.wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
+        self.wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
 
         # Compute the delta position in pixels
-        delta_position = wind_speed * self.delta_time / self.pixel_pitch
+        self.delta_position = self.wind_speed * self.delta_time / self.pixel_pitch
 
+    def trigger_code(self):
         # We delegate all the logic to the _process_propagation_direction method
         self._process_propagation_direction(
-            wind_speed, wind_direction, delta_position,
+            self.wind_speed, self.wind_direction, self.delta_position,
             self.extra_delta_time, self.last_position,
             self.last_effective_position, self.acc_rows, self.acc_cols,
             self.layer_list
         )
 
+    def post_trigger(self):
+        """Host-side state update after trigger_code()."""
+        super().post_trigger()
         self.last_t = self.current_time
 
     def _process_propagation_direction(self, wind_speed, wind_direction,

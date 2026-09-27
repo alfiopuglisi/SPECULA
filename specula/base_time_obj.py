@@ -72,6 +72,7 @@ class BaseTimeObj:
 
         if self.target_device_idx >= 0:
             from cupyx.scipy.ndimage import rotate as ndimage_rotate
+            from cupyx.scipy.ndimage import affine_transform as ndimage_affine_transform
             from cupyx.scipy.ndimage import shift as ndimage_shift
             from cupyx.scipy.ndimage import center_of_mass as ndimage_center_of_mass
             from cupyx.scipy.fft import ifft2 as scipy_ifft2
@@ -84,6 +85,7 @@ class BaseTimeObj:
             self.PerformanceWarning = PerformanceWarning
         else:
             from scipy.ndimage import rotate as ndimage_rotate
+            from scipy.ndimage import affine_transform as ndimage_affine_transform
             from scipy.ndimage import shift as ndimage_shift
             from scipy.ndimage import center_of_mass as ndimage_center_of_mass
             from scipy.fft import ifft2 as scipy_ifft2
@@ -92,6 +94,7 @@ class BaseTimeObj:
             self.PerformanceWarning = None
 
         self.ndimage_rotate = ndimage_rotate
+        self.ndimage_affine_transform = ndimage_affine_transform
         self.ndimage_shift = ndimage_shift
         self.ndimage_center_of_mass = ndimage_center_of_mass
         self._lu_factor = lu_factor
