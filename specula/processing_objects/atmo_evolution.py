@@ -141,6 +141,9 @@ class AtmoEvolution(BaseProcessingObj):
         self.pixel_pitch = simul_params.pixel_pitch
         zenithAngleInDeg = simul_params.zenithAngleInDeg
 
+        if seed <= 0:
+            raise ValueError('seed must be >0')
+
         self.n_phasescreens = len(heights)
         self.last_position = self.xp.zeros(self.n_phasescreens, dtype=self.dtype)
         self.last_t = 0
@@ -158,20 +161,20 @@ class AtmoEvolution(BaseProcessingObj):
         self.inputs['wind_direction'] = InputValue(type=BaseValue)
 
         if zenithAngleInDeg is not None:
-            self.airmass = 1.0 / np.cos(np.radians(zenithAngleInDeg), dtype=self.dtype)
+            airmass = 1.0 / np.cos(np.radians(zenithAngleInDeg), dtype=self.dtype)
             self.logger.info(f'zenith angle is defined as: {zenithAngleInDeg} deg')
-            self.logger.info(f'airmass is: {self.airmass}')
+            self.logger.info(f'airmass is: {airmass}')
         else:
-            self.airmass = 1.0
+            airmass = 1.0
 
         heights = np.array(heights, dtype=self.dtype)
-        # distances from the pupil accounting for zenith angle
-        self.pupil_distances = heights * self.airmass
+        # distances from the pupil accounting for zenith angle, kept in self for testing purposes
+        self.pupil_distances = heights * airmass
 
         # pixel_pitch / r0 = seeing * const, so that the seeing scale coefficient
         # (pixel_pitch / r0)**(5/6) = seeing**(5/6) * self.seeing_scale_factor
         self.seeing_scale_factor = (self.pixel_pitch * 4.848 / (0.9759 * 0.5)
-                                    * float(self.airmass)**(3./5.))**(5./6.)
+                                    * float(airmass)**(3./5.))**(5./6.)
 
         fov_rad = fov * ASEC2RAD
         self.pixel_layer = np.ceil(
@@ -219,9 +222,6 @@ class AtmoEvolution(BaseProcessingObj):
 
         self.seed = seed
 
-        if self.seed <= 0:
-            raise ValueError('seed must be >0')
-
         if not np.isclose(np.sum(self.Cn2), 1.0, atol=1e-6):
             raise ValueError(f' Cn2 total must be 1. Instead is: {np.sum(self.Cn2)}.')
 
@@ -240,15 +240,15 @@ class AtmoEvolution(BaseProcessingObj):
     def compute(self):
         # Phase screens list
         self.phasescreens = []
-        self.phasescreens_sizes = []
+        phasescreens_sizes = []
 
-        self.pixel_phasescreens = int(self.xp.max(self.pixel_layer))
+        pixel_phasescreens = int(self.xp.max(self.pixel_layer))
 
         # Each layer is a strip of pixel_phasescreens rows of a square phase screen.
         # With a single L0, several strips are cut from each square phase screen;
         # otherwise each layer uses the first strip of its own square phase screen.
         if len(np.unique(self.L0)) == 1:
-            strips_per_square = self.pixel_square_phasescreens // self.pixel_phasescreens
+            strips_per_square = self.pixel_square_phasescreens // pixel_phasescreens
             square_L0 = np.atleast_1d(self.L0)[:1]
         else:
             if len(self.L0) != self.n_phasescreens:
@@ -262,7 +262,7 @@ class AtmoEvolution(BaseProcessingObj):
                                                    self.pixel_pitch, self.data_dir,
                                                    seed=self.seed + self.xp.arange(n_squares),
                                                    precision=self.precision, xp=self.xp)
-        rows = self.pixel_phasescreens
+        rows = pixel_phasescreens
         temp_screens = [square_phasescreens[i // strips_per_square][
                             (i % strips_per_square) * rows:(i % strips_per_square + 1) * rows, :]
                         for i in range(self.n_phasescreens)]
@@ -284,9 +284,9 @@ class AtmoEvolution(BaseProcessingObj):
 
             # Contiguous, otherwise affine_transform() makes a copy at each call
             self.phasescreens.append(self.xp.ascontiguousarray(temp_screen))
-            self.phasescreens_sizes.append(temp_screen.shape[1])
+            phasescreens_sizes.append(temp_screen.shape[1])
 
-        self.phasescreens_sizes_array = np.asarray(self.phasescreens_sizes)
+        self.phasescreens_sizes_array = np.asarray(phasescreens_sizes)
 
     def setup(self):
         """Allocate the device arrays used by trigger_code(), and capture it.
