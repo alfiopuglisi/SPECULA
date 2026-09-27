@@ -13,6 +13,7 @@ from specula.data_objects.source import Source
 from specula.base_time_obj import BaseTimeObj
 from specula.processing_objects.wave_generator import WaveGenerator
 from specula.processing_objects.atmo_evolution import AtmoEvolution
+from specula.processing_objects.atmo_evolution_up_down import AtmoEvolutionUpDown
 from specula.processing_objects.atmo_propagation import AtmoPropagation
 from specula.data_objects.layer import Layer
 from specula.data_objects.simul_params import SimulParams
@@ -390,45 +391,57 @@ class TestAtmoEvolution(unittest.TestCase):
     def test_cuda_graph_matches_cpu(self):
         """
         Test that on GPU the evolution is captured in a CUDA graph and gives the
-        same layers as the CPU implementation, including rotations and screen cycling
+        same layers as the CPU implementation, including rotations and screen cycling,
+        for AtmoEvolution and for both layer lists of AtmoEvolutionUpDown
         """
         simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
-        layers = {}
-        for target_device_idx in [-1, 0]:
-            seeing = WaveGenerator(constant=0.8, amp=0.3, freq=5.0,
-                                   target_device_idx=target_device_idx)
-            wind_speed = WaveGenerator(constant=[25.5, 30.0], amp=[5.0, 5.0], freq=[3.0, 3.0],
+        classes = {AtmoEvolution: dict(extra_delta_time=0.013),
+                   AtmoEvolutionUpDown: dict(extra_delta_time_down=0.013,
+                                             extra_delta_time_up=[0.0, 0.03])}
+        for cls, kwargs in classes.items():
+            layers = {}
+            for target_device_idx in [-1, 0]:
+                seeing = WaveGenerator(constant=0.8, amp=0.3, freq=5.0,
                                        target_device_idx=target_device_idx)
-            wind_direction = WaveGenerator(constant=[90, -212.7], amp=[20.0, 20.0], freq=[2.0, 2.0],
+                wind_speed = WaveGenerator(constant=[25.5, 30.0], amp=[5.0, 5.0], freq=[3.0, 3.0],
                                            target_device_idx=target_device_idx)
-            atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir,
-                                 heights=[0, 10000], Cn2=[0.5, 0.5], fov=60.0,
-                                 pixel_phasescreens=256, extra_delta_time=0.013,
-                                 target_device_idx=target_device_idx, precision=0)
-            atmo.inputs['seeing'].set(seeing.output)
-            atmo.inputs['wind_speed'].set(wind_speed.output)
-            atmo.inputs['wind_direction'].set(wind_direction.output)
+                wind_direction = WaveGenerator(constant=[90, -212.7], amp=[20.0, 20.0],
+                                               freq=[2.0, 2.0], target_device_idx=target_device_idx)
+                atmo = cls(simul_params, L0=23, data_dir=self.data_dir,
+                           heights=[0, 10000], Cn2=[0.5, 0.5], fov=60.0,
+                           pixel_phasescreens=256, **kwargs,
+                           target_device_idx=target_device_idx, precision=0)
+                atmo.inputs['seeing'].set(seeing.output)
+                atmo.inputs['wind_speed'].set(wind_speed.output)
+                atmo.inputs['wind_direction'].set(wind_direction.output)
 
-            loop = LoopControl()
-            for obj in [seeing, wind_speed, wind_direction]:
-                loop.add(obj, idx=0)
-            loop.add(atmo, idx=1)
-            loop.start(run_time=0.4, dt=simul_params.time_step)
-            layers[target_device_idx] = []
-            for _ in range(40):
-                loop.iter()
-                layers[target_device_idx] += [cpuArray(l.phaseInNm).copy() for l in atmo.layer_list]
-                # The scale coefficient must follow the current (time-varying) seeing
-                expected_scale = cpuArray(seeing.output.value)[0]**(5/6) * atmo.seeing_scale_factor
-                np.testing.assert_allclose(cpuArray(atmo.scale_coef), expected_scale, rtol=1e-10)
-                # Rotation matrices must follow the current (time-varying) wind direction
-                theta = np.radians(cpuArray(wind_direction.output.value))
-                np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 0]), np.cos(theta), atol=1e-10)
-                np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 1]), np.sin(theta), atol=1e-10)
-            assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
+                loop = LoopControl()
+                for obj in [seeing, wind_speed, wind_direction]:
+                    loop.add(obj, idx=0)
+                loop.add(atmo, idx=1)
+                loop.start(run_time=0.4, dt=simul_params.time_step)
+                layers[target_device_idx] = []
+                for _ in range(40):
+                    loop.iter()
+                    layers[target_device_idx] += [cpuArray(l.phaseInNm).copy()
+                                                  for layer_list in atmo.layer_lists
+                                                  for l in layer_list]
+                    # The scale coefficient must follow the current (time-varying) seeing
+                    expected_scale = cpuArray(seeing.output.value)[0]**(5/6) * atmo.seeing_scale_factor
+                    np.testing.assert_allclose(cpuArray(atmo.scale_coef), expected_scale, rtol=1e-10)
+                    # Rotation matrices must follow the current (time-varying) wind direction
+                    theta = np.radians(cpuArray(wind_direction.output.value))
+                    np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 0]), np.cos(theta), atol=1e-10)
+                    np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 1]), np.sin(theta), atol=1e-10)
+                assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
+                assert len(atmo.layer_lists) == (2 if cls is AtmoEvolutionUpDown else 1)
+                if cls is AtmoEvolutionUpDown:
+                    # Different extra delta times: the up list is at a different position
+                    assert not np.allclose(cpuArray(atmo.win_matrix[0, :, 1, 2]),
+                                           cpuArray(atmo.win_matrix[1, :, 1, 2]))
 
-        for gpu_layer, cpu_layer in zip(layers[0], layers[-1]):
-            np.testing.assert_allclose(gpu_layer, cpu_layer, rtol=1e-10, atol=1e-8)
+            for gpu_layer, cpu_layer in zip(layers[0], layers[-1]):
+                np.testing.assert_allclose(gpu_layer, cpu_layer, rtol=1e-10, atol=1e-8)
 
     @cpu_and_gpu
     def test_zero_and_negative_seeing(self, target_device_idx, xp):
