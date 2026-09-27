@@ -176,18 +176,18 @@ class AtmoEvolution(BaseProcessingObj):
         self.seeing_scale_factor = (self.pixel_pitch * 4.848 / (0.9759 * 0.5)
                                     * float(airmass)**(3./5.))**(5./6.)
 
-        fov_rad = fov * ASEC2RAD
-        self.pixel_layer = np.ceil(
-            (self.pixel_pupil \
-                + 2 * np.sqrt(np.sum(np.array(pupil_position, dtype=self.dtype) * 2)) \
-                / self.pixel_pitch \
-                + abs(self.pupil_distances) / self.pixel_pitch * fov_rad) / 2.0
-        ) * 2.0
-
         if fov_in_m is not None:
             self.pixel_layer = np.full_like(
                 heights, int(fov_in_m / self.pixel_pitch / 2.0) * 2
             )
+        else:
+            fov_rad = fov * ASEC2RAD
+            self.pixel_layer = np.ceil(
+                (self.pixel_pupil \
+                    + 2 * np.sqrt(np.sum(np.array(pupil_position, dtype=self.dtype) * 2)) \
+                    / self.pixel_pitch \
+                    + abs(self.pupil_distances) / self.pixel_pitch * fov_rad) / 2.0
+            ) * 2.0
 
         self.L0 = L0
         self.Cn2 = np.array(Cn2, dtype=self.dtype)

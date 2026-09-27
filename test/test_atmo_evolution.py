@@ -465,3 +465,40 @@ class TestAtmoEvolution(unittest.TestCase):
             loop.start(run_time=0.02, dt=simul_params.time_step)
             loop.iter()
             np.testing.assert_array_equal(cpuArray(atmo.layer_list[0].phaseInNm), 0)
+
+    @cpu_and_gpu
+    def test_fov_in_m(self, target_device_idx, xp):
+        """Test that fov_in_m sets the size of all layers, ignoring fov, and that
+        the evolution runs with it (captured in a CUDA graph on GPU)"""
+        simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
+        fov_in_m = 4.03
+        expected_size = int(fov_in_m / simul_params.pixel_pitch / 2.0) * 2
+        kwargs = dict(L0=23, data_dir=self.data_dir, heights=[0, 10000], Cn2=[0.5, 0.5],
+                      fov=60.0, pixel_phasescreens=256, target_device_idx=target_device_idx)
+
+        # With fov only, the layer sizes depend on the height
+        atmo_fov = AtmoEvolution(simul_params, **kwargs)
+        assert len(set(atmo_fov.pixel_layer)) == 2
+
+        atmo = AtmoEvolution(simul_params, fov_in_m=fov_in_m, **kwargs)
+        np.testing.assert_array_equal(atmo.pixel_layer, expected_size)
+        for layer in atmo.layer_list:
+            assert layer.phaseInNm.shape == (expected_size, expected_size)
+
+        seeing = WaveGenerator(constant=0.8, target_device_idx=target_device_idx)
+        wind_speed = WaveGenerator(constant=[25.5, 30.0], target_device_idx=target_device_idx)
+        wind_direction = WaveGenerator(constant=[90, 33.3], target_device_idx=target_device_idx)
+        atmo.inputs['seeing'].set(seeing.output)
+        atmo.inputs['wind_speed'].set(wind_speed.output)
+        atmo.inputs['wind_direction'].set(wind_direction.output)
+        loop = LoopControl()
+        for obj in [seeing, wind_speed, wind_direction]:
+            loop.add(obj, idx=0)
+        loop.add(atmo, idx=1)
+        loop.start(run_time=0.03, dt=simul_params.time_step)
+        for _ in range(3):
+            loop.iter()
+        assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
+        for layer in atmo.layer_list:
+            phase = cpuArray(layer.phaseInNm)
+            assert np.all(np.isfinite(phase)) and np.any(phase != 0)
