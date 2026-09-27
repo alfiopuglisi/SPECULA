@@ -4,6 +4,7 @@ from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.base_value import BaseValue
 from specula.data_objects.layer import Layer
 from specula.lib.phasescreen_manager import phasescreens_manager
+from specula.lib.affine_transform import affine_transform
 from specula.connections import InputValue
 from specula.data_objects.simul_params import SimulParams
 
@@ -74,17 +75,16 @@ class AtmoEvolution(BaseProcessingObj):
     - trigger_code() computes on the device the seeing scale coefficient
       (self.scale_coef), the rotation matrices (self.rot_matrix), the layer
       positions (including screen cycling) and window matrices (self.win_matrix),
-      using fused kernels. Then each layer is computed with two ndimage
-      affine_transform() calls (window interpolation, then rotation) and a
-      multiplication by the scale coefficient. No host values or transfers are
+      using fused kernels. Then each layer is computed with two
+      lib.affine_transform.affine_transform() calls (window interpolation, then
+      rotation) and a multiplication by the scale coefficient. No host values or
+      transfers are
       involved, so the captured graph stays valid when positions, wind or seeing
       change.
     - post_trigger() updates the host-side state: last_t and the generation_time
       of the output layers.
 
-    On CPU, the same code runs with numpy, except for the layers, computed with
-    the original algorithm (window slicing, rot90() and ndimage rotate()), which
-    is faster with scipy.
+    On CPU, the same code runs with numpy (affine_transform() has fast CPU paths).
     """
     def __init__(self,
                  simul_params: SimulParams,
@@ -375,11 +375,11 @@ class AtmoEvolution(BaseProcessingObj):
 
         Computes the seeing scale coefficient (zero for seeing <= 0), the rotation
         matrices and, for each layer list, positions and window matrices, with fused
-        kernels. On GPU, for each layer: window extraction with linear interpolation
+        kernels. Then for each layer: window extraction with linear interpolation
         along x (self.win_matrix), rotation (self.rot_matrix), both with
-        affine_transform(order=1), and multiplication by self.scale_coef.
-        Only kernel launches are performed, so that this method can be captured
-        in a CUDA graph. On CPU, uses window slicing, rot90() and ndimage rotate().
+        lib.affine_transform.affine_transform(), and multiplication by self.scale_coef.
+        On GPU, only kernel launches are performed, so that this method can be
+        captured in a CUDA graph.
         """
         wind_direction = self.local_inputs['wind_direction'].value
         _seeing_scale(self.scale_coef, self.local_inputs['seeing'].value,
@@ -389,35 +389,11 @@ class AtmoEvolution(BaseProcessingObj):
         self._update_positions()
 
         for layer_list, win_matrix in zip(self.layer_lists, self.win_matrix):
-            for ii, (p, window, layer) in enumerate(zip(self.phasescreens, self.windows, layer_list)):
-                phase = layer.phaseInNm
-                if self.target_device_idx >= 0:
-                    self.ndimage_affine_transform(p, win_matrix[ii], output=window,
-                                                  output_shape=window.shape, order=1,
-                                                  float64_coords=True)
-                    self.ndimage_affine_transform(window, self.rot_matrix[ii], output=phase,
-                                                  order=1, float64_coords=True)
-                    phase *= self.scale_coef
-                    continue
-
-                ipli = window.shape[0]
-                position = win_matrix[ii, 1, 2]
-                pos = int(np.floor(position))
-                rem = (position - pos).astype(self.dtype)
-
-                # Linear interpolation between positions
-                layer_phase = (1.0 - rem) * p[0:ipli, pos:pos + ipli] \
-                            + rem * p[0:ipli, pos + 1:pos + ipli + 1]
-
-                # Apply wind direction rotation
-                wdf, wdi = np.modf(wind_direction[ii] / 90.0)
-                layer_phase = self.xp.rot90(layer_phase, int(wdi))
-                if not wdf == 0:
-                    layer_phase = self.ndimage_rotate(
-                        layer_phase, wdf * 90, reshape=False, order=1
-                    )
-
-                phase[:] = layer_phase * float(self.scale_coef[0])
+            for p, window, layer, win, rot in zip(self.phasescreens, self.windows, layer_list,
+                                                  win_matrix, self.rot_matrix):
+                affine_transform(p, win, window, xp=self.xp)
+                affine_transform(window, rot, layer.phaseInNm, xp=self.xp)
+                layer.phaseInNm *= self.scale_coef
 
     def post_trigger(self):
         """Host-side state update: last_t and generation_time of all output layers."""
