@@ -26,8 +26,8 @@ class AtmoEvolution(BaseProcessingObj):
 
     - prepare_trigger() does all the host-side work: it reads the seeing, wind speed
       and wind direction inputs, updates the layer positions (including screen
-      cycling), and computes the window shift matrices, rotation matrices and scale
-      coefficient (self.shift_matrix, self.rotation_matrix and self.scale). These are
+      cycling), and computes the window matrices, rotation matrices and scale
+      coefficient (self.win_matrix, self.rot_matrix and self.scale_coef). These are
       views of a single buffer, transferred to the device with a single copy.
     - trigger_code() computes each layer with two ndimage affine_transform() calls
       (window interpolation, then rotation) and a multiplication by the scale
@@ -162,7 +162,6 @@ class AtmoEvolution(BaseProcessingObj):
         self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
 
         self.seed = seed
-        self.scale_coeff = 1.0
 
         if self.seed <= 0:
             raise ValueError('seed must be >0')
@@ -291,32 +290,32 @@ class AtmoEvolution(BaseProcessingObj):
         and on device, so that prepare_trigger() uploads them with a single copy.
         On CPU, host and device arrays are the same.
 
-        - shift_matrix (n_layer_lists, n_phasescreens, 2, 3): affine matrix that
+        - win_matrix (n_layer_lists, n_phasescreens, 2, 3): affine matrix that
           extracts each layer window from its phase screen, with linear interpolation
           at the effective position
-        - rotation_matrix (n_phasescreens, 2, 3): affine matrix of the rotation by the
+        - rot_matrix (n_phasescreens, 2, 3): affine matrix of the rotation by the
           wind direction around the layer center, equivalent to rot90() followed
           by ndimage rotate()
-        - scale (scalar): seeing scale coefficient
+        - scale_coef (scalar): seeing scale coefficient
         """
         n = self.n_phasescreens
-        n_shift = n_layer_lists * n * 6
-        self._trigger_buffer_cpu = np.zeros(n_shift + n * 6 + 1)
+        n_win = n_layer_lists * n * 6
+        self._trigger_buffer_cpu = np.zeros(n_win + n * 6 + 1)
         self._trigger_buffer = self.to_xp(self._trigger_buffer_cpu)
-        self.shift_matrix_cpu = self._trigger_buffer_cpu[:n_shift].reshape(n_layer_lists, n, 2, 3)
-        self.rotation_matrix_cpu = self._trigger_buffer_cpu[n_shift:-1].reshape(n, 2, 3)
-        self.scale_cpu = self._trigger_buffer_cpu[-1:].reshape(())
-        self.shift_matrix = self._trigger_buffer[:n_shift].reshape(n_layer_lists, n, 2, 3)
-        self.rotation_matrix = self._trigger_buffer[n_shift:-1].reshape(n, 2, 3)
-        self.scale = self._trigger_buffer[-1:].reshape(())
-        # Only the x offset of the shift matrices changes at each step
-        self.shift_matrix_cpu[..., :2] = np.eye(2)
+        self.win_matrix_cpu = self._trigger_buffer_cpu[:n_win].reshape(n_layer_lists, n, 2, 3)
+        self.rot_matrix_cpu = self._trigger_buffer_cpu[n_win:-1].reshape(n, 2, 3)
+        self.scale_coef_cpu = self._trigger_buffer_cpu[-1:].reshape(())
+        self.win_matrix = self._trigger_buffer[:n_win].reshape(n_layer_lists, n, 2, 3)
+        self.rot_matrix = self._trigger_buffer[n_win:-1].reshape(n, 2, 3)
+        self.scale_coef = self._trigger_buffer[-1:].reshape(())
+        # Only the x offset of the window matrices changes at each step
+        self.win_matrix_cpu[..., :2] = np.eye(2)
 
     def prepare_trigger(self, t):
         """Host-side part of the time step.
 
         Reads the inputs, computes the seeing scale coefficient, rotation
-        matrices and shift matrices (updating the positions), and uploads them to
+        matrices and window matrices (updating the positions), and uploads them to
         the device with a single host-to-device copy.
         """
         super().prepare_trigger(t)
@@ -326,10 +325,9 @@ class AtmoEvolution(BaseProcessingObj):
         seeing = float(cpuArray(self.local_inputs['seeing'].value[0]))
         if seeing > 0:
             r0 = 0.9759 * 0.5 / (seeing * 4.848) * self.airmass**(-3./5.)
-            self.scale_coeff = (self.pixel_pitch / r0)**(5./6.)
+            self.scale_coef_cpu[...] = (self.pixel_pitch / r0)**(5./6.)
         else:
-            self.scale_coeff = 0.0
-        self.scale_cpu[...] = self.scale_coeff
+            self.scale_coef_cpu[...] = 0.0
 
         wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
@@ -345,15 +343,15 @@ class AtmoEvolution(BaseProcessingObj):
         cos, sin = np.cos(wdf_rad), np.sin(wdf_rad)
         mat = _ROT90[self.wdi % 4] @ np.moveaxis([[cos, sin], [-sin, cos]], -1, 0)
         center = (self.pixel_layer - 1) / 2
-        self.rotation_matrix_cpu[:, :, :2] = mat
-        self.rotation_matrix_cpu[:, :, 2] = center[:, None] * (1 - mat.sum(axis=2))
+        self.rot_matrix_cpu[:, :, :2] = mat
+        self.rot_matrix_cpu[:, :, 2] = center[:, None] * (1 - mat.sum(axis=2))
 
         # Compute the delta position in pixels (time evolution)
         delta_position = wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
 
         self._update_positions(wind_speed, delta_position, self.extra_delta_time,
-                               self.last_position, self.shift_matrix_cpu[0])
-        self.last_effective_position[:] = self.shift_matrix_cpu[0, :, 1, 2]
+                               self.last_position, self.win_matrix_cpu[0])
+        self.last_effective_position[:] = self.win_matrix_cpu[0, :, 1, 2]
 
         # Upload to GPU (no effect if on CPU)
         self._trigger_buffer[:] = self.to_xp(self._trigger_buffer_cpu)
@@ -364,7 +362,7 @@ class AtmoEvolution(BaseProcessingObj):
         On GPU, only kernel launches are performed, so that this method
         can be captured in a CUDA graph.
         """
-        self._update_layer_list(self.layer_list, self.shift_matrix[0])
+        self._update_layer_list(self.layer_list, self.win_matrix[0])
 
     def post_trigger(self):
         """Host-side state update: last_t and generation_time of all output layers."""
@@ -375,12 +373,12 @@ class AtmoEvolution(BaseProcessingObj):
                 layer.generation_time = self.current_time
 
     def _update_positions(self, wind_speed, delta_position, extra_delta_time,
-                          last_position, shift_matrix):
-        """Update positions and shift matrices for a layer list.
+                          last_position, win_matrix):
+        """Update positions and window matrices for a layer list.
 
         Runs on the host (numpy) in prepare_trigger(). Positions are accumulated
         and cycled; the effective position (including the extra offset) is the
-        x offset of the shift matrices. Derived classes with more layer lists
+        x offset of the window matrices. Derived classes with more layer lists
         override this method.
 
         Parameters
@@ -393,8 +391,8 @@ class AtmoEvolution(BaseProcessingObj):
             Extra time offset for each layer [s]
         last_position : array [pixels]
             Last accumulated position (will be updated in place)
-        shift_matrix : array [1]
-            Shift matrices of this layer list (will be updated in place)
+        win_matrix : array [1]
+            Window matrices of this layer list (will be updated in place)
         """
 
         # Compute extra offset that doesn't get accumulated
@@ -412,39 +410,39 @@ class AtmoEvolution(BaseProcessingObj):
             )
 
         # Effective position = accumulated position + constant offset
-        shift_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
+        win_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
 
         # Update position in place
         last_position[:] = new_position
 
-    def _update_layer_list(self, layer_list, shift_matrix):
+    def _update_layer_list(self, layer_list, win_matrix):
         """Update a layer list using the arrays computed by prepare_trigger().
 
         On GPU, for each layer: window extraction with linear interpolation along x
-        (shift_matrix), rotation (self.rotation_matrix), both with
-        affine_transform(order=1), and multiplication by self.scale.
+        (win_matrix), rotation (self.rot_matrix), both with
+        affine_transform(order=1), and multiplication by self.scale_coef.
         On CPU, uses window slicing, rot90() and ndimage rotate().
 
         Parameters
         ----------
         layer_list : list [1]
             List of Layer objects to update
-        shift_matrix : array [1]
-            Shift matrices of this layer list (a slice of self.shift_matrix)
+        win_matrix : array [1]
+            Window matrices of this layer list (a slice of self.win_matrix)
         """
         for ii, (p, window) in enumerate(zip(self.phasescreens, self.windows)):
             phase = layer_list[ii].phaseInNm
             if self.target_device_idx >= 0:
-                self.ndimage_affine_transform(p, shift_matrix[ii], output=window,
+                self.ndimage_affine_transform(p, win_matrix[ii], output=window,
                                               output_shape=window.shape, order=1,
                                               float64_coords=True)
-                self.ndimage_affine_transform(window, self.rotation_matrix[ii], output=phase,
+                self.ndimage_affine_transform(window, self.rot_matrix[ii], output=phase,
                                               order=1, float64_coords=True)
-                phase *= self.scale
+                phase *= self.scale_coef
                 continue
 
             ipli = window.shape[0]
-            position = shift_matrix[ii, 1, 2]
+            position = win_matrix[ii, 1, 2]
             pos = int(np.floor(position))
             rem = (position - pos).astype(self.dtype)
 
@@ -459,4 +457,4 @@ class AtmoEvolution(BaseProcessingObj):
                     layer_phase, self.wdf_full[ii], reshape=False, order=1
                 )
 
-            phase[:] = layer_phase * self.scale_coeff
+            phase[:] = layer_phase * float(self.scale_coef)
