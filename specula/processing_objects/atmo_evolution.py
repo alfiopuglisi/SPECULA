@@ -158,12 +158,11 @@ class AtmoEvolution(BaseProcessingObj):
         self.outputs['layer_list'] = self.layer_list
 
         # Layer lists, each with its extra delta time and accumulated position.
-        # Derived classes with more layer lists redefine these lists
-        # and call _alloc_trigger_arrays() again.
+        # Derived classes with more layer lists redefine these lists.
+        # The arrays used by trigger_code() are allocated in setup().
         self.layer_lists = [self.layer_list]
         self.extra_delta_times = [self.extra_delta_time]
         self.last_positions = [self.last_position]
-        self._alloc_trigger_arrays()
         # Interpolated (not rotated) layer windows
         self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
 
@@ -287,6 +286,7 @@ class AtmoEvolution(BaseProcessingObj):
         if len(self.local_inputs['wind_direction'].value) != self.n_phasescreens:
             raise ValueError('Wind direction input must be a {self.n_phasescreens}-elements array')
 
+        self._alloc_trigger_arrays()
         self.build_stream()
 
     def _alloc_trigger_arrays(self):

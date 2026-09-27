@@ -126,7 +126,6 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         self.layer_lists = [self.layer_list_down, self.layer_list_up]
         self.extra_delta_times = [self.extra_delta_time_down, self.extra_delta_time_up]
         self.last_positions = [self.last_position, self.last_position_up]
-        self._alloc_trigger_arrays()
 
     @classmethod
     def output_names(cls):        
