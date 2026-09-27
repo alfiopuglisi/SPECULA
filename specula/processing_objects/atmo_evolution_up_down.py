@@ -122,8 +122,11 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         # Track positions for up propagation separately
         self.last_position_up = np.zeros(self.n_phasescreens, dtype=self.dtype)
 
-        # Window matrices for the down (index 0) and up (index 1) layer lists
-        self._alloc_trigger_arrays(n_layer_lists=2)
+        # Down and up layer lists (see AtmoEvolution.__init__())
+        self.layer_lists = [self.layer_list_down, self.layer_list_up]
+        self.extra_delta_times = [self.extra_delta_time_down, self.extra_delta_time_up]
+        self.last_positions = [self.last_position, self.last_position_up]
+        self._alloc_trigger_arrays()
 
     @classmethod
     def output_names(cls):        
@@ -133,23 +136,3 @@ class AtmoEvolutionUpDown(AtmoEvolution):
             'layer_list_up': OutputDesc(list, 'List of atmospheric phase screen layers for upward propagation')
         })
         return result
-    
-    def _update_positions(self, wind_speed, delta_position, extra_delta_time,
-                          last_position, win_matrix):
-        """Update positions and window matrices for both downward and upward propagation.
-
-        Called by AtmoEvolution.prepare_trigger() with the arguments of the down list
-        (self.win_matrix_cpu[0]); the up list uses self.win_matrix_cpu[1].
-        """
-        super()._update_positions(wind_speed, delta_position, extra_delta_time,
-                                  last_position, win_matrix)
-        super()._update_positions(wind_speed, delta_position, self.extra_delta_time_up,
-                                  self.last_position_up, self.win_matrix_cpu[1])
-
-    def trigger_code(self):
-        """Update both downward and upward layer lists with different time offsets.
-
-        Only kernel launches on GPU (see AtmoEvolution.trigger_code()).
-        """
-        self._update_layer_list(self.layer_list_down, self.win_matrix[0])
-        self._update_layer_list(self.layer_list_up, self.win_matrix[1])

@@ -157,7 +157,13 @@ class AtmoEvolution(BaseProcessingObj):
             self.layer_list.append(layer)
         self.outputs['layer_list'] = self.layer_list
 
-        self._alloc_trigger_arrays(n_layer_lists=1)
+        # Layer lists, each with its extra delta time and accumulated position.
+        # Derived classes with more layer lists redefine these lists
+        # and call _alloc_trigger_arrays() again.
+        self.layer_lists = [self.layer_list]
+        self.extra_delta_times = [self.extra_delta_time]
+        self.last_positions = [self.last_position]
+        self._alloc_trigger_arrays()
         # Interpolated (not rotated) layer windows
         self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
 
@@ -283,7 +289,7 @@ class AtmoEvolution(BaseProcessingObj):
 
         self.build_stream()
 
-    def _alloc_trigger_arrays(self, n_layer_lists):
+    def _alloc_trigger_arrays(self):
         """Allocate the arrays computed by prepare_trigger() and used by trigger_code().
 
         They are views of a single buffer, allocated both on host (*_cpu attributes)
@@ -299,6 +305,7 @@ class AtmoEvolution(BaseProcessingObj):
         - scale_coef (scalar): seeing scale coefficient
         """
         n = self.n_phasescreens
+        n_layer_lists = len(self.layer_lists)
         n_win = n_layer_lists * n * 6
         self._trigger_buffer_cpu = np.zeros(n_win + n * 6 + 1)
         self._trigger_buffer = self.to_xp(self._trigger_buffer_cpu)
@@ -329,7 +336,7 @@ class AtmoEvolution(BaseProcessingObj):
         else:
             self.scale_coef_cpu[...] = 0.0
 
-        wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
+        self.wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
 
         # Get quotient and remainder for wind direction
@@ -347,114 +354,88 @@ class AtmoEvolution(BaseProcessingObj):
         self.rot_matrix_cpu[:, :, 2] = center[:, None] * (1 - mat.sum(axis=2))
 
         # Compute the delta position in pixels (time evolution)
-        delta_position = wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
+        self.delta_position = self.wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
 
-        self._update_positions(wind_speed, delta_position, self.extra_delta_time,
-                               self.last_position, self.win_matrix_cpu[0])
+        self._update_positions()
         self.last_effective_position[:] = self.win_matrix_cpu[0, :, 1, 2]
 
         # Upload to GPU (no effect if on CPU)
         self._trigger_buffer[:] = self.to_xp(self._trigger_buffer_cpu)
 
     def trigger_code(self):
-        """Compute the layers from the arrays uploaded by prepare_trigger().
+        """Compute all layer lists from the arrays uploaded by prepare_trigger().
 
-        On GPU, only kernel launches are performed, so that this method
-        can be captured in a CUDA graph.
+        On GPU, for each layer: window extraction with linear interpolation along x
+        (self.win_matrix), rotation (self.rot_matrix), both with
+        affine_transform(order=1), and multiplication by self.scale_coef.
+        Only kernel launches are performed, so that this method can be captured
+        in a CUDA graph. On CPU, uses window slicing, rot90() and ndimage rotate().
         """
-        self._update_layer_list(self.layer_list, self.win_matrix[0])
+        for layer_list, win_matrix in zip(self.layer_lists, self.win_matrix):
+            for ii, (p, window, layer) in enumerate(zip(self.phasescreens, self.windows, layer_list)):
+                phase = layer.phaseInNm
+                if self.target_device_idx >= 0:
+                    self.ndimage_affine_transform(p, win_matrix[ii], output=window,
+                                                  output_shape=window.shape, order=1,
+                                                  float64_coords=True)
+                    self.ndimage_affine_transform(window, self.rot_matrix[ii], output=phase,
+                                                  order=1, float64_coords=True)
+                    phase *= self.scale_coef
+                    continue
+
+                ipli = window.shape[0]
+                position = win_matrix[ii, 1, 2]
+                pos = int(np.floor(position))
+                rem = (position - pos).astype(self.dtype)
+
+                # Linear interpolation between positions
+                layer_phase = (1.0 - rem) * p[0:ipli, pos:pos + ipli] \
+                            + rem * p[0:ipli, pos + 1:pos + ipli + 1]
+
+                # Apply wind direction rotation
+                layer_phase = self.xp.rot90(layer_phase, self.wdi[ii])
+                if not self.wdf_full[ii] == 0:
+                    layer_phase = self.ndimage_rotate(
+                        layer_phase, self.wdf_full[ii], reshape=False, order=1
+                    )
+
+                phase[:] = layer_phase * float(self.scale_coef)
 
     def post_trigger(self):
         """Host-side state update: last_t and generation_time of all output layers."""
         super().post_trigger()
         self.last_t = self.current_time
-        for layer_list in self.outputs.values():
+        for layer_list in self.layer_lists:
             for layer in layer_list:
                 layer.generation_time = self.current_time
 
-    def _update_positions(self, wind_speed, delta_position, extra_delta_time,
-                          last_position, win_matrix):
-        """Update positions and window matrices for a layer list.
+    def _update_positions(self):
+        """Update positions and window matrices of all layer lists.
 
-        Runs on the host (numpy) in prepare_trigger(). Positions are accumulated
-        and cycled; the effective position (including the extra offset) is the
-        x offset of the window matrices. Derived classes with more layer lists
-        override this method.
-
-        Parameters
-        ----------
-        wind_speed : array [m/s]
-            Wind speed for each layer [m/s]
-        delta_position : array [pixels]
-            Position change since last frame [pixels]
-        extra_delta_time : array [s]
-            Extra time offset for each layer [s]
-        last_position : array [pixels]
-            Last accumulated position (will be updated in place)
-        win_matrix : array [1]
-            Window matrices of this layer list (will be updated in place)
+        Runs on the host (numpy) in prepare_trigger(), using self.wind_speed and
+        self.delta_position. For each layer list, positions (self.last_positions)
+        are accumulated and cycled; the effective position, including the extra
+        offset from self.extra_delta_times, is the x offset of the window matrices.
         """
+        for extra_delta_time, last_position, win_matrix in zip(
+                self.extra_delta_times, self.last_positions, self.win_matrix_cpu):
 
-        # Compute extra offset that doesn't get accumulated
-        extra_offset = wind_speed * extra_delta_time / self.pixel_pitch  # [pixel]
+            # Compute extra offset that doesn't get accumulated
+            extra_offset = self.wind_speed * extra_delta_time / self.pixel_pitch  # [pixel]
 
-        # Update position with delta_position
-        new_position = last_position + delta_position  # [pixel]
+            # Update position with delta_position
+            new_position = last_position + self.delta_position  # [pixel]
 
-        # Cycle screens considering the effective position
-        if self.cycle_screens:
-            new_position = np.where(
-                new_position + extra_offset + self.pixel_layer >= self.phasescreens_sizes_array,
-                0,
-                new_position
-            )
-
-        # Effective position = accumulated position + constant offset
-        win_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
-
-        # Update position in place
-        last_position[:] = new_position
-
-    def _update_layer_list(self, layer_list, win_matrix):
-        """Update a layer list using the arrays computed by prepare_trigger().
-
-        On GPU, for each layer: window extraction with linear interpolation along x
-        (win_matrix), rotation (self.rot_matrix), both with
-        affine_transform(order=1), and multiplication by self.scale_coef.
-        On CPU, uses window slicing, rot90() and ndimage rotate().
-
-        Parameters
-        ----------
-        layer_list : list [1]
-            List of Layer objects to update
-        win_matrix : array [1]
-            Window matrices of this layer list (a slice of self.win_matrix)
-        """
-        for ii, (p, window) in enumerate(zip(self.phasescreens, self.windows)):
-            phase = layer_list[ii].phaseInNm
-            if self.target_device_idx >= 0:
-                self.ndimage_affine_transform(p, win_matrix[ii], output=window,
-                                              output_shape=window.shape, order=1,
-                                              float64_coords=True)
-                self.ndimage_affine_transform(window, self.rot_matrix[ii], output=phase,
-                                              order=1, float64_coords=True)
-                phase *= self.scale_coef
-                continue
-
-            ipli = window.shape[0]
-            position = win_matrix[ii, 1, 2]
-            pos = int(np.floor(position))
-            rem = (position - pos).astype(self.dtype)
-
-            # Linear interpolation between positions
-            layer_phase = (1.0 - rem) * p[0:ipli, pos:pos + ipli] \
-                        + rem * p[0:ipli, pos + 1:pos + ipli + 1]
-
-            # Apply wind direction rotation
-            layer_phase = self.xp.rot90(layer_phase, self.wdi[ii])
-            if not self.wdf_full[ii] == 0:
-                layer_phase = self.ndimage_rotate(
-                    layer_phase, self.wdf_full[ii], reshape=False, order=1
+            # Cycle screens considering the effective position
+            if self.cycle_screens:
+                new_position = np.where(
+                    new_position + extra_offset + self.pixel_layer >= self.phasescreens_sizes_array,
+                    0,
+                    new_position
                 )
 
-            phase[:] = layer_phase * float(self.scale_coef)
+            # Effective position = accumulated position + constant offset
+            win_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
+
+            # Update position in place
+            last_position[:] = new_position
