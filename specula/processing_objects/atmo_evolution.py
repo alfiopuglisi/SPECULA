@@ -373,22 +373,29 @@ class AtmoEvolution(BaseProcessingObj):
     def trigger_code(self):
         """Compute all layer lists from the inputs.
 
-        Computes the seeing scale coefficient (zero for seeing <= 0), the rotation
-        matrices and, for each layer list, positions and window matrices, with fused
-        kernels. Then for each layer: window extraction with linear interpolation
-        along x (self.win_matrix), rotation (self.rot_matrix), both with
-        lib.affine_transform.affine_transform(), and multiplication by self.scale_coef.
+        Computes the seeing scale coefficient (zero for seeing <= 0) and the rotation
+        matrices with fused kernels. Then, for each layer list, a fused kernel
+        accumulates and cycles the positions (self.last_positions); the effective
+        position, including the extra offset from self.extra_delta_times, is the x
+        offset of the window matrices. Finally, for each layer: window extraction with
+        linear interpolation along x (self.win_matrix), rotation (self.rot_matrix),
+        both with lib.affine_transform.affine_transform(), and multiplication by
+        self.scale_coef.
         On GPU, only kernel launches are performed, so that this method can be
         captured in a CUDA graph.
         """
+        wind_speed = self.local_inputs['wind_speed'].value
         wind_direction = self.local_inputs['wind_direction'].value
         _seeing_scale(self.scale_coef, self.local_inputs['seeing'].value,
                       self.seeing_scale_factor, xp=self.xp)
         _rotation_matrix(*[self.rot_matrix[:, i, j] for i in range(2) for j in range(3)],
                          wind_direction, self.layer_center_xp, xp=self.xp)
-        self._update_positions()
 
-        for layer_list, win_matrix in zip(self.layer_lists, self.win_matrix):
+        for layer_list, win_matrix, extra_delta_time, last_position in zip(
+                self.layer_lists, self.win_matrix, self.extra_delta_times, self.last_positions):
+            _positions(last_position, win_matrix[:, 1, 2], wind_speed, self.delta_time_xp,
+                       extra_delta_time, self.pixel_layer_xp, self.screen_size_xp,
+                       self.pixel_pitch, self.cycle_screens, xp=self.xp)
             for p, window, layer, win, rot in zip(self.phasescreens, self.windows, layer_list,
                                                   win_matrix, self.rot_matrix):
                 affine_transform(p, win, window, xp=self.xp)
@@ -402,18 +409,3 @@ class AtmoEvolution(BaseProcessingObj):
         for layer_list in self.layer_lists:
             for layer in layer_list:
                 layer.generation_time = self.current_time
-
-    def _update_positions(self):
-        """Update positions and window matrices of all layer lists.
-
-        Runs on the device in trigger_code(), using the wind speed input and
-        self.delta_time_xp. For each layer list, positions (self.last_positions)
-        are accumulated and cycled; the effective position, including the extra
-        offset from self.extra_delta_times, is the x offset of the window matrices.
-        """
-        wind_speed = self.local_inputs['wind_speed'].value
-        for extra_delta_time, last_position, win_matrix in zip(
-                self.extra_delta_times, self.last_positions, self.win_matrix):
-            _positions(last_position, win_matrix[:, 1, 2], wind_speed, self.delta_time_xp,
-                       extra_delta_time, self.pixel_layer_xp, self.screen_size_xp,
-                       self.pixel_pitch, self.cycle_screens, xp=self.xp)
