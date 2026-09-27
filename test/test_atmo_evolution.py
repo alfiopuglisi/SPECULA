@@ -272,13 +272,13 @@ class TestAtmoEvolution(unittest.TestCase):
         loop.iter()
 
         # After first trigger, last_position should be approximately zero
-        np.testing.assert_allclose(atmo.last_position, 0.0, atol=1e-6)
+        np.testing.assert_allclose(cpuArray(atmo.last_position), 0.0, atol=1e-6)
 
         # last_effective_position should contain the extra_offset
         wind_speed_values = cpuArray(wind_speed.output.value)
         expected_extra_offset = wind_speed_values * extra_delta_time / atmo.pixel_pitch
         np.testing.assert_allclose(
-            atmo.last_effective_position, expected_extra_offset, rtol=1e-8
+            cpuArray(atmo.last_effective_position), expected_extra_offset, rtol=1e-8
         )
 
         # Second trigger
@@ -291,13 +291,13 @@ class TestAtmoEvolution(unittest.TestCase):
         # 2. last_position has accumulated only delta_position (not extra_offset)
         expected_last_position = wind_speed_values * delta_time / atmo.pixel_pitch
         np.testing.assert_allclose(
-            atmo.last_position, expected_last_position, rtol=1e-8
+            cpuArray(atmo.last_position), expected_last_position, rtol=1e-8
         )
 
         # 3. last_effective_position = last_position + extra_offset
         expected_effective_position = expected_last_position + expected_extra_offset
         np.testing.assert_allclose(
-            atmo.last_effective_position, expected_effective_position, rtol=1e-8
+            cpuArray(atmo.last_effective_position), expected_effective_position, rtol=1e-8
         )
 
     @cpu_and_gpu
@@ -337,13 +337,13 @@ class TestAtmoEvolution(unittest.TestCase):
         loop.iter()
 
         # After first trigger, last_position should be approximately zero
-        np.testing.assert_allclose(atmo.last_position, 0.0, atol=1e-6)
+        np.testing.assert_allclose(cpuArray(atmo.last_position), 0.0, atol=1e-6)
         
         # last_effective_position should contain the extra_offset
         wind_speed_values = cpuArray(wind_speed.output.value)
         expected_extra_offset = wind_speed_values * np.array(extra_delta_time) / atmo.pixel_pitch
         np.testing.assert_allclose(
-            atmo.last_effective_position, expected_extra_offset, rtol=1e-8
+            cpuArray(atmo.last_effective_position), expected_extra_offset, rtol=1e-8
         )
 
         loop.iter()
@@ -355,13 +355,13 @@ class TestAtmoEvolution(unittest.TestCase):
         # 2. last_position has accumulated only delta_position (not extra_offset)
         expected_last_position = wind_speed_values * delta_time / atmo.pixel_pitch
         np.testing.assert_allclose(
-            atmo.last_position, expected_last_position, rtol=1e-8
+            cpuArray(atmo.last_position), expected_last_position, rtol=1e-8
         )
         
         # 3. last_effective_position = last_position + extra_offset
         expected_effective_position = expected_last_position + expected_extra_offset
         np.testing.assert_allclose(
-            atmo.last_effective_position, expected_effective_position, rtol=1e-8
+            cpuArray(atmo.last_effective_position), expected_effective_position, rtol=1e-8
         )
 
     @cpu_and_gpu
@@ -397,8 +397,10 @@ class TestAtmoEvolution(unittest.TestCase):
         for target_device_idx in [-1, 0]:
             seeing = WaveGenerator(constant=0.8, amp=0.3, freq=5.0,
                                    target_device_idx=target_device_idx)
-            wind_speed = WaveGenerator(constant=[25.5, 30.0], target_device_idx=target_device_idx)
-            wind_direction = WaveGenerator(constant=[90, -212.7], target_device_idx=target_device_idx)
+            wind_speed = WaveGenerator(constant=[25.5, 30.0], amp=[5.0, 5.0], freq=[3.0, 3.0],
+                                       target_device_idx=target_device_idx)
+            wind_direction = WaveGenerator(constant=[90, -212.7], amp=[20.0, 20.0], freq=[2.0, 2.0],
+                                           target_device_idx=target_device_idx)
             atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir,
                                  heights=[0, 10000], Cn2=[0.5, 0.5], fov=60.0,
                                  pixel_phasescreens=256, extra_delta_time=0.013,
@@ -419,6 +421,10 @@ class TestAtmoEvolution(unittest.TestCase):
                 # The scale coefficient must follow the current (time-varying) seeing
                 expected_scale = cpuArray(seeing.output.value)[0]**(5/6) * atmo.seeing_scale_factor
                 np.testing.assert_allclose(cpuArray(atmo.scale_coef), expected_scale, rtol=1e-10)
+                # Rotation matrices must follow the current (time-varying) wind direction
+                theta = np.radians(cpuArray(wind_direction.output.value))
+                np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 0]), np.cos(theta), atol=1e-10)
+                np.testing.assert_allclose(cpuArray(atmo.rot_matrix[:, 0, 1]), np.sin(theta), atol=1e-10)
             assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
 
         for gpu_layer, cpu_layer in zip(layers[0], layers[-1]):

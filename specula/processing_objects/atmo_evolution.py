@@ -1,5 +1,5 @@
 from typing import List, Union
-from specula import cpuArray, ASEC2RAD, np
+from specula import ASEC2RAD, np, fuse
 from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.base_value import BaseValue
 from specula.data_objects.layer import Layer
@@ -11,8 +11,50 @@ from specula.data_objects.simul_params import SimulParams
 # Phasescreens are always defined at 500 nm
 ATMO_WAVELENGTH = 500.0
 
-# rot90() of a square array expressed as index transformation matrices, for k=0..3
-_ROT90 = np.array([np.linalg.matrix_power([[0, 1], [-1, 0]], k) for k in range(4)])
+
+
+@fuse(kernel_name='atmo_seeing_scale')
+def _seeing_scale(scale_coef, seeing, seeing_scale_factor, xp):
+    """Seeing scale coefficient, zero for seeing <= 0 (no division by seeing)"""
+    scale_coef[...] = xp.maximum(seeing, 0) ** (5. / 6.) * seeing_scale_factor
+
+
+@fuse(kernel_name='atmo_rotation_matrix')
+def _rotation_matrix(r00, r01, r02, r10, r11, r12, wind_direction, center, xp):
+    """Affine matrix [[a, b, offset0], [-b, a, offset1]] (one element per argument)
+    of rot90() by k = trunc(wind_direction / 90) followed by ndimage rotate() by the
+    residual angle, both around the layer center: A = R(90 k) @ R(residual).
+    cos(90 k) and sin(90 k) are exact, so A is an exact permutation when the
+    residual angle is zero."""
+    q = wind_direction / 90
+    k = xp.trunc(q)
+    residual = xp.radians((q - k) * 90)
+    m = xp.remainder(k, 4)
+    cos_k = (1 - m % 2) * (1 - m)     # 1, 0, -1, 0 for m = 0, 1, 2, 3
+    sin_k = (m % 2) * (2 - m)         # 0, 1, 0, -1 for m = 0, 1, 2, 3
+    cos_r = xp.cos(residual)
+    sin_r = xp.sin(residual)
+    a = cos_k * cos_r - sin_k * sin_r
+    b = cos_k * sin_r + sin_k * cos_r
+    r00[...] = a
+    r01[...] = b
+    r02[...] = center * (1 - a - b)
+    r10[...] = -b
+    r11[...] = a
+    r12[...] = center * (1 - a + b)
+
+
+@fuse(kernel_name='atmo_positions')
+def _positions(last_position, effective_position, wind_speed, delta_time, extra_delta_time,
+               pixel_layer, screen_size, pixel_pitch, cycle_screens, xp):
+    """Accumulate the positions, cycling the screens considering the effective position,
+    and compute the effective position (accumulated position + constant offset) [pixel]"""
+    extra_offset = wind_speed * extra_delta_time / pixel_pitch
+    new_position = last_position + wind_speed * delta_time / pixel_pitch
+    new_position = xp.where(cycle_screens & (new_position + extra_offset + pixel_layer >= screen_size),
+                            0, new_position)
+    last_position[...] = new_position
+    effective_position[...] = new_position + extra_offset
 
 
 class AtmoEvolution(BaseProcessingObj):
@@ -24,23 +66,25 @@ class AtmoEvolution(BaseProcessingObj):
     Each time step is split so that trigger_code() can be captured in a CUDA graph
     (see BaseProcessingObj.build_stream(), called in setup()):
 
-    - prepare_trigger() does all the host-side work: it reads the wind speed and
-      wind direction inputs, updates the layer positions (including screen
-      cycling), and computes the window and rotation matrices (self.win_matrix and
-      self.rot_matrix). These are views of a single buffer, transferred to the
-      device with a single copy. The seeing input is copied in the device
-      array self.seeing, without transfers.
-    - trigger_code() computes the seeing scale coefficient (self.scale_coef) from
-      self.seeing, then each layer with two ndimage affine_transform() calls
-      (window interpolation, then rotation) and a multiplication by the scale
-      coefficient, all reading their parameters from device memory.
-      No host values or transfers are involved, so the captured graph stays valid
-      when positions, wind direction or seeing change.
+    - prepare_trigger() only updates the device time step, if it has changed.
+      trigger_code() reads the seeing, wind speed and wind direction inputs
+      directly from local_inputs: their arrays keep the same address at each step
+      (the producer's own array on the same device, or a persistent copy
+      updated in place when coming from another device).
+    - trigger_code() computes on the device the seeing scale coefficient
+      (self.scale_coef), the rotation matrices (self.rot_matrix), the layer
+      positions (including screen cycling) and window matrices (self.win_matrix),
+      using fused kernels. Then each layer is computed with two ndimage
+      affine_transform() calls (window interpolation, then rotation) and a
+      multiplication by the scale coefficient. No host values or transfers are
+      involved, so the captured graph stays valid when positions, wind or seeing
+      change.
     - post_trigger() updates the host-side state: last_t and the generation_time
       of the output layers.
 
-    On CPU, trigger_code() uses the same parameters with the original algorithm
-    (window slicing, rot90() and ndimage rotate()), which is faster with scipy.
+    On CPU, the same code runs with numpy, except for the layers, computed with
+    the original algorithm (window slicing, rot90() and ndimage rotate()), which
+    is faster with scipy.
     """
     def __init__(self,
                  simul_params: SimulParams,
@@ -98,16 +142,16 @@ class AtmoEvolution(BaseProcessingObj):
         zenithAngleInDeg = simul_params.zenithAngleInDeg
 
         self.n_phasescreens = len(heights)
-        self.last_position = np.zeros(self.n_phasescreens, dtype=self.dtype)
-        self.last_effective_position = cpuArray(np.zeros(self.n_phasescreens, dtype=self.dtype))
+        self.last_position = self.xp.zeros(self.n_phasescreens, dtype=self.dtype)
         self.last_t = 0
         self.cycle_screens = True
         self.delta_time = None
 
         if not hasattr(extra_delta_time,"__len__"):
-            self.extra_delta_time = cpuArray(self.n_phasescreens*[extra_delta_time])
+            self.extra_delta_time = self.to_xp(self.n_phasescreens*[extra_delta_time],
+                                               dtype=self.dtype)
         else:
-            self.extra_delta_time = cpuArray(extra_delta_time)
+            self.extra_delta_time = self.to_xp(extra_delta_time, dtype=self.dtype)
 
         self.inputs['seeing'] = InputValue(type=BaseValue)
         self.inputs['wind_speed'] = InputValue(type=BaseValue)
@@ -281,22 +325,16 @@ class AtmoEvolution(BaseProcessingObj):
         self.phasescreens_sizes_array = np.asarray(self.phasescreens_sizes)
 
     def setup(self):
-        """Allocate the arrays computed by prepare_trigger() and used by trigger_code().
+        """Allocate the device arrays used by trigger_code(), and capture it.
 
-        They are views of a single buffer, allocated both on host (*_cpu attributes)
-        and on device, so that prepare_trigger() uploads them with a single copy.
-        On CPU, host and device arrays are the same.
-
+        - delta_time_xp (scalar): time step [s]
+        - scale_coef (1 element): seeing scale coefficient
         - win_matrix (n_layer_lists, n_phasescreens, 2, 3): affine matrix that
           extracts each layer window from its phase screen, with linear interpolation
-          at the effective position
+          at the effective position (the x offset, also self.last_effective_position)
         - rot_matrix (n_phasescreens, 2, 3): affine matrix of the rotation by the
           wind direction around the layer center, equivalent to rot90() followed
           by ndimage rotate()
-
-        self.seeing (copy of the seeing input, updated by prepare_trigger()) and
-        the seeing scale coefficient self.scale_coef (computed by trigger_code())
-        are separate device arrays.
         """
         super().setup()
 
@@ -311,72 +349,44 @@ class AtmoEvolution(BaseProcessingObj):
             raise ValueError('Wind direction input must be a {self.n_phasescreens}-elements array')
 
         n = self.n_phasescreens
-        n_layer_lists = len(self.layer_lists)
-        n_win = n_layer_lists * n * 6
-        self._trigger_buffer_cpu = np.zeros(n_win + n * 6, dtype=self.dtype)
-        self._trigger_buffer = self.to_xp(self._trigger_buffer_cpu)
-        self.win_matrix_cpu = self._trigger_buffer_cpu[:n_win].reshape(n_layer_lists, n, 2, 3)
-        self.rot_matrix_cpu = self._trigger_buffer_cpu[n_win:].reshape(n, 2, 3)
-        self.win_matrix = self._trigger_buffer[:n_win].reshape(n_layer_lists, n, 2, 3)
-        self.rot_matrix = self._trigger_buffer[n_win:].reshape(n, 2, 3)
-        self.seeing = self.xp.zeros(1, dtype=self.dtype)
-        self.scale_coef = self.xp.zeros((), dtype=self.dtype)
+        self.delta_time_xp = self.xp.zeros((), dtype=self.dtype)
+        self.scale_coef = self.xp.zeros(1, dtype=self.dtype)
+        self.win_matrix = self.xp.zeros((len(self.layer_lists), n, 2, 3), dtype=self.dtype)
+        self.rot_matrix = self.xp.zeros((n, 2, 3), dtype=self.dtype)
         # Only the x offset of the window matrices changes at each step
-        self.win_matrix_cpu[..., :2] = np.eye(2)
+        self.win_matrix[..., :2] = self.xp.eye(2, dtype=self.dtype)
+        self.last_effective_position = self.win_matrix[0, :, 1, 2]
+        self.pixel_layer_xp = self.to_xp(self.pixel_layer, dtype=self.dtype)
+        self.layer_center_xp = (self.pixel_layer_xp - 1) / 2
+        self.screen_size_xp = self.to_xp(self.phasescreens_sizes_array, dtype=self.dtype)
 
         self.build_stream()
 
     def prepare_trigger(self, t):
-        """Host-side part of the time step.
-
-        Copies the seeing input in self.seeing (on the device), reads the wind
-        inputs, computes the rotation matrices and window matrices (updating the
-        positions), and uploads them to the device with a single host-to-device copy.
-        """
+        """Update the device time step, only when it changes (no transfers)."""
         super().prepare_trigger(t)
-        self.delta_time = np.float64(self.t_to_seconds(self.current_time - self.last_t))
-        # Copy in a fixed buffer: the CUDA graph reads it at a fixed address
-        self.seeing[:] = self.local_inputs['seeing'].value
-
-        self.wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
-        wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
-
-        # Get quotient and remainder for wind direction
-        wdf, wdi = np.modf(wind_direction / 90.0)
-        self.wdi = wdi.astype(int)
-        self.wdf_full = wdf * 90
-
-        # Index transformation of rot90() followed by ndimage.rotate() around the layer
-        # center: A = R90^k @ R(residual), which is an exact permutation when wdf == 0
-        wdf_rad = np.radians(self.wdf_full)
-        cos, sin = np.cos(wdf_rad), np.sin(wdf_rad)
-        mat = _ROT90[self.wdi % 4] @ np.moveaxis([[cos, sin], [-sin, cos]], -1, 0)
-        center = (self.pixel_layer - 1) / 2
-        self.rot_matrix_cpu[:, :, :2] = mat
-        self.rot_matrix_cpu[:, :, 2] = center[:, None] * (1 - mat.sum(axis=2))
-
-        # Compute the delta position in pixels (time evolution)
-        self.delta_position = self.wind_speed * self.delta_time / self.pixel_pitch  # [pixel]
-
-        self._update_positions()
-        self.last_effective_position[:] = self.win_matrix_cpu[0, :, 1, 2]
-
-        # Upload to GPU (no effect if on CPU)
-        self._trigger_buffer[:] = self.to_xp(self._trigger_buffer_cpu)
+        delta_time = np.float64(self.t_to_seconds(self.current_time - self.last_t))
+        if delta_time != self.delta_time:
+            self.delta_time = delta_time
+            self.delta_time_xp.fill(delta_time)
 
     def trigger_code(self):
-        """Compute all layer lists from the arrays uploaded by prepare_trigger().
+        """Compute all layer lists from the inputs.
 
-        First computes the seeing scale coefficient, zero for seeing <= 0.
-        On GPU, for each layer: window extraction with linear interpolation along x
-        (self.win_matrix), rotation (self.rot_matrix), both with
+        Computes the seeing scale coefficient (zero for seeing <= 0), the rotation
+        matrices and, for each layer list, positions and window matrices, with fused
+        kernels. On GPU, for each layer: window extraction with linear interpolation
+        along x (self.win_matrix), rotation (self.rot_matrix), both with
         affine_transform(order=1), and multiplication by self.scale_coef.
         Only kernel launches are performed, so that this method can be captured
         in a CUDA graph. On CPU, uses window slicing, rot90() and ndimage rotate().
         """
-        # Seeing scale coefficient, zero for seeing <= 0 (no division by seeing)
-        self.xp.multiply(self.xp.power(self.xp.maximum(self.seeing[0], 0), 5./6.),
-                         self.seeing_scale_factor, out=self.scale_coef)
+        wind_direction = self.local_inputs['wind_direction'].value
+        _seeing_scale(self.scale_coef, self.local_inputs['seeing'].value,
+                      self.seeing_scale_factor, xp=self.xp)
+        _rotation_matrix(*[self.rot_matrix[:, i, j] for i in range(2) for j in range(3)],
+                         wind_direction, self.layer_center_xp, xp=self.xp)
+        self._update_positions()
 
         for layer_list, win_matrix in zip(self.layer_lists, self.win_matrix):
             for ii, (p, window, layer) in enumerate(zip(self.phasescreens, self.windows, layer_list)):
@@ -400,13 +410,14 @@ class AtmoEvolution(BaseProcessingObj):
                             + rem * p[0:ipli, pos + 1:pos + ipli + 1]
 
                 # Apply wind direction rotation
-                layer_phase = self.xp.rot90(layer_phase, self.wdi[ii])
-                if not self.wdf_full[ii] == 0:
+                wdf, wdi = np.modf(wind_direction[ii] / 90.0)
+                layer_phase = self.xp.rot90(layer_phase, int(wdi))
+                if not wdf == 0:
                     layer_phase = self.ndimage_rotate(
-                        layer_phase, self.wdf_full[ii], reshape=False, order=1
+                        layer_phase, wdf * 90, reshape=False, order=1
                     )
 
-                phase[:] = layer_phase * float(self.scale_coef)
+                phase[:] = layer_phase * float(self.scale_coef[0])
 
     def post_trigger(self):
         """Host-side state update: last_t and generation_time of all output layers."""
@@ -419,30 +430,14 @@ class AtmoEvolution(BaseProcessingObj):
     def _update_positions(self):
         """Update positions and window matrices of all layer lists.
 
-        Runs on the host (numpy) in prepare_trigger(), using self.wind_speed and
-        self.delta_position. For each layer list, positions (self.last_positions)
+        Runs on the device in trigger_code(), using the wind speed input and
+        self.delta_time_xp. For each layer list, positions (self.last_positions)
         are accumulated and cycled; the effective position, including the extra
         offset from self.extra_delta_times, is the x offset of the window matrices.
         """
+        wind_speed = self.local_inputs['wind_speed'].value
         for extra_delta_time, last_position, win_matrix in zip(
-                self.extra_delta_times, self.last_positions, self.win_matrix_cpu):
-
-            # Compute extra offset that doesn't get accumulated
-            extra_offset = self.wind_speed * extra_delta_time / self.pixel_pitch  # [pixel]
-
-            # Update position with delta_position
-            new_position = last_position + self.delta_position  # [pixel]
-
-            # Cycle screens considering the effective position
-            if self.cycle_screens:
-                new_position = np.where(
-                    new_position + extra_offset + self.pixel_layer >= self.phasescreens_sizes_array,
-                    0,
-                    new_position
-                )
-
-            # Effective position = accumulated position + constant offset
-            win_matrix[:, 1, 2] = new_position + extra_offset  # [pixel]
-
-            # Update position in place
-            last_position[:] = new_position
+                self.extra_delta_times, self.last_positions, self.win_matrix):
+            _positions(last_position, win_matrix[:, 1, 2], wind_speed, self.delta_time_xp,
+                       extra_delta_time, self.pixel_layer_xp, self.screen_size_xp,
+                       self.pixel_pitch, self.cycle_screens, xp=self.xp)

@@ -1,4 +1,3 @@
-from specula import cpuArray, np
 from specula.base_processing_obj import InputDesc, OutputDesc
 from specula.base_value import BaseValue
 from specula.processing_objects.atmo_evolution import AtmoEvolution
@@ -88,14 +87,16 @@ class AtmoEvolutionUpDown(AtmoEvolution):
 
         # Store both extra_delta_time arrays
         if not hasattr(extra_delta_time_down, "__len__"):
-            self.extra_delta_time_down = cpuArray(self.n_phasescreens * [extra_delta_time_down])
+            self.extra_delta_time_down = self.to_xp(self.n_phasescreens * [extra_delta_time_down],
+                                                    dtype=self.dtype)
         else:
-            self.extra_delta_time_down = cpuArray(extra_delta_time_down)
+            self.extra_delta_time_down = self.to_xp(extra_delta_time_down, dtype=self.dtype)
 
         if not hasattr(extra_delta_time_up, "__len__"):
-            self.extra_delta_time_up = cpuArray(self.n_phasescreens * [extra_delta_time_up])
+            self.extra_delta_time_up = self.to_xp(self.n_phasescreens * [extra_delta_time_up],
+                                                  dtype=self.dtype)
         else:
-            self.extra_delta_time_up = cpuArray(extra_delta_time_up)
+            self.extra_delta_time_up = self.to_xp(extra_delta_time_up, dtype=self.dtype)
 
         # Set the parent's extra_delta_time to down (for compatibility)
         self.extra_delta_time = self.extra_delta_time_down
@@ -120,7 +121,7 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         self.outputs['layer_list_up'] = self.layer_list_up
 
         # Track positions for up propagation separately
-        self.last_position_up = np.zeros(self.n_phasescreens, dtype=self.dtype)
+        self.last_position_up = self.xp.zeros(self.n_phasescreens, dtype=self.dtype)
 
         # Down and up layer lists (see AtmoEvolution.__init__())
         self.layer_lists = [self.layer_list_down, self.layer_list_up]
