@@ -37,7 +37,8 @@ class AtmoEvolution(BaseProcessingObj):
     - post_trigger() updates the host-side state: last_t and the generation_time
       of the output layers.
 
-    The same code runs on CPU, using scipy instead of cupyx.
+    On CPU, trigger_code() uses the same parameters with the original algorithm
+    (window slicing, rot90() and ndimage rotate()), which is faster with scipy.
     """
     def __init__(self,
                  simul_params: SimulParams,
@@ -156,15 +157,13 @@ class AtmoEvolution(BaseProcessingObj):
             self.layer_list.append(layer)
         self.outputs['layer_list'] = self.layer_list
 
-        # Per-layer parameters with shape (n_layer_lists, n_phasescreens, 13), computed
+        # Per-layer parameters with shape (n_layer_lists, n_phasescreens, 15), computed
         # in prepare_trigger() by _update_params() and uploaded to self.params
         # (which is the same array on CPU): see _update_params() for the columns
-        self.params_cpu = np.zeros((1, self.n_phasescreens, 13))
+        self.params_cpu = np.zeros((1, self.n_phasescreens, 15))
         self.params = self.to_xp(self.params_cpu)
         # Interpolated (not rotated) layer windows
         self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
-        # Coordinates in double precision as in scipy
-        self.affine_kwargs = {'float64_coords': True} if self.target_device_idx >= 0 else {}
 
         self.seed = seed
         self.scale_coeff = 1.0
@@ -356,7 +355,8 @@ class AtmoEvolution(BaseProcessingObj):
         with A = R90^k @ R(residual) (params[:, 6:12]). This is the same index
         transformation as rot90() followed by ndimage rotate(), and A is an exact
         permutation when the residual angle is zero. params[:, 12] is the scale
-        coefficient.
+        coefficient, params[:, 13:15] the rot90() count and the residual angle
+        in degrees used by the CPU path.
 
         Parameters
         ----------
@@ -404,6 +404,8 @@ class AtmoEvolution(BaseProcessingObj):
         offset = center[:, None] * (1 - mat.sum(axis=2))
         params[:, 6:12] = np.concatenate([mat, offset[:, :, None]], axis=2).reshape(-1, 6)
         params[:, 12] = self.scale_coeff
+        params[:, 13] = wdi
+        params[:, 14] = wdf * 90
 
         # Update position in place
         last_position[:] = new_position
@@ -413,9 +415,10 @@ class AtmoEvolution(BaseProcessingObj):
     def _update_layer_list(self, layer_list, params):
         """Update a layer list using the parameters computed by _update_params().
 
-        For each layer: window extraction with linear interpolation along x,
+        On GPU, for each layer: window extraction with linear interpolation along x,
         rotation (both with affine_transform(order=1), parameters read from
-        params) and multiplication by the scale coefficient.
+        params) and multiplication by the scale coefficient. On CPU, uses window
+        slicing, rot90() and ndimage rotate().
 
         Parameters
         ----------
@@ -426,8 +429,28 @@ class AtmoEvolution(BaseProcessingObj):
         """
         for ii, (p, window) in enumerate(zip(self.phasescreens, self.windows)):
             phase = layer_list[ii].phaseInNm
-            self.ndimage_affine_transform(p, params[ii, 0:6].reshape(2, 3), output=window,
-                                          output_shape=window.shape, order=1, **self.affine_kwargs)
-            self.ndimage_affine_transform(window, params[ii, 6:12].reshape(2, 3), output=phase,
-                                          order=1, **self.affine_kwargs)
-            phase *= params[ii, 12]
+            if self.target_device_idx >= 0:
+                self.ndimage_affine_transform(p, params[ii, 0:6].reshape(2, 3), output=window,
+                                              output_shape=window.shape, order=1,
+                                              float64_coords=True)
+                self.ndimage_affine_transform(window, params[ii, 6:12].reshape(2, 3),
+                                              output=phase, order=1, float64_coords=True)
+                phase *= params[ii, 12]
+                continue
+
+            ipli = window.shape[0]
+            pos, wdi, wdf_full = int(params[ii, 5]), int(params[ii, 13]), params[ii, 14]
+            rem = (params[ii, 5] - pos).astype(self.dtype)
+
+            # Linear interpolation between positions
+            layer_phase = (1.0 - rem) * p[0:ipli, pos:pos + ipli] \
+                        + rem * p[0:ipli, pos + 1:pos + ipli + 1]
+
+            # Apply wind direction rotation
+            layer_phase = self.xp.rot90(layer_phase, wdi)
+            if not wdf_full == 0:
+                layer_phase = self.ndimage_rotate(
+                    layer_phase, wdf_full, reshape=False, order=1
+                )
+
+            phase[:] = layer_phase * float(params[ii, 12])
