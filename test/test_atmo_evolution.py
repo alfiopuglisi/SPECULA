@@ -395,7 +395,8 @@ class TestAtmoEvolution(unittest.TestCase):
         simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
         layers = {}
         for target_device_idx in [-1, 0]:
-            seeing = WaveGenerator(constant=0.8, target_device_idx=target_device_idx)
+            seeing = WaveGenerator(constant=0.8, amp=0.3, freq=5.0,
+                                   target_device_idx=target_device_idx)
             wind_speed = WaveGenerator(constant=[25.5, 30.0], target_device_idx=target_device_idx)
             wind_direction = WaveGenerator(constant=[90, -212.7], target_device_idx=target_device_idx)
             atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir,
@@ -415,6 +416,9 @@ class TestAtmoEvolution(unittest.TestCase):
             for _ in range(40):
                 loop.iter()
                 layers[target_device_idx] += [cpuArray(l.phaseInNm).copy() for l in atmo.layer_list]
+                # The scale coefficient must follow the current (time-varying) seeing
+                expected_scale = cpuArray(seeing.output.value)[0]**(5/6) * atmo.seeing_scale_factor
+                np.testing.assert_allclose(cpuArray(atmo.scale_coef), expected_scale, rtol=1e-10)
             assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
 
         for gpu_layer, cpu_layer in zip(layers[0], layers[-1]):

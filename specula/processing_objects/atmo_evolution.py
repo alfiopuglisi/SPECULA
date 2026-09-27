@@ -28,9 +28,10 @@ class AtmoEvolution(BaseProcessingObj):
       wind direction inputs, updates the layer positions (including screen
       cycling), and computes the window and rotation matrices (self.win_matrix and
       self.rot_matrix). These are views of a single buffer, transferred to the
-      device with a single copy. The seeing scale coefficient (self.scale_coef) is
-      computed on the device from the seeing input, without transfers.
-    - trigger_code() computes each layer with two ndimage affine_transform() calls
+      device with a single copy. The seeing input is copied in the device
+      array self.seeing, without transfers.
+    - trigger_code() computes the seeing scale coefficient (self.scale_coef) from
+      self.seeing, then each layer with two ndimage affine_transform() calls
       (window interpolation, then rotation) and a multiplication by the scale
       coefficient, all reading their parameters from device memory.
       No host values or transfers are involved, so the captured graph stays valid
@@ -293,8 +294,9 @@ class AtmoEvolution(BaseProcessingObj):
           wind direction around the layer center, equivalent to rot90() followed
           by ndimage rotate()
 
-        The seeing scale coefficient (self.scale_coef) is a separate device scalar,
-        computed on the device by prepare_trigger().
+        self.seeing (copy of the seeing input, updated by prepare_trigger()) and
+        the seeing scale coefficient self.scale_coef (computed by trigger_code())
+        are separate device arrays.
         """
         super().setup()
 
@@ -317,6 +319,7 @@ class AtmoEvolution(BaseProcessingObj):
         self.rot_matrix_cpu = self._trigger_buffer_cpu[n_win:].reshape(n, 2, 3)
         self.win_matrix = self._trigger_buffer[:n_win].reshape(n_layer_lists, n, 2, 3)
         self.rot_matrix = self._trigger_buffer[n_win:].reshape(n, 2, 3)
+        self.seeing = self.xp.zeros(1, dtype=self.dtype)
         self.scale_coef = self.xp.zeros((), dtype=self.dtype)
         # Only the x offset of the window matrices changes at each step
         self.win_matrix_cpu[..., :2] = np.eye(2)
@@ -326,7 +329,7 @@ class AtmoEvolution(BaseProcessingObj):
     def prepare_trigger(self, t):
         """Host-side part of the time step.
 
-        Computes the seeing scale coefficient on the device, then reads the wind
+        Copies the seeing input in self.seeing (on the device), reads the wind
         inputs, computes the rotation matrices and window matrices (updating the
         positions), and uploads them to the device with a single host-to-device copy.
         """
@@ -334,10 +337,8 @@ class AtmoEvolution(BaseProcessingObj):
         self.delta_time = cpuArray(
             self.n_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
         )
-        # Seeing scale coefficient, zero for seeing <= 0 (no division by seeing)
-        seeing = self.xp.maximum(self.local_inputs['seeing'].value[0], 0)
-        self.xp.multiply(self.xp.power(seeing, 5./6.), self.seeing_scale_factor,
-                         out=self.scale_coef)
+        # Copy in a fixed buffer: the CUDA graph reads it at a fixed address
+        self.seeing[:] = self.local_inputs['seeing'].value
 
         self.wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
@@ -368,12 +369,17 @@ class AtmoEvolution(BaseProcessingObj):
     def trigger_code(self):
         """Compute all layer lists from the arrays uploaded by prepare_trigger().
 
+        First computes the seeing scale coefficient, zero for seeing <= 0.
         On GPU, for each layer: window extraction with linear interpolation along x
         (self.win_matrix), rotation (self.rot_matrix), both with
         affine_transform(order=1), and multiplication by self.scale_coef.
         Only kernel launches are performed, so that this method can be captured
         in a CUDA graph. On CPU, uses window slicing, rot90() and ndimage rotate().
         """
+        # Seeing scale coefficient, zero for seeing <= 0 (no division by seeing)
+        self.xp.multiply(self.xp.power(self.xp.maximum(self.seeing[0], 0), 5./6.),
+                         self.seeing_scale_factor, out=self.scale_coef)
+
         for layer_list, win_matrix in zip(self.layer_lists, self.win_matrix):
             for ii, (p, window, layer) in enumerate(zip(self.phasescreens, self.windows, layer_list)):
                 phase = layer.phaseInNm
