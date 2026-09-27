@@ -122,10 +122,8 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         # Track positions for up propagation separately
         self.last_position_up = np.zeros(self.n_phasescreens, dtype=self.dtype)
 
-        # Layer parameters for the down (index 0) and up (index 1) layer lists,
-        # see AtmoEvolution.__init__()
-        self.params_cpu = np.zeros((2,) + self.params_cpu.shape[1:])
-        self.params = self.to_xp(self.params_cpu)
+        # Shift matrices for the down (index 0) and up (index 1) layer lists
+        self._alloc_trigger_arrays(n_layer_lists=2)
 
     @classmethod
     def output_names(cls):        
@@ -136,16 +134,16 @@ class AtmoEvolutionUpDown(AtmoEvolution):
         })
         return result
     
-    def _update_positions(self, wind_speed, wind_direction, delta_position):
-        """Update positions and layer parameters for both downward and upward propagation.
+    def _update_positions(self, wind_speed, delta_position):
+        """Update positions and shift matrices for both downward and upward propagation.
 
-        Called by AtmoEvolution.prepare_trigger(): parameters of the down list go in
-        self.params_cpu[0] (base class), those of the up list in self.params_cpu[1].
+        Called by AtmoEvolution.prepare_trigger(): the down list uses
+        self.shift_matrix_cpu[0] (base class), the up list self.shift_matrix_cpu[1].
         """
-        super()._update_positions(wind_speed, wind_direction, delta_position)
-        self._update_params(
-            wind_speed, wind_direction, delta_position, self.extra_delta_time_up,
-            self.last_position_up, self.params_cpu[1]
+        super()._update_positions(wind_speed, delta_position)
+        self._update_shift(
+            wind_speed, delta_position, self.extra_delta_time_up,
+            self.last_position_up, self.shift_matrix_cpu[1]
         )
 
     def trigger_code(self):
@@ -153,5 +151,5 @@ class AtmoEvolutionUpDown(AtmoEvolution):
 
         Only kernel launches on GPU (see AtmoEvolution.trigger_code()).
         """
-        self._update_layer_list(self.layer_list_down, self.params[0])
-        self._update_layer_list(self.layer_list_up, self.params[1])
+        self._update_layer_list(self.layer_list_down, self.shift_matrix[0])
+        self._update_layer_list(self.layer_list_up, self.shift_matrix[1])
