@@ -217,8 +217,10 @@ class AtmoEvolution(BaseProcessingObj):
         self.layer_lists = [self.layer_list]
         self.extra_delta_times = [self.extra_delta_time]
         self.last_positions = [self.last_position]
-        # Interpolated (not rotated) layer windows
-        self.windows = [self.xp.zeros((int(n), int(n)), dtype=self.dtype) for n in self.pixel_layer]
+        # Interpolated (not rotated) layer windows. Each one is used only while computing
+        # its layer, so they are contiguous views of a single buffer for the largest layer.
+        window_buffer = self.xp.zeros(int(max(self.pixel_layer)) ** 2, dtype=self.dtype)
+        self.windows = [window_buffer[:int(n) ** 2].reshape(int(n), int(n)) for n in self.pixel_layer]
 
         self.seed = seed
 
