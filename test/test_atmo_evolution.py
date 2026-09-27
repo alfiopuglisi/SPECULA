@@ -419,3 +419,26 @@ class TestAtmoEvolution(unittest.TestCase):
 
         for gpu_layer, cpu_layer in zip(layers[0], layers[-1]):
             np.testing.assert_allclose(gpu_layer, cpu_layer, rtol=1e-10, atol=1e-8)
+
+    @cpu_and_gpu
+    def test_zero_and_negative_seeing(self, target_device_idx, xp):
+        """Test that seeing <= 0 gives zero layers, without NaNs"""
+        simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
+        for seeing_value in [0.0, -1.0]:
+            seeing = WaveGenerator(constant=seeing_value, target_device_idx=target_device_idx)
+            wind_speed = WaveGenerator(constant=[10.0], target_device_idx=target_device_idx)
+            wind_direction = WaveGenerator(constant=[33.3], target_device_idx=target_device_idx)
+            atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir, heights=[0],
+                                 Cn2=[1.0], pixel_phasescreens=256,
+                                 target_device_idx=target_device_idx)
+            atmo.inputs['seeing'].set(seeing.output)
+            atmo.inputs['wind_speed'].set(wind_speed.output)
+            atmo.inputs['wind_direction'].set(wind_direction.output)
+
+            loop = LoopControl()
+            for obj in [seeing, wind_speed, wind_direction]:
+                loop.add(obj, idx=0)
+            loop.add(atmo, idx=1)
+            loop.start(run_time=0.02, dt=simul_params.time_step)
+            loop.iter()
+            np.testing.assert_array_equal(cpuArray(atmo.layer_list[0].phaseInNm), 0)

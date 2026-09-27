@@ -24,11 +24,12 @@ class AtmoEvolution(BaseProcessingObj):
     Each time step is split so that trigger_code() can be captured in a CUDA graph
     (see BaseProcessingObj.build_stream(), called in setup()):
 
-    - prepare_trigger() does all the host-side work: it reads the seeing, wind speed
-      and wind direction inputs, updates the layer positions (including screen
-      cycling), and computes the window matrices, rotation matrices and scale
-      coefficient (self.win_matrix, self.rot_matrix and self.scale_coef). These are
-      views of a single buffer, transferred to the device with a single copy.
+    - prepare_trigger() does all the host-side work: it reads the wind speed and
+      wind direction inputs, updates the layer positions (including screen
+      cycling), and computes the window and rotation matrices (self.win_matrix and
+      self.rot_matrix). These are views of a single buffer, transferred to the
+      device with a single copy. The seeing scale coefficient (self.scale_coef) is
+      computed on the device from the seeing input, without transfers.
     - trigger_code() computes each layer with two ndimage affine_transform() calls
       (window interpolation, then rotation) and a multiplication by the scale
       coefficient, all reading their parameters from device memory.
@@ -121,6 +122,11 @@ class AtmoEvolution(BaseProcessingObj):
         heights = np.array(heights, dtype=self.dtype)
         # distances from the pupil accounting for zenith angle
         self.pupil_distances = heights * self.airmass
+
+        # pixel_pitch / r0 = seeing * const, so that the seeing scale coefficient
+        # (pixel_pitch / r0)**(5/6) = seeing**(5/6) * self.seeing_scale_factor
+        self.seeing_scale_factor = (self.pixel_pitch * 4.848 / (0.9759 * 0.5)
+                                    * float(self.airmass)**(3./5.))**(5./6.)
 
         fov_rad = fov * ASEC2RAD
         self.pixel_layer = np.ceil(
@@ -286,7 +292,9 @@ class AtmoEvolution(BaseProcessingObj):
         - rot_matrix (n_phasescreens, 2, 3): affine matrix of the rotation by the
           wind direction around the layer center, equivalent to rot90() followed
           by ndimage rotate()
-        - scale_coef (scalar): seeing scale coefficient
+
+        The seeing scale coefficient (self.scale_coef) is a separate device scalar,
+        computed on the device by prepare_trigger().
         """
         super().setup()
 
@@ -303,14 +311,13 @@ class AtmoEvolution(BaseProcessingObj):
         n = self.n_phasescreens
         n_layer_lists = len(self.layer_lists)
         n_win = n_layer_lists * n * 6
-        self._trigger_buffer_cpu = np.zeros(n_win + n * 6 + 1)
+        self._trigger_buffer_cpu = np.zeros(n_win + n * 6, dtype=self.dtype)
         self._trigger_buffer = self.to_xp(self._trigger_buffer_cpu)
         self.win_matrix_cpu = self._trigger_buffer_cpu[:n_win].reshape(n_layer_lists, n, 2, 3)
-        self.rot_matrix_cpu = self._trigger_buffer_cpu[n_win:-1].reshape(n, 2, 3)
-        self.scale_coef_cpu = self._trigger_buffer_cpu[-1:].reshape(())
+        self.rot_matrix_cpu = self._trigger_buffer_cpu[n_win:].reshape(n, 2, 3)
         self.win_matrix = self._trigger_buffer[:n_win].reshape(n_layer_lists, n, 2, 3)
-        self.rot_matrix = self._trigger_buffer[n_win:-1].reshape(n, 2, 3)
-        self.scale_coef = self._trigger_buffer[-1:].reshape(())
+        self.rot_matrix = self._trigger_buffer[n_win:].reshape(n, 2, 3)
+        self.scale_coef = self.xp.zeros((), dtype=self.dtype)
         # Only the x offset of the window matrices changes at each step
         self.win_matrix_cpu[..., :2] = np.eye(2)
 
@@ -319,20 +326,18 @@ class AtmoEvolution(BaseProcessingObj):
     def prepare_trigger(self, t):
         """Host-side part of the time step.
 
-        Reads the inputs, computes the seeing scale coefficient, rotation
-        matrices and window matrices (updating the positions), and uploads them to
-        the device with a single host-to-device copy.
+        Computes the seeing scale coefficient on the device, then reads the wind
+        inputs, computes the rotation matrices and window matrices (updating the
+        positions), and uploads them to the device with a single host-to-device copy.
         """
         super().prepare_trigger(t)
         self.delta_time = cpuArray(
             self.n_phasescreens*[self.t_to_seconds(self.current_time - self.last_t)]
         )
-        seeing = float(cpuArray(self.local_inputs['seeing'].value[0]))
-        if seeing > 0:
-            r0 = 0.9759 * 0.5 / (seeing * 4.848) * self.airmass**(-3./5.)
-            self.scale_coef_cpu[...] = (self.pixel_pitch / r0)**(5./6.)
-        else:
-            self.scale_coef_cpu[...] = 0.0
+        # Seeing scale coefficient, zero for seeing <= 0 (no division by seeing)
+        seeing = self.xp.maximum(self.local_inputs['seeing'].value[0], 0)
+        self.xp.multiply(self.xp.power(seeing, 5./6.), self.seeing_scale_factor,
+                         out=self.scale_coef)
 
         self.wind_speed = cpuArray(self.local_inputs['wind_speed'].value)
         wind_direction = cpuArray(self.local_inputs['wind_direction'].value)
