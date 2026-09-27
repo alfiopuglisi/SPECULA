@@ -299,15 +299,16 @@ class AtmoEvolution(BaseProcessingObj):
           by ndimage rotate()
         - scale (scalar): seeing scale coefficient
         """
-        n_shift = n_layer_lists * self.n_phasescreens * 6
-        self._trigger_buffer_cpu = np.zeros(n_shift + self.n_phasescreens * 6 + 1)
+        n = self.n_phasescreens
+        n_shift = n_layer_lists * n * 6
+        self._trigger_buffer_cpu = np.zeros(n_shift + n * 6 + 1)
         self._trigger_buffer = self.to_xp(self._trigger_buffer_cpu)
-        views = [(buf[:n_shift].reshape(n_layer_lists, self.n_phasescreens, 2, 3),
-                  buf[n_shift:-1].reshape(self.n_phasescreens, 2, 3),
-                  buf[-1:].reshape(()))
-                 for buf in (self._trigger_buffer_cpu, self._trigger_buffer)]
-        (self.shift_matrix_cpu, self.rotation_matrix_cpu, self.scale_cpu), \
-            (self.shift_matrix, self.rotation_matrix, self.scale) = views
+        self.shift_matrix_cpu = self._trigger_buffer_cpu[:n_shift].reshape(n_layer_lists, n, 2, 3)
+        self.rotation_matrix_cpu = self._trigger_buffer_cpu[n_shift:-1].reshape(n, 2, 3)
+        self.scale_cpu = self._trigger_buffer_cpu[-1:].reshape(())
+        self.shift_matrix = self._trigger_buffer[:n_shift].reshape(n_layer_lists, n, 2, 3)
+        self.rotation_matrix = self._trigger_buffer[n_shift:-1].reshape(n, 2, 3)
+        self.scale = self._trigger_buffer[-1:].reshape(())
         # Only the x offset of the shift matrices changes at each step
         self.shift_matrix_cpu[..., :2] = np.eye(2)
 
