@@ -274,22 +274,6 @@ class AtmoEvolution(BaseProcessingObj):
         self.phasescreens_sizes_array = np.asarray(self.phasescreens_sizes)
 
     def setup(self):
-        super().setup()
-
-        # check that seeing is a 1-element array
-        if len(self.local_inputs['seeing'].value) != 1:
-            raise ValueError('Seeing input must be a 1-element array')
-
-        # Check that wind speed and direction have the correct length
-        if len(self.local_inputs['wind_speed'].value) != self.n_phasescreens:
-            raise ValueError('Wind speed input must be a {self.n_phasescreens}-elements array')
-        if len(self.local_inputs['wind_direction'].value) != self.n_phasescreens:
-            raise ValueError('Wind direction input must be a {self.n_phasescreens}-elements array')
-
-        self._alloc_trigger_arrays()
-        self.build_stream()
-
-    def _alloc_trigger_arrays(self):
         """Allocate the arrays computed by prepare_trigger() and used by trigger_code().
 
         They are views of a single buffer, allocated both on host (*_cpu attributes)
@@ -304,6 +288,18 @@ class AtmoEvolution(BaseProcessingObj):
           by ndimage rotate()
         - scale_coef (scalar): seeing scale coefficient
         """
+        super().setup()
+
+        # check that seeing is a 1-element array
+        if len(self.local_inputs['seeing'].value) != 1:
+            raise ValueError('Seeing input must be a 1-element array')
+
+        # Check that wind speed and direction have the correct length
+        if len(self.local_inputs['wind_speed'].value) != self.n_phasescreens:
+            raise ValueError('Wind speed input must be a {self.n_phasescreens}-elements array')
+        if len(self.local_inputs['wind_direction'].value) != self.n_phasescreens:
+            raise ValueError('Wind direction input must be a {self.n_phasescreens}-elements array')
+
         n = self.n_phasescreens
         n_layer_lists = len(self.layer_lists)
         n_win = n_layer_lists * n * 6
@@ -317,6 +313,8 @@ class AtmoEvolution(BaseProcessingObj):
         self.scale_coef = self._trigger_buffer[-1:].reshape(())
         # Only the x offset of the window matrices changes at each step
         self.win_matrix_cpu[..., :2] = np.eye(2)
+
+        self.build_stream()
 
     def prepare_trigger(self, t):
         """Host-side part of the time step.
