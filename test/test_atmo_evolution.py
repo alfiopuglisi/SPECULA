@@ -502,3 +502,55 @@ class TestAtmoEvolution(unittest.TestCase):
         for layer in atmo.layer_list:
             phase = cpuArray(layer.phaseInNm)
             assert np.all(np.isfinite(phase)) and np.any(phase != 0)
+
+    @cpu_and_gpu
+    def test_matches_original_algorithm(self, target_device_idx, xp):
+        """Regression test of positions, seeing scale and rotation convention: the layers
+        must match the original algorithm (window slicing with linear interpolation,
+        rot90() and ndimage rotate()) for fractional, negative, multiple of 90 degrees
+        and larger than 360 degrees wind directions, with layers of different sizes"""
+        from scipy.ndimage import rotate
+        simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
+        directions = [0.0, 90.0, 33.3, -212.7, 405.5]
+        speeds = [10.3, 7.1, 12.9, 5.55, 9.0]
+        seeing_value = 0.8
+        n = len(directions)
+        atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir,
+                             heights=[2000.0 * i for i in range(n)], Cn2=[1.0 / n] * n,
+                             fov=60.0, pixel_phasescreens=256,
+                             target_device_idx=target_device_idx, precision=0)
+        assert len(set(atmo.pixel_layer)) > 1
+        seeing = WaveGenerator(constant=seeing_value, target_device_idx=target_device_idx)
+        wind_speed = WaveGenerator(constant=speeds, target_device_idx=target_device_idx)
+        wind_direction = WaveGenerator(constant=directions, target_device_idx=target_device_idx)
+        atmo.inputs['seeing'].set(seeing.output)
+        atmo.inputs['wind_speed'].set(wind_speed.output)
+        atmo.inputs['wind_direction'].set(wind_direction.output)
+        loop = LoopControl()
+        for obj in [seeing, wind_speed, wind_direction]:
+            loop.add(obj, idx=0)
+        loop.add(atmo, idx=1)
+        n_steps = 5
+        loop.start(run_time=simul_params.time_step * n_steps, dt=simul_params.time_step)
+        for _ in range(n_steps):
+            loop.iter()
+
+        # Original seeing scale coefficient, no zenith angle
+        r0 = 0.9759 * 0.5 / (seeing_value * 4.848)
+        scale = (simul_params.pixel_pitch / r0) ** (5. / 6.)
+        for ii, layer in enumerate(atmo.layer_list):
+            # The first step has zero delta time
+            position = speeds[ii] * simul_params.time_step * (n_steps - 1) / simul_params.pixel_pitch
+            pos = int(np.floor(position))
+            rem = position - pos
+            size = layer.phaseInNm.shape[0]
+            screen = cpuArray(atmo.phasescreens[ii])
+            expected = (1.0 - rem) * screen[0:size, pos:pos + size] \
+                       + rem * screen[0:size, pos + 1:pos + size + 1]
+            wdf, wdi = np.modf(directions[ii] / 90.0)
+            expected = np.rot90(expected, int(wdi))
+            if wdf != 0:
+                expected = rotate(expected, wdf * 90, reshape=False, order=1)
+            expected *= scale
+            np.testing.assert_allclose(cpuArray(layer.phaseInNm), expected, rtol=1e-10,
+                                       atol=1e-10 * np.abs(expected).max())
