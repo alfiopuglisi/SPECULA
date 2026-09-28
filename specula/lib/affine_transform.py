@@ -1,7 +1,12 @@
+import inspect
+
 from specula import cp, np
 
 if cp:  # pragma: no cover
     from cupyx.scipy.ndimage import affine_transform as _cupy_affine_transform
+    # cupy < 14.1 always uses float64 coordinates and has no float64_coords argument
+    _COORDS_KW = ({'float64_coords': True}
+                if 'float64_coords' in inspect.signature(_cupy_affine_transform).parameters else {})
 
 # Number of output elements computed at once by the generic CPU interpolation:
 # small temporaries stay in cache, and large memory allocations are avoided.
@@ -37,7 +42,7 @@ def affine_transform(data, matrix, output, xp):
     """
     if xp is not np:
         _cupy_affine_transform(data, matrix, output=output, output_shape=output.shape,
-                               order=1, float64_coords=True)
+                               order=1, **_COORDS_KW)
         return
     linear, offset = matrix[:, :2], matrix[:, 2]
     if not (_is_signed_permutation(linear) and _permuted(data, linear, offset, output)):

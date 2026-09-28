@@ -361,8 +361,10 @@ class AtmoEvolution(BaseProcessingObj):
         linear interpolation along x (self.win_matrix), rotation (self.rot_matrix),
         both with lib.affine_transform.affine_transform(), and multiplication by
         self.scale_coef.
-        On GPU, only kernel launches are performed, so that this method can be
-        captured in a CUDA graph.
+
+        On GPU, in addition to kernel launches, there are small temporary
+        allocations inside cupyx.scipy.ndimage.affine_transform, so this method
+        can be capture in a CUDA graph but it must run in its own stream.
         """
         wind_speed = self.local_inputs['wind_speed'].value
         wind_direction = self.local_inputs['wind_direction'].value
@@ -389,3 +391,9 @@ class AtmoEvolution(BaseProcessingObj):
         for layer_list in self.layer_lists:
             for layer in layer_list:
                 layer.generation_time = self.current_time
+
+    def build_stream(self, allow_parallel=True):
+        if allow_parallel is not True:
+            raise ValueError("allow_parallel must be True for AtmoEvolution because it needs its own stream due to cupyx's affine_transform()")
+        return super().build_stream(allow_parallel)
+
