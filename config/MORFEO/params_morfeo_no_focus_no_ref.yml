@@ -5,7 +5,7 @@ main:
   root_dir:          '/raid1/guido/PASSATA/MAORYC'         # Root directory for calibration manager  
   pixel_pupil:       480                    # Linear dimension of pupil phase array
   pixel_pitch:       0.0802                 # [m] Pitch of the pupil phase array2
-  total_time:        0.100                  # [s] Total simulation running time
+  total_time:        2.000                  # [s] Total simulation running time
   time_step:         0.002                  # [s] Simulation time step
   zenithAngleInDeg:  30.0                   # [deg] Airmass correction
   display_server:    false                   # Display server on auto-selected port
@@ -159,7 +159,6 @@ sh_lgs1: &LGS_SH
   fov_ovs_coeff:     1.242                   # a margin of 3.9", 20/16.1 = 1.242
   rotAnglePhInDeg:   6.2
   laser_launch_tel_ref: 'launcher1'
-  data_dir: '/tmp'
   inputs: &LGS_SH_INPUTS
     in_ef: 'prop.out_source_lgs1_ef'
     sodium_altitude: 'sodium_altitude.output'
