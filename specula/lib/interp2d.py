@@ -1,9 +1,33 @@
 import numpy as np
 import scipy.ndimage
-from specula import cpuArray, to_xp
+from specula import cp, cpuArray, to_xp
 
 
 class Interp2D():
+
+    if cp: # pragma: no cover
+        # Bilinear interpolation on the grid given by the 2x3 affine matrix m,
+        # with coordinates clamped to the input edges (as mode='nearest' in ndimage).
+        affine_kernel = cp.ElementwiseKernel(
+            'raw T src, int32 in_rows, int32 in_cols, int32 out_cols,'
+            ' T m00, T m01, T m02, T m10, T m11, T m12',
+            'T out',
+            '''
+            int idx = i;  // 32-bit division is much faster than the 64-bit one
+            int r = idx / out_cols;
+            int c = idx - r * out_cols;
+            T y = min(max(m00 * r + m01 * c + m02, (T)0), (T)(in_rows - 1));
+            T x = min(max(m10 * r + m11 * c + m12, (T)0), (T)(in_cols - 1));
+            int y0 = floor(y);
+            int x0 = floor(x);
+            int y1 = min(y0 + 1, in_rows - 1);
+            int x1 = min(x0 + 1, in_cols - 1);
+            T dy = y - y0;
+            T dx = x - x0;
+            out = (src[y0 * in_cols + x0] * (1 - dx) + src[y0 * in_cols + x1] * dx) * (1 - dy) +
+                  (src[y1 * in_cols + x0] * (1 - dx) + src[y1 * in_cols + x1] * dx) * dy;
+            ''',
+            'interp2d_affine')
 
     def __init__(self, input_shape, output_shape,
                  rotInDeg=0, rowShiftInPixels=0,
@@ -45,7 +69,9 @@ class Interp2D():
         with the same calls. Whenever the sampling grid is an affine function of the
         output pixel indices (always true unless `xx` and `yy` are given, and also
         true for regular grids passed as `xx` and `yy`), it is stored as a 2x3 matrix
-        and coordinates are computed on the fly. Otherwise, the coordinates are stored.
+        and coordinates are computed on the fly (on GPU, with a small elementwise kernel
+        instead of cupyx, which is slower for small arrays). Otherwise, the coordinates
+        are stored.
         '''
         self.xp = xp
         self.dtype = dtype
@@ -97,8 +123,9 @@ class Interp2D():
             matrix = np.empty((2, 3))
             matrix[:, :2] = lin @ base[:, :2]
             matrix[:, 2] = lin @ (base[:, 2] - center) + center + shift
-            # scipy computes coordinates in float64, cupyx in the input dtype
-            self.matrix = matrix if xp is np else to_xp(xp, matrix, dtype=dtype)
+            self.matrix = matrix
+            self._kernel_args = (input_shape[0], input_shape[1], output_shape[1],
+                                 *[dtype(v) for v in matrix.ravel()])
             self.coords = None
         else:
             yc = yy - center[0]
@@ -169,8 +196,12 @@ class Interp2D():
             out = self.xp.empty(shape=self.output_shape, dtype=self.dtype)
 
         if self.coords is None:
-            self.ndimage.affine_transform(value, self.matrix, output_shape=self.output_shape,
-                                          output=out, order=1, mode='nearest')
+            if self.xp is np:
+                self.ndimage.affine_transform(value, self.matrix, output_shape=self.output_shape,
+                                              output=out, order=1, mode='nearest')
+            else:
+                self.affine_kernel(self.xp.ascontiguousarray(value, dtype=out.dtype),
+                                   *self._kernel_args, out)
         else:
             self.ndimage.map_coordinates(value, self.coords, output=out, order=1, mode='nearest')
         return out
