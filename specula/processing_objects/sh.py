@@ -229,7 +229,7 @@ class SH(BaseProcessingObj):
         self._subap_cube_view = None
         self._psfimage_views = None
         self._kernelobj = None
-        self._kernel_inputs_key = None
+        self._last_sodium_values = None
         self._fov_ovs = 1
 
         self._ccd_side = self._subap_npx * self._lenslet.n_lenses
@@ -445,17 +445,23 @@ class SH(BaseProcessingObj):
             sodium_intensity = self.local_inputs['sodium_intensity']
             if sodium_altitude is None or sodium_intensity is None:
                 raise ValueError('sodium_altitude and sodium_intensity must be provided')
-            key = (sodium_altitude.generation_time, sodium_intensity.generation_time)
+            values = (sodium_altitude.value, sodium_intensity.value)
         else:
-            key = ()
+            values = ()
 
         # Avoid recomputing kernels if the sodium layer parameters
-        # have not changed since the last call
-        if key == self._kernel_inputs_key:
-            return
-        self._kernel_inputs_key = key
+        # have not changed since the last call. Their values are compared,
+        # because generators update the generation time at every step.
+        if self._last_sodium_values is not None:
+            # Accumulated on the device, so that there is a single sync
+            equal = True
+            for v, last in zip(values, self._last_sodium_values):
+                equal = equal & self.xp.array_equal(v, last)
+            if bool(equal):
+                return
+        self._last_sodium_values = tuple(self.xp.array(v) for v in values)
 
-        if key:
+        if values:
             sodium_altitude = sodium_altitude.value * self._laser_launch_tel.airmass
             sodium_intensity = sodium_intensity.value
         else:
