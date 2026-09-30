@@ -565,8 +565,8 @@ class SH(BaseProcessingObj):
 
         with tracer('toccd', self):
             # set_total=0: no normalization here, it is done in post_trigger()
-            self._out_i.i[:] = toccd(self._psfimage, (self._ccd_side, self._ccd_side),
-                                     set_total=0, xp=xp)
+            toccd(self._psfimage, (self._ccd_side, self._ccd_side), set_total=0, xp=xp,
+                  out=self._out_i.i)
 
 
     def post_trigger(self):

@@ -9,6 +9,7 @@
 
 ### Interface changes
 
+- Added `out` to `toccd()`: output array (or view) written directly, used by `SH`, `ModulatedPyramid`, `CurvatureSensor` and `CiaoCiaoSensor` instead of copying the result.
 - `ShSlopec` (#776): on GPU the trigger is captured in a CUDA graph, together with the slope corrections of `Slopec` (slope null, filtering, slopes map), about 9x faster per step. `Slopec`-derived classes now implement `compute_slopes()` instead of `trigger_code()` (overriding `trigger_code()` raises a `TypeError`): `Slopec.trigger_code()` calls it and then applies the slope corrections, which are no longer applied in `post_trigger()`. Classes derived from `ShSlopec` do not use the CUDA graph unless they call `build_stream()` in their `setup()`. The unused `ShSlopec.thr_mask_cube` output has been removed.
 - Added `window_xy` ([x, y] screen pixels) to all displays except `DoublePhaseDisplay`, to place the window on screen with GUI backends that allow it (Tk, Qt, GTK); ignored on the others.
 - Added `dark_frame_tag` to `DynamicDarkCalibrator`: dark frame file in `data_dir` loaded in `setup()` (an error is raised if it cannot be loaded).
