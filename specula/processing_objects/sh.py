@@ -449,8 +449,8 @@ class SH(BaseProcessingObj):
         else:
             key = ()
 
-        # The kernels only depend on the sodium profile: skip their preparation,
-        # which includes host-device syncs, if it did not change since the last call
+        # Avoid recomputing kernels if the sodium layer parameters
+        # have not changed since the last call
         if key == self._kernel_inputs_key:
             return
         self._kernel_inputs_key = key
