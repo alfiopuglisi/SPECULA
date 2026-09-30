@@ -229,6 +229,7 @@ class SH(BaseProcessingObj):
         self._subap_cube_view = None
         self._psfimage_views = None
         self._kernelobj = None
+        self._kernel_inputs_key = None
         self._fov_ovs = 1
 
         self._ccd_side = self._subap_npx * self._lenslet.n_lenses
@@ -444,6 +445,17 @@ class SH(BaseProcessingObj):
             sodium_intensity = self.local_inputs['sodium_intensity']
             if sodium_altitude is None or sodium_intensity is None:
                 raise ValueError('sodium_altitude and sodium_intensity must be provided')
+            key = (sodium_altitude.generation_time, sodium_intensity.generation_time)
+        else:
+            key = ()
+
+        # The kernels only depend on the sodium profile: skip their preparation,
+        # which includes host-device syncs, if it did not change since the last call
+        if key == self._kernel_inputs_key:
+            return
+        self._kernel_inputs_key = key
+
+        if key:
             sodium_altitude = sodium_altitude.value * self._laser_launch_tel.airmass
             sodium_intensity = sodium_intensity.value
         else:
