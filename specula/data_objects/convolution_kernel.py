@@ -8,6 +8,7 @@ from astropy.io import fits
 from specula import cpuArray, ASEC2RAD
 from specula.base_data_obj import BaseDataObj
 from specula.lib.rebin import rebin2d
+from specula.lib import shared_gpu
 
 
 def lgs_map_sh(nsh, diam, rl, zb, dz, profz, fwhmb, ps, ssp,
@@ -292,10 +293,12 @@ class ConvolutionKernel(BaseDataObj):
             raise ValueError("Kernel contains non-finite values!")
 
         # Reallocate only if the requested layout is different from the current one,
-        # since users may keep references to self.kernels (e.g. in CUDA graphs)
+        # since users may keep references to self.kernels (e.g. in CUDA graphs),
+        # or if the kernels are shared with other processes (see prepare_for_sh())
         shape = self._kernels_shape(return_fft)
         dtype = self.complex_dtype if return_fft else self.dtype
-        if self.kernels is None or self.kernels.shape != shape or self.kernels.dtype != dtype:
+        if self.kernels is None or self.kernels.shape != shape or self.kernels.dtype != dtype \
+                or shared_gpu.is_shared(self.kernels):
             self.kernels = self.xp.zeros(shape, dtype=dtype)
 
         # Process the kernels - apply FFT if needed
@@ -380,9 +383,23 @@ class ConvolutionKernel(BaseDataObj):
                         else '.', exist_ok=True)
 
             if os.path.exists(full_path):
-                self.logger.info(f"Loading kernel from {full_path}")
-                self.restore(full_path, kernel_obj=self, target_device_idx=self.target_device_idx,
-                             return_fft=True)
+                # Kernels already processed by the holder of shared GPU arrays, if enabled.
+                # The file name is a hash of the kernel parameters, so the header is not
+                # needed. This replaces self.kernels: users of the kernels in CUDA graphs
+                # must check if it has changed after calling this method.
+                shared = shared_gpu.get_shared_array(shared_gpu.KIND_KERNEL_FFT, full_path,
+                                                     self.target_device_idx, self.precision)
+                if shared is not None:
+                    if shared.shape != self._kernels_shape(True) or shared.dtype != self.complex_dtype:
+                        raise ValueError(f'Shared kernels from {full_path} have shape {shared.shape} '
+                                         f'and dtype {shared.dtype}, expected '
+                                         f'{self._kernels_shape(True)} {self.complex_dtype}')
+                    self.logger.info(f"Using shared kernel from {full_path}")
+                    self.kernels = shared
+                else:
+                    self.logger.info(f"Loading kernel from {full_path}")
+                    self.restore(full_path, kernel_obj=self, target_device_idx=self.target_device_idx,
+                                 return_fft=True)
             else:
                 self.logger.info('Calculating kernel...')
                 self.calculate_lgs_map()
@@ -434,7 +451,7 @@ class ConvolutionKernel(BaseDataObj):
         return kernel_obj
 
     @staticmethod
-    def from_header(hdr, target_device_idx=None):
+    def from_header(hdr, target_device_idx=None, precision=None):
         version = hdr['VERSION']
         if version != 1.1:
             raise ValueError(f'Unknown version {version}. Only version=1.1 is supported')
@@ -449,7 +466,8 @@ class ConvolutionKernel(BaseDataObj):
             launcher_size=hdr['SPOTSIZE'],
             oversampling=hdr['OVERSAMP'],
             positive_shift_tt=hdr['POSTT'],
-            target_device_idx=target_device_idx)
+            target_device_idx=target_device_idx,
+            precision=precision)
 
         kernel_obj.spot_size = hdr['SPOTSIZE']
         return kernel_obj

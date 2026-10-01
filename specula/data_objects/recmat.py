@@ -5,6 +5,7 @@ from astropy.io import fits
 from specula import cpuArray
 from specula.base_data_obj import BaseDataObj
 from specula.lib.fits_io import load_fits_array
+from specula.lib import shared_gpu
 
 
 class Recmat(BaseDataObj):
@@ -38,10 +39,12 @@ class Recmat(BaseDataObj):
     def set_value(self, v):
         '''
         Set new values for the recmat
-        Arrays are not reallocated
+        Arrays are not reallocated, unless they are shared with other
+        processes (see specula.lib.shared_gpu)
         '''
         assert v.shape == self.recmat.shape, \
             f"Error: input array shape {v.shape} does not match recmat shape {self.recmat.shape}"
+        self.recmat = shared_gpu.writable(self.recmat)
         self.recmat[:]= self.to_xp(v)
 
     def set_modes2recLayer(self, modes2recLayer):
@@ -97,7 +100,10 @@ class Recmat(BaseDataObj):
                 mode2reLayer = hdul[2].data.copy()
             else:
                 mode2reLayer = None
-        recmat = load_fits_array(filename, 1, target_device_idx)
+        recmat = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
+                                             None, exten=1)
+        if recmat is None:
+            recmat = load_fits_array(filename, 1, target_device_idx)
         return Recmat(recmat, mode2reLayer, norm_factor, target_device_idx=target_device_idx)
 
 

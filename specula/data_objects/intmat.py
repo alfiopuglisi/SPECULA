@@ -7,6 +7,7 @@ from specula.lib.modal_base_generator import compute_ifs_covmat
 from specula.lib.mmse_reconstructor import compute_mmse_reconstructor
 from specula.base_data_obj import BaseDataObj
 from specula.lib.fits_io import load_fits_array
+from specula.lib import shared_gpu
 from specula.data_objects.recmat import Recmat
 
 
@@ -20,7 +21,9 @@ class _ColsView:
     """
     def __init__(self, intmat_obj): self.intmat_obj = intmat_obj
     def __getitem__(self, key): return self.intmat_obj.intmat[:, key]
-    def __setitem__(self, key, value): self.intmat_obj.intmat[:, key] = self.intmat_obj.to_xp(value)
+    def __setitem__(self, key, value):
+        self.intmat_obj.make_writable()
+        self.intmat_obj.intmat[:, key] = self.intmat_obj.to_xp(value)
 
 class _RowsView:
     """
@@ -32,7 +35,9 @@ class _RowsView:
     """
     def __init__(self, intmat_obj): self.intmat_obj = intmat_obj
     def __getitem__(self, key): return self.intmat_obj.intmat[key, :]
-    def __setitem__(self, key, value): self.intmat_obj.intmat[key, :] = self.intmat_obj.to_xp(value)
+    def __setitem__(self, key, value):
+        self.intmat_obj.make_writable()
+        self.intmat_obj.intmat[key, :] = self.intmat_obj.to_xp(value)
 
 class Intmat(BaseDataObj):
     """
@@ -59,6 +64,12 @@ class Intmat(BaseDataObj):
         Members .modes and .slopes allow numpy-like access, for example:
 
         intmat_obj.modes[3:5] += 1
+
+        The intmat array can be shared with other processes
+        (see specula.lib.shared_gpu): it is copied before writing
+        into it with set_value() or the .modes and .slopes members,
+        but in-place operations like the one above modify the
+        shared copy too. Call make_writable() before them.
         """
         super().__init__(target_device_idx=target_device_idx, precision=precision)
         if intmat is not None:
@@ -82,13 +93,20 @@ class Intmat(BaseDataObj):
         '''
         return self.intmat
 
+    def make_writable(self):
+        '''
+        Make a private copy of the intmat array if it is shared with other processes
+        '''
+        self.intmat = shared_gpu.writable(self.intmat)
+
     def set_value(self, v):
         '''
         Set new values for the intmat
-        Arrays are not reallocated
+        Arrays are not reallocated, unless they are shared with other processes
         '''
         assert v.shape == self.intmat.shape, \
             f"Error: input array shape {v.shape} does not match intmat shape {self.intmat.shape}"
+        self.make_writable()
         self.intmat[:]= self.to_xp(v)
 
     def set_nmodes(self, new_nmodes):
@@ -170,7 +188,10 @@ class Intmat(BaseDataObj):
                 slope_rms = hdul[3].data.copy()
             else:
                 slope_mm = slope_rms = None
-        intmat = load_fits_array(filename, 1, target_device_idx)
+        intmat = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
+                                             None, exten=1)
+        if intmat is None:
+            intmat = load_fits_array(filename, 1, target_device_idx)
         return Intmat(intmat, slope_mm, slope_rms, pupdata_tag, subapdata_tag, norm_factor, target_device_idx=target_device_idx)
 
     def generate_rec(self, nmodes=None, cut_modes=0, w_vec=None, interactive=False):
