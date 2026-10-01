@@ -524,6 +524,45 @@ class TestSH(unittest.TestCase):
 
         self.assertEqual(prepare.call_count, 1)
 
+    @cpu_and_gpu
+    def test_subap_rows_slice_with_shared_buffers(self, target_device_idx, xp):
+        '''
+        An SH processing only some rows of subapertures shares its buffers with an
+        SH of the same geometry processing all of them: its output must still be
+        zero outside its rows, and the same as when it runs alone.
+        '''
+        n, npx = 120, 6
+        yy, xx = np.mgrid[:n, :n] - (n - 1) / 2
+        pupil = (np.hypot(xx, yy) < n / 2).astype(np.float32)
+
+        def make(rows_slice):
+            return SH(wavelengthInNm=500, subap_wanted_fov=3, sensor_pxscale=0.5,
+                      subap_on_diameter=20, subap_npx=npx, subap_rows_slice=rows_slice,
+                      target_device_idx=target_device_idx)
+
+        def run(shs):
+            ef = ElectricField(n, n, 0.05, S0=100, target_device_idx=target_device_idx)
+            ef.A[:] = ef.to_xp(pupil)
+            ef.phaseInNm[:] = ef.to_xp(np.random.default_rng(1).normal(size=(n, n)) * 80)
+            ef.generation_time = 1
+            for sh in shs:
+                sh.inputs['in_ef'].set(ef)
+                sh.setup()
+            for sh in shs:
+                sh.check_ready(1)
+                sh.trigger()
+                sh.post_trigger()
+            return cpuArray(shs[-1].outputs['out_i'].i).copy()
+
+        alone = run([make(slice(5, 12))])
+        shared_sh = [make(None), make(slice(5, 12))]
+        after_full = run(shared_sh)
+
+        assert shared_sh[0]._psfimage is shared_sh[1]._psfimage
+        rows = np.nonzero(after_full.any(axis=1))[0]
+        assert rows.min() >= 5 * npx and rows.max() < 12 * npx
+        np.testing.assert_array_equal(after_full, alone)
+
     def test_choose_fov_resolution(self):
         '''
         The resolution is turbulence_pxscale / k. Here all candidates k = 3...12
