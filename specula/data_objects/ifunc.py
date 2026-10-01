@@ -7,6 +7,7 @@ from specula.lib.compute_zonal_ifunc import compute_zonal_ifunc
 from specula.lib.compute_zern_ifunc import compute_zern_ifunc
 from specula.lib.fast_pinv import fast_pinv
 from specula.lib.fits_io import load_fits_array
+from specula.lib import shared_gpu
 
 
 def compute_kl_ifunc(*args, **kwargs):
@@ -132,10 +133,12 @@ class IFunc(BaseDataObj):
 
     def set_value(self, v):
         '''Set a new influence function.
-        Arrays are not reallocated.'''
+        Arrays are not reallocated, unless they are shared with other
+        processes (see specula.lib.shared_gpu)'''
         assert v.shape == self._influence_function.shape, \
             f"Error: input array shape {v.shape} does not match influence function shape {self._influence_function.shape}"
 
+        self._influence_function = shared_gpu.writable(self._influence_function)
         self._influence_function[:] = self.to_xp(v)
 
     def cut(self, start_mode=None, nmodes=None, idx_modes=None):
@@ -196,5 +199,9 @@ class IFunc(BaseDataObj):
     def restore(filename, target_device_idx=None, exten=1):
         with fits.open(filename) as hdul:
             mask = hdul[exten+1].data
-        ifunc = load_fits_array(filename, exten, target_device_idx).T
+        ifunc = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
+                                                 None, exten=exten)
+        if ifunc is None:
+            ifunc = load_fits_array(filename, exten, target_device_idx)
+        ifunc = ifunc.T
         return IFunc(ifunc, mask=mask, target_device_idx=target_device_idx)

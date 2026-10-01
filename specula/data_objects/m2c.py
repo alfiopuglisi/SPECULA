@@ -5,6 +5,7 @@ from specula import cpuArray
 from specula.data_objects.ifunc_inv import cut_modes
 from specula.base_data_obj import BaseDataObj
 from specula.lib.fits_io import load_fits_array
+from specula.lib import shared_gpu
 
 
 class M2C(BaseDataObj):
@@ -37,10 +38,12 @@ class M2C(BaseDataObj):
     def set_value(self, v):
         '''
         Set new values for the m2c matrix field
-        Arrays are not reallocated
+        Arrays are not reallocated, unless they are shared with other
+        processes (see specula.lib.shared_gpu)
         '''
         assert v.shape == self.m2c.shape, \
             f"Error: input array shape {v.shape} does not match m2c shape {self.m2c.shape}"
+        self.m2c = shared_gpu.writable(self.m2c)
         self.m2c[:]= self.to_xp(v)
 
     @property
@@ -80,5 +83,8 @@ class M2C(BaseDataObj):
             version = hdr.get('VERSION')
             if version != 1:
                 raise ValueError(f"Unknown version {version} in file {filename}")
-        m2c = load_fits_array(filename, 1, target_device_idx)
+        m2c = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
+                                          None, exten=1)
+        if m2c is None:
+            m2c = load_fits_array(filename, 1, target_device_idx)
         return M2C(m2c=m2c, target_device_idx=target_device_idx)

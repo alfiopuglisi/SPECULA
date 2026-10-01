@@ -19,6 +19,9 @@ from specula.lib import shared_gpu
 from specula.data_objects.intmat import Intmat
 from specula.data_objects.recmat import Recmat
 from specula.data_objects.convolution_kernel import ConvolutionKernel
+from specula.data_objects.ifunc import IFunc
+from specula.data_objects.ifunc_inv import IFuncInv
+from specula.data_objects.m2c import M2C
 
 
 @unittest.skipIf(specula.cp is None, 'CUDA IPC needs a GPU')
@@ -53,6 +56,25 @@ class TestSharedGpu(unittest.TestCase):
     def tearDown(self):
         gc.collect()
         self.env.stop()
+        # Do not leave a connection to this holder to the other tests
+        if shared_gpu._conn is not None:
+            shared_gpu._conn.close()
+        shared_gpu._conn = None
+        shared_gpu._conn_failed = False
+
+    def test_holder_terminated(self):
+        # Without a reachable holder, arrays are loaded locally
+        shared_gpu._conn = None
+        with patch.dict(os.environ, {shared_gpu.ENV_VAR: os.path.join(self.tmpdir, 'none.sock')}):
+            im_file = os.path.join(self.tmpdir, 'im_local.fits')
+            Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
+            self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
+        # A connection that breaks is the same
+        shared_gpu._conn_failed = False
+        broken = shared_gpu.Client(self.socket, family='AF_UNIX')
+        broken.close()
+        shared_gpu._conn = broken
+        self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
 
     def _entries(self):
         return {row[1]: row for row in shared_gpu._client_command(self.socket, ('list',))}
@@ -106,6 +128,42 @@ class TestSharedGpu(unittest.TestCase):
         entries = self._entries()
         self.assertEqual(entries[os.path.abspath(im_file)][7], 0)
         self.assertTrue(entries[os.path.abspath(im_file)][8])
+
+    def test_ifunc_m2c(self):
+        rng = np.random.default_rng(2)
+        mask = np.zeros((8, 8), dtype=np.float32)
+        mask[1:7, 1:7] = 1
+        npoints = int(mask.sum())
+        if_data = rng.standard_normal((5, npoints)).astype(np.float32)
+        inv_data = rng.standard_normal((npoints, 5)).astype(np.float32)
+        m2c_data = rng.standard_normal((20, 5)).astype(np.float32)
+        if_file = os.path.join(self.tmpdir, 'ifunc.fits')
+        inv_file = os.path.join(self.tmpdir, 'ifunc_inv.fits')
+        m2c_file = os.path.join(self.tmpdir, 'm2c.fits')
+        IFunc(if_data, mask=mask, target_device_idx=0).save(if_file, overwrite=True)
+        IFuncInv(inv_data, mask=mask, target_device_idx=0).save(inv_file, overwrite=True)
+        M2C(m2c_data, target_device_idx=0).save(m2c_file, overwrite=True)
+
+        ifunc = IFunc.restore(if_file, target_device_idx=0)
+        ifunc_inv = IFuncInv.restore(inv_file, target_device_idx=0)
+        m2c = M2C.restore(m2c_file, target_device_idx=0)
+        for obj, arr, ref in [(ifunc, ifunc.influence_function, if_data),
+                              (ifunc_inv, ifunc_inv.ifunc_inv, inv_data),
+                              (m2c, m2c.m2c, m2c_data)]:
+            self.assertTrue(shared_gpu.is_shared(arr), type(obj).__name__)
+            np.testing.assert_array_equal(cpuArray(arr), ref.astype(obj.dtype))
+
+        # Mode cuts are views and stay shared, writes make a private copy
+        m2c.set_nmodes(3)
+        self.assertTrue(shared_gpu.is_shared(m2c.m2c))
+        for obj in [ifunc, ifunc_inv, m2c]:
+            obj.set_value(obj.get_value() * 0)
+            self.assertFalse(shared_gpu.is_shared(obj.get_value()), type(obj).__name__)
+        np.testing.assert_array_equal(
+            cpuArray(IFunc.restore(if_file, target_device_idx=0).influence_function),
+            if_data.astype(ifunc.dtype))
+        np.testing.assert_array_equal(
+            cpuArray(M2C.restore(m2c_file, target_device_idx=0).m2c), m2c_data.astype(m2c.dtype))
 
     def test_kernel(self):
         def make_kernel():

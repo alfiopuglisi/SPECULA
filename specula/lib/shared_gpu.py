@@ -148,12 +148,22 @@ def _connect():
 
 
 def _request(msg):
+    global _conn, _conn_failed
     with _lock:
         conn = _connect()
         if conn is None:
             return None
-        conn.send(msg)
-        status, payload = conn.recv()
+        try:
+            conn.send(msg)
+            status, payload = conn.recv()
+        except (OSError, EOFError) as e:
+            # The holder has terminated: load locally from now on
+            _conn = None
+            _conn_failed = True
+            specula.get_specula_logger(__name__).warning(
+                f'Lost connection to the shared GPU array holder ({e!r}): '
+                'arrays will be loaded locally')
+            return None
     if status != 'ok':
         raise RuntimeError(f'Shared GPU array holder: {payload}')
     return payload
@@ -369,6 +379,12 @@ class Holder:
                 self.entries[key] = entry
                 entry.refs += 1
                 conn_refs[key] = conn_refs.get(key, 0) + 1
+                # Free older versions of a rewritten file, if nobody uses them
+                for old_key, old in list(self.entries.items()):
+                    if old_key != key and old.refs <= 0 and old_key[1][0] == filename \
+                            and (old_key[0], old_key[2:]) == (kind, key[2:]):
+                        self.logger.info(f'Freeing old version of {filename}')
+                        del self.entries[old_key]
         arr = entry.arr
         return entry.handle, arr.shape, arr.dtype.str, arr.nbytes
 

@@ -1,6 +1,7 @@
 from specula import cpuArray
 from specula.base_data_obj import BaseDataObj
 from specula.lib.fits_io import load_fits_array
+from specula.lib import shared_gpu
 from astropy.io import fits
 
 
@@ -100,7 +101,11 @@ class IFuncInv(BaseDataObj):
     def restore(filename, target_device_idx=None, exten=1):
         with fits.open(filename) as hdul:
             mask = hdul[exten+1].data
-        ifunc_inv = load_fits_array(filename, exten, target_device_idx).T
+        ifunc_inv = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
+                                                 None, exten=exten)
+        if ifunc_inv is None:
+            ifunc_inv = load_fits_array(filename, exten, target_device_idx)
+        ifunc_inv = ifunc_inv.T
         return IFuncInv(ifunc_inv, mask, target_device_idx=target_device_idx)
 
     def get_value(self):
@@ -108,11 +113,13 @@ class IFuncInv(BaseDataObj):
 
     def set_value(self, v):
         '''Set a new influence function.
-        Arrays are not reallocated.'''
+        Arrays are not reallocated, unless they are shared with other
+        processes (see specula.lib.shared_gpu)'''
         assert v.shape == self.ifunc_inv.shape, \
             f"Error: input array shape {v.shape} does not match " \
             f"inverse influence function shape {self.ifunc_inv.shape}"
 
+        self.ifunc_inv = shared_gpu.writable(self.ifunc_inv)
         self.ifunc_inv[:] = self.to_xp(v)
 
     def cut(self, start_mode=None, nmodes=None, idx_modes=None):
