@@ -4,16 +4,16 @@ Sharing of read-only GPU arrays between simulation processes (CUDA IPC).
 Several simulations running on the same GPU usually load the same large
 calibration arrays from FITS files (interaction and reconstruction matrices,
 influence functions, modes-to-commands matrices). With this module, a single
-*holder* process loads each array once and exports it with a CUDA IPC handle; the simulations map the same device
-memory instead of allocating and loading their own copy.
+*holder* process loads each array once and exports it with a CUDA IPC
+handle; the simulations map the same device memory instead of allocating
+and loading their own copy.
 
 Usage::
 
-    # start the holder (once per machine, it serves all GPUs)
+    # start the holder (once per machine and user, it serves all GPUs)
     python -m specula.lib.shared_gpu serve &
 
-    # enable sharing in the simulations
-    export SPECULA_SHARED_GPU=1        # default socket, or a socket path
+    # the simulations started while the holder runs share their arrays
     specula params.yml ...
 
     python -m specula.lib.shared_gpu list    # show the loaded arrays
@@ -21,8 +21,8 @@ Usage::
 
 Sharing is done by specula.lib.fits_io.load_fits_array(), used by the
 restore() methods of the data objects, and is transparent for its users.
-When SPECULA_SHARED_GPU is not set, or the holder is not running, or the
-array is on the CPU, everything is loaded locally as usual.
+When the holder is not running, or the array is on the CPU, everything
+is loaded locally as usual.
 
 Notes
 -----
@@ -54,22 +54,9 @@ import numpy as np
 
 import specula
 
-ENV_VAR = 'SPECULA_SHARED_GPU'
-
-
-def default_socket_path():
-    base = os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir()
-    return os.path.join(base, f'specula_shared_gpu_{os.getuid()}.sock')
-
-
-def socket_path():
-    '''Socket of the holder, or None if sharing is disabled'''
-    value = os.environ.get(ENV_VAR, '').strip()
-    if value.lower() in ('', '0', 'false', 'no', 'off'):
-        return None
-    if value.lower() in ('1', 'true', 'yes', 'on', 'default'):
-        return default_socket_path()
-    return value
+# Socket of the holder, one per user
+SOCKET_PATH = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(),
+                           f'specula_shared_gpu_{os.getuid()}.sock')
 
 
 def _file_id(filename):
@@ -126,14 +113,14 @@ class _IpcMapping:
 def _connect():
     global _conn, _conn_failed
     if _conn is None and not _conn_failed:
-        path = socket_path()
         try:
-            _conn = Client(path, family='AF_UNIX')
+            _conn = Client(SOCKET_PATH, family='AF_UNIX')
         except OSError as e:
+            # Stale socket of a holder that has terminated
             _conn_failed = True
             specula.get_specula_logger(__name__).warning(
-                f'{ENV_VAR} is set, but the shared GPU array holder is not reachable '
-                f'at {path} ({e}): arrays will be loaded locally')
+                f'The shared GPU array holder is not reachable at {SOCKET_PATH} ({e}): '
+                'arrays will be loaded locally')
     return _conn
 
 
@@ -179,11 +166,10 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
 
     Returns
     -------
-    cupy.ndarray, or None if sharing is disabled, the holder is not
-    reachable or the array is on the CPU. In this case the caller
-    must load the array itself.
+    cupy.ndarray, or None if the holder is not running or the array
+    is on the CPU. In this case the caller must load the array itself.
     '''
-    if socket_path() is None:
+    if _conn is None and not os.path.exists(SOCKET_PATH):
         return None
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
@@ -409,14 +395,11 @@ def main(argv=None):
                                      description='Holder of GPU arrays shared between '
                                                  'SPECULA simulations')
     parser.add_argument('command', choices=['serve', 'list', 'stop'])
-    parser.add_argument('--socket', default=None,
-                        help=f'socket path (default: ${ENV_VAR} if it is a path, '
-                             f'otherwise {default_socket_path()})')
     parser.add_argument('--force', action='store_true',
                         help='stop even if simulations are using the arrays')
     args = parser.parse_args(argv)
 
-    path = args.socket or socket_path() or default_socket_path()
+    path = SOCKET_PATH
 
     if args.command == 'serve':
         # The holder serves all GPUs, with explicit device and precision in each request

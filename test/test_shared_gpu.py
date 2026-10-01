@@ -30,8 +30,11 @@ class TestSharedGpu(unittest.TestCase):
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
         cls.socket = os.path.join(cls.tmpdir, 'holder.sock')
-        cls.holder = subprocess.Popen([sys.executable, '-m', 'specula.lib.shared_gpu',
-                                       'serve', '--socket', cls.socket])
+        # A holder of its own, so that the test does not use a running one
+        cls.holder = subprocess.Popen([sys.executable, '-c',
+                                       'from specula.lib import shared_gpu; '
+                                       f'shared_gpu.SOCKET_PATH = {cls.socket!r}; '
+                                       'shared_gpu.main(["serve"])'])
         for _ in range(300):
             if os.path.exists(cls.socket):
                 break
@@ -47,14 +50,14 @@ class TestSharedGpu(unittest.TestCase):
         shutil.rmtree(cls.tmpdir)
 
     def setUp(self):
-        self.env = patch.dict(os.environ, {shared_gpu.ENV_VAR: self.socket})
-        self.env.start()
+        self.socket_patch = patch.object(shared_gpu, 'SOCKET_PATH', self.socket)
+        self.socket_patch.start()
         shared_gpu._conn = None
         shared_gpu._conn_failed = False
 
     def tearDown(self):
         gc.collect()
-        self.env.stop()
+        self.socket_patch.stop()
         # Do not leave a connection to this holder to the other tests
         if shared_gpu._conn is not None:
             shared_gpu._conn.close()
@@ -64,7 +67,7 @@ class TestSharedGpu(unittest.TestCase):
     def test_holder_terminated(self):
         # Without a reachable holder, arrays are loaded locally
         shared_gpu._conn = None
-        with patch.dict(os.environ, {shared_gpu.ENV_VAR: os.path.join(self.tmpdir, 'none.sock')}):
+        with patch.object(shared_gpu, 'SOCKET_PATH', os.path.join(self.tmpdir, 'none.sock')):
             im_file = os.path.join(self.tmpdir, 'im_local.fits')
             Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
             self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
@@ -102,11 +105,12 @@ class TestSharedGpu(unittest.TestCase):
         code = ('import os, specula; specula.init(0, precision=%d); '
                 'from specula.data_objects.intmat import Intmat; '
                 'from specula.lib import shared_gpu; '
+                'shared_gpu.SOCKET_PATH = %r; '
                 'im = Intmat.restore(%r, target_device_idx=0); '
                 'assert shared_gpu.is_shared(im.intmat); '
-                'print(float(im.intmat.sum()))' % (specula.global_precision, im_file))
+                'print(float(im.intmat.sum()))' % (specula.global_precision, self.socket, im_file))
         out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
-                             env=os.environ.copy(), check=True)
+                             check=True)
         self.assertAlmostEqual(float(out.stdout.split()[-1]), float(im1.intmat.sum()), places=3)
 
         # Views stay shared, writes make a private copy
