@@ -95,6 +95,45 @@ trace file (see below), where their durations are included in those of the enclo
 Sections inside a ``trigger_code()`` captured in a CUDA graph only run during setup, when
 the graph is built, so they appear only there.
 
+GPU memory usage
+~~~~~~~~~~~~~~~~
+
+Nsight Systems can also track GPU memory allocations with ``--cuda-memory-usage=true``:
+
+.. code-block:: bash
+
+    nsys profile -t cuda,nvtx --cuda-memory-usage=true -o my_run specula params.yml
+
+The timeline then shows a "CUDA memory usage" row for each GPU, with the allocated memory over
+time. This option can slow down the simulation significantly, so it is better not to combine
+it with timing measurements.
+
+To get the peak value per GPU without opening the GUI, export the report to SQLite and sum the
+allocations and deallocations:
+
+.. code-block:: bash
+
+    nsys export -t sqlite -o my_run.sqlite my_run.nsys-rep
+    sqlite3 my_run.sqlite "SELECT deviceId, MAX(used) / 1e9 AS peak_GB FROM (
+        SELECT deviceId, SUM(CASE memoryOperationType WHEN 0 THEN bytes ELSE -bytes END)
+        OVER (PARTITION BY deviceId ORDER BY start) AS used
+        FROM CUDA_GPU_MEMORY_USAGE_EVENTS WHERE memKind = 2) GROUP BY deviceId;"
+
+Nsight Systems only sees calls to ``cudaMalloc()`` and ``cudaFree()``, so the result must be
+interpreted with some care:
+
+- CuPy keeps freed memory in its memory pool and reuses it for later arrays, without calling
+  ``cudaFree()``. The value shown is the peak size of the pool, which can be larger than the
+  memory actually used by arrays at any time, because of fragmentation. On a GPU with less
+  memory, CuPy releases unused cached blocks and retries when an allocation fails, so a
+  simulation can still fit even if the peak is larger than the GPU memory.
+- Objects that use a CUDA graph allocate their temporary arrays from a separate memory pool,
+  which is kept for the whole simulation (see
+  :meth:`~specula.base_processing_obj.BaseProcessingObj.capture_stream`). These pools are
+  included in the peak, but their memory cannot be released to other arrays.
+- The CUDA context and the internal workspaces of libraries like cuFFT and cuBLAS are not
+  included. ``nvidia-smi`` shows the total memory used by the process, including them.
+
 Trace file
 ----------
 
