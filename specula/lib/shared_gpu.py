@@ -48,7 +48,6 @@ import argparse
 import tempfile
 import threading
 import weakref
-from contextlib import contextmanager
 from multiprocessing.connection import Listener, Client
 
 import numpy as np
@@ -245,59 +244,23 @@ class _Entry:
         self.refs = 0
 
 
-@contextmanager
-def _dedicated_allocation(nbytes):
+def _load_fits(filename, exten, device_idx, precision):
     '''
-    Inside this context, the first allocation of *nbytes* bytes on the
-    current device is a dedicated cudaMalloc() instead of a sub-allocation
-    of the CuPy memory pool, so that it can be exported with a IPC handle
-    of its own. All the other allocations use the memory pool.
+    Load the array with dedicated cudaMalloc() allocations instead of
+    sub-allocations of the CuPy memory pool, so that it owns a whole
+    allocation that can be exported with a IPC handle of its own.
     '''
+    from specula.lib.fits_io import load_fits_array
     cp = specula.cp
-    pool = cp.get_default_memory_pool()
-    done = []
 
     def alloc(size):
-        if size == nbytes and not done:
-            done.append(True)
-            return cp.cuda.MemoryPointer(cp.cuda.Memory(size), 0)
-        return pool.malloc(size)
+        return cp.cuda.MemoryPointer(cp.cuda.Memory(size), 0)
 
     with cp.cuda.using_allocator(alloc):
-        yield
-
-
-def _exportable(arr, nbytes):
-    '''Make sure that *arr* owns a whole dedicated cudaMalloc() allocation'''
-    cp = specula.cp
-    mem = arr.data.mem
-    if type(mem) is cp.cuda.Memory and arr.data.ptr == mem.ptr and \
-            arr.flags.c_contiguous and arr.nbytes == nbytes:
-        return arr
-    # Fallback: copy into a dedicated allocation
-    out = cp.ndarray(arr.shape, arr.dtype, cp.cuda.MemoryPointer(cp.cuda.Memory(arr.nbytes), 0))
-    out[...] = arr
-    return out
-
-
-def _load_fits(filename, exten, device_idx, precision):
-    from astropy.io import fits
-    from specula.lib.fits_io import load_fits_array, _target_dtype, _BITPIX2DTYPE
-
-    with fits.open(filename) as hdul:
-        hdr = hdul[exten].header
-        shape = hdul[exten].shape
-        bitpix = hdr.get('BITPIX')
-    # Expected dtype of the result. If it is different (for example for
-    # scaled data), _exportable() makes a copy.
-    if bitpix in _BITPIX2DTYPE and hdr.get('BSCALE', 1) == 1 and hdr.get('BZERO', 0) == 0:
-        dtype = _target_dtype(np.dtype(_BITPIX2DTYPE[bitpix]), precision)
-    else:
-        dtype = np.dtype(specula.cpu_float_dtype_list[precision])
-    nbytes = int(np.prod(shape)) * dtype.itemsize
-    with _dedicated_allocation(nbytes):
         arr = load_fits_array(filename, exten, device_idx, precision, shared=False)
-    return _exportable(arr, arr.nbytes)
+        if arr.data.ptr != arr.data.mem.ptr or not arr.flags.c_contiguous:
+            arr = arr.copy()
+    return arr
 
 
 class Holder:
@@ -329,8 +292,6 @@ class Holder:
                 with cp.cuda.Device(device_idx):
                     arr = _load_fits(filename, exten, device_idx, precision)
                     cp.cuda.runtime.deviceSynchronize()
-                    # Release the temporaries of the loading
-                    cp.get_default_memory_pool().free_all_blocks()
                     entry = _Entry(arr)
                 self.logger.info(f'Loaded {filename}: {arr.shape} {arr.dtype}, '
                                  f'{arr.nbytes / 2**20:.1f} MiB')
