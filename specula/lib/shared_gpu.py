@@ -2,9 +2,9 @@
 Sharing of read-only GPU arrays between simulation processes (CUDA IPC).
 
 Several simulations running on the same GPU usually load the same large
-arrays (interaction and reconstruction matrices, LGS convolution kernels).
-With this module, a single *holder* process loads each array once and
-exports it with a CUDA IPC handle; the simulations map the same device
+calibration arrays from FITS files (interaction and reconstruction matrices,
+influence functions, modes-to-commands matrices). With this module, a single
+*holder* process loads each array once and exports it with a CUDA IPC handle; the simulations map the same device
 memory instead of allocating and loading their own copy.
 
 Usage::
@@ -19,8 +19,10 @@ Usage::
     python -m specula.lib.shared_gpu list    # show the loaded arrays
     python -m specula.lib.shared_gpu stop    # stop the holder
 
+Sharing is done by specula.lib.fits_io.load_fits_array(), used by the
+restore() methods of the data objects, and is transparent for its users.
 When SPECULA_SHARED_GPU is not set, or the holder is not running, or the
-object is on the CPU, everything is loaded locally as usual.
+array is on the CPU, everything is loaded locally as usual.
 
 Notes
 -----
@@ -29,13 +31,12 @@ Notes
   that use shared arrays make a private copy before writing into them
   (copy-on-write), but views of them must not be modified in place
   (for example ``intmat.modes[3:5] += 1``).
-- The holder must stay alive while simulations use its arrays.
-  Calibration matrices (kind 'fits') are kept until the holder is
-  stopped, so that later simulations find them already loaded. Kernels
-  are freed when no simulation uses them anymore, since time-varying
-  sodium profiles generate many of them.
-- Arrays are identified by file path, modification time, size and
-  precision: a file that is rewritten is loaded again.
+- The holder must stay alive while simulations use its arrays. Arrays
+  are kept until the holder is stopped, so that later simulations find
+  them already loaded.
+- Arrays are identified by file path, modification time, size, FITS
+  extension and precision: a file that is rewritten is loaded again,
+  and the older version is freed when no simulation uses it.
 - GPUs are identified by PCI bus id, so that the holder and the
   simulations can have different CUDA_VISIBLE_DEVICES.
 '''
@@ -55,9 +56,6 @@ import numpy as np
 import specula
 
 ENV_VAR = 'SPECULA_SHARED_GPU'
-
-KIND_FITS = 'fits'
-KIND_KERNEL_FFT = 'kernel_fft'
 
 
 def default_socket_path():
@@ -110,27 +108,20 @@ class _IpcMapping:
 
     def __del__(self):
         try:
-            if specula.cp.cuda.get_current_stream().is_capturing():
-                # The garbage collector can run during a CUDA graph capture,
-                # where synchronizing is not allowed: close it later
-                _pending_close.append((self.key, self.ptr, self.device_id))
-            else:
-                _close(self.key, self.ptr, self.device_id)
+            cp = specula.cp
+            # The garbage collector can run during a CUDA graph capture, where
+            # synchronizing is not allowed: the mapping is then left open
+            # until the process terminates
+            if cp.cuda.get_current_stream().is_capturing():
+                return
+            with cp.cuda.Device(self.device_id):
+                # Work queued on the memory must be completed before unmapping it
+                cp.cuda.runtime.deviceSynchronize()
+                cp.cuda.runtime.ipcCloseMemHandle(self.ptr)
+            _request(('release', self.key))
         except Exception:
             # Interpreter shutdown: the driver and the holder clean up anyway
             pass
-
-
-_pending_close = []
-
-
-def _close(key, ptr, device_id):
-    cp = specula.cp
-    with cp.cuda.Device(device_id):
-        # Work queued on the memory must be completed before unmapping it
-        cp.cuda.runtime.deviceSynchronize()
-        cp.cuda.runtime.ipcCloseMemHandle(ptr)
-    _request(('release', key))
 
 
 def _connect():
@@ -169,25 +160,23 @@ def _request(msg):
     return payload
 
 
-def get_shared_array(kind, filename, target_device_idx, precision, **params):
+def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
     '''
-    Get a shared, read-only array from the holder.
+    Get a shared, read-only copy of an image extension of a FITS file,
+    as returned by specula.lib.fits_io.load_fits_array() with the same
+    arguments. Called by load_fits_array() itself, so that sharing is
+    transparent for its users.
 
     Parameters
     ----------
-    kind: str
-        KIND_FITS: image extension *exten* of a FITS file, as returned by
-        specula.lib.fits_io.load_fits_array().
-        KIND_KERNEL_FFT: processed kernels (``ConvolutionKernel.kernels``
-        with return_fft=True) of a ConvolutionKernel FITS file.
     filename: str
         FITS file name
+    exten: int
+        FITS extension
     target_device_idx: int
         device of the array (None for the default device)
     precision: int
         SPECULA precision (None for the global precision)
-    params:
-        additional parameters of *kind* (exten for KIND_FITS)
 
     Returns
     -------
@@ -206,12 +195,9 @@ def get_shared_array(kind, filename, target_device_idx, precision, **params):
 
     cp = specula.cp
     pci_bus_id = cp.cuda.Device(target_device_idx).pci_bus_id
-    params = tuple(sorted(params.items()))
-    key = (kind, _file_id(filename), precision, pci_bus_id, params)
+    key = (_file_id(filename), exten, precision, pci_bus_id)
 
     with _lock:
-        while _pending_close:
-            _close(*_pending_close.pop())
         mapping = _mappings.get(key)
         if mapping is None:
             # One holder reference per process, released when the mapping is closed
@@ -252,11 +238,10 @@ def writable(arr):
 # Holder side
 
 class _Entry:
-    def __init__(self, arr, keep):
+    def __init__(self, arr):
         cp = specula.cp
         self.arr = arr
         self.handle = cp.cuda.runtime.ipcGetMemHandle(arr.data.ptr)
-        self.keep = keep
         self.refs = 0
 
 
@@ -295,7 +280,7 @@ def _exportable(arr, nbytes):
     return out
 
 
-def _load_fits(filename, device_idx, precision, exten=1):
+def _load_fits(filename, exten, device_idx, precision):
     from astropy.io import fits
     from specula.lib.fits_io import load_fits_array, _target_dtype, _BITPIX2DTYPE
 
@@ -311,26 +296,8 @@ def _load_fits(filename, device_idx, precision, exten=1):
         dtype = np.dtype(specula.cpu_float_dtype_list[precision])
     nbytes = int(np.prod(shape)) * dtype.itemsize
     with _dedicated_allocation(nbytes):
-        arr = load_fits_array(filename, exten, device_idx, precision)
+        arr = load_fits_array(filename, exten, device_idx, precision, shared=False)
     return _exportable(arr, arr.nbytes)
-
-
-def _load_kernel_fft(filename, device_idx, precision):
-    from astropy.io import fits
-    from specula.lib.fits_io import load_fits_array
-    from specula.data_objects.convolution_kernel import ConvolutionKernel
-
-    hdr = fits.getheader(filename, ext=0)
-    shape = (hdr['DIMX'] * hdr['DIMY'], hdr['DIM'], hdr['DIM'] // 2 + 1)
-    complex_dtype = np.dtype(specula.cpu_complex_dtype_list[precision])
-    nbytes = int(np.prod(shape)) * complex_dtype.itemsize
-    # from_header() allocates the kernels, that process_kernels() fills in place
-    with _dedicated_allocation(nbytes):
-        kernel_obj = ConvolutionKernel.from_header(hdr, target_device_idx=device_idx,
-                                                   precision=precision)
-    kernel_obj.real_kernels = load_fits_array(filename, 1, device_idx, precision)
-    kernel_obj.process_kernels(return_fft=True)
-    return _exportable(kernel_obj.kernels, nbytes)
 
 
 class Holder:
@@ -346,8 +313,7 @@ class Holder:
         self.stopping = False
 
     def _get(self, key, conn_refs):
-        kind, (filename, mtime_ns, size), precision, pci_bus_id, params = key
-        params = dict(params)
+        (filename, mtime_ns, size), exten, precision, pci_bus_id = key
         with self.lock:
             key_lock = self.key_locks.setdefault(key, threading.Lock())
         # One load per key, other keys can be loaded concurrently
@@ -359,20 +325,13 @@ class Holder:
                     raise ValueError(f'{filename} changed while loading it')
                 cp = specula.cp
                 device_idx = cp.cuda.runtime.deviceGetByPCIBusId(pci_bus_id)
-                self.logger.info(f'Loading {kind} {filename} on GPU {pci_bus_id}')
+                self.logger.info(f'Loading {filename} extension {exten} on GPU {pci_bus_id}')
                 with cp.cuda.Device(device_idx):
-                    if kind == KIND_FITS:
-                        arr = _load_fits(filename, device_idx, precision, **params)
-                        keep = True
-                    elif kind == KIND_KERNEL_FFT:
-                        arr = _load_kernel_fft(filename, device_idx, precision)
-                        keep = False
-                    else:
-                        raise ValueError(f'Unknown kind {kind}')
+                    arr = _load_fits(filename, exten, device_idx, precision)
                     cp.cuda.runtime.deviceSynchronize()
                     # Release the temporaries of the loading
                     cp.get_default_memory_pool().free_all_blocks()
-                    entry = _Entry(arr, keep)
+                    entry = _Entry(arr)
                 self.logger.info(f'Loaded {filename}: {arr.shape} {arr.dtype}, '
                                  f'{arr.nbytes / 2**20:.1f} MiB')
             with self.lock:
@@ -381,8 +340,8 @@ class Holder:
                 conn_refs[key] = conn_refs.get(key, 0) + 1
                 # Free older versions of a rewritten file, if nobody uses them
                 for old_key, old in list(self.entries.items()):
-                    if old_key != key and old.refs <= 0 and old_key[1][0] == filename \
-                            and (old_key[0], old_key[2:]) == (kind, key[2:]):
+                    if old_key != key and old.refs <= 0 and old_key[0][0] == filename \
+                            and old_key[1:] == key[1:]:
                         self.logger.info(f'Freeing old version of {filename}')
                         del self.entries[old_key]
         arr = entry.arr
@@ -397,14 +356,11 @@ class Holder:
             conn_refs[key] = conn_refs.get(key, 0) - count
             if conn_refs[key] <= 0:
                 del conn_refs[key]
-            if entry.refs <= 0 and not entry.keep:
-                self.logger.info(f'Freeing {key[1][0]}')
-                del self.entries[key]
 
     def _list(self):
         with self.lock:
-            return [(key[0], key[1][0], key[2], key[3], e.arr.shape, e.arr.dtype.str,
-                     e.arr.nbytes, e.refs, e.keep) for key, e in self.entries.items()]
+            return [(key[0][0], key[1], key[2], key[3], e.arr.shape, e.arr.dtype.str,
+                     e.arr.nbytes, e.refs) for key, e in self.entries.items()]
 
     def _serve_connection(self, conn):
         conn_refs = {}
@@ -508,10 +464,10 @@ def main(argv=None):
     elif args.command == 'list':
         rows = _client_command(path, ('list',))
         total = 0
-        for kind, filename, precision, bus, shape, dtype, nbytes, refs, keep in rows:
+        for filename, exten, precision, bus, shape, dtype, nbytes, refs in rows:
             total += nbytes
-            print(f'{kind:10s} {bus} {nbytes / 2**20:10.1f} MiB  refs={refs} '
-                  f'{"keep" if keep else "    "} {shape} {dtype} {filename}')
+            print(f'{bus} {nbytes / 2**20:10.1f} MiB  refs={refs} '
+                  f'{shape} {dtype} {filename}[{exten}]')
         print(f'{len(rows)} arrays, {total / 2**30:.2f} GiB')
     elif args.command == 'stop':
         _client_command(path, ('stop', args.force))

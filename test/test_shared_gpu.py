@@ -18,7 +18,6 @@ from specula import cpuArray
 from specula.lib import shared_gpu
 from specula.data_objects.intmat import Intmat
 from specula.data_objects.recmat import Recmat
-from specula.data_objects.convolution_kernel import ConvolutionKernel
 from specula.data_objects.ifunc import IFunc
 from specula.data_objects.ifunc_inv import IFuncInv
 from specula.data_objects.m2c import M2C
@@ -77,7 +76,7 @@ class TestSharedGpu(unittest.TestCase):
         self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
 
     def _entries(self):
-        return {row[1]: row for row in shared_gpu._client_command(self.socket, ('list',))}
+        return {row[0]: row for row in shared_gpu._client_command(self.socket, ('list',))}
 
     def test_intmat_recmat(self):
         rng = np.random.default_rng(1)
@@ -122,12 +121,10 @@ class TestSharedGpu(unittest.TestCase):
         np.testing.assert_array_equal(cpuArray(Recmat.restore(rec_file, target_device_idx=0).recmat),
                                       rec_data.astype(rec.dtype))
 
-        # Calibration matrices are kept after all simulations released them
+        # Arrays are kept after all simulations released them
         del im1, im2, rec
         gc.collect()
-        entries = self._entries()
-        self.assertEqual(entries[os.path.abspath(im_file)][7], 0)
-        self.assertTrue(entries[os.path.abspath(im_file)][8])
+        self.assertEqual(self._entries()[os.path.abspath(im_file)][7], 0)
 
     def test_ifunc_m2c(self):
         rng = np.random.default_rng(2)
@@ -165,41 +162,31 @@ class TestSharedGpu(unittest.TestCase):
         np.testing.assert_array_equal(
             cpuArray(M2C.restore(m2c_file, target_device_idx=0).m2c), m2c_data.astype(m2c.dtype))
 
-    def test_kernel(self):
-        def make_kernel():
-            return ConvolutionKernel(dimx=4, dimy=4, pxscale=0.1, pupil_size_m=8.0,
-                                     dimension=32, launcher_pos=[5, 5, 0], seeing=1.0,
-                                     zfocus=90e3, oversampling=1, return_fft=True,
-                                     data_dir=self.tmpdir, target_device_idx=0)
-        zlayer = [85e3, 90e3, 95e3]
-        zprofile = [0.25, 0.5, 0.25]
+    def test_rewritten_file(self):
+        im_file = os.path.join(self.tmpdir, 'im_rewritten.fits')
+        Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
+        im = Intmat.restore(im_file, target_device_idx=0)
+        self.assertEqual(float(im.intmat.sum()), 8)
 
-        # First kernel: computed locally and saved
-        local = make_kernel()
-        local.prepare_for_sh(sodium_altitude=zlayer, sodium_intensity=zprofile)
-        self.assertFalse(shared_gpu.is_shared(local.kernels))
+        # While the old version is in use, both are kept
+        time.sleep(0.01)
+        Intmat(np.full((4, 2), 2, dtype=np.float32), target_device_idx=0).save(im_file)
+        im2 = Intmat.restore(im_file, target_device_idx=0)
+        self.assertEqual(float(im2.intmat.sum()), 16)
+        self.assertEqual(float(im.intmat.sum()), 8)
+        self.assertEqual(len([r for r in shared_gpu._client_command(self.socket, ('list',))
+                              if r[0] == os.path.abspath(im_file)]), 2)
 
-        # Second one: processed by the holder from the saved file
-        k = make_kernel()
-        old = k.kernels
-        k.prepare_for_sh(sodium_altitude=zlayer, sodium_intensity=zprofile)
-        self.assertIsNot(k.kernels, old)
-        self.assertTrue(shared_gpu.is_shared(k.kernels))
-        np.testing.assert_allclose(cpuArray(k.kernels), cpuArray(local.kernels),
-                                   rtol=1e-5, atol=1e-7)
-        filename = os.path.abspath(os.path.join(self.tmpdir, k._kernel_fn + '.fits'))
-        self.assertEqual(self._entries()[filename][7], 1)
-
-        # A new sodium profile computes new private kernels, without
-        # overwriting the shared ones
-        shared_ptr = k.kernels.data.ptr
-        k.prepare_for_sh(sodium_altitude=zlayer, sodium_intensity=[0.5, 0.25, 0.25])
-        self.assertFalse(shared_gpu.is_shared(k.kernels))
-        self.assertNotEqual(k.kernels.data.ptr, shared_ptr)
-
-        # Kernels are freed by the holder when nobody uses them anymore
+        # Unused old versions are freed when a newer one is loaded
+        del im, im2
         gc.collect()
-        self.assertNotIn(filename, self._entries())
+        time.sleep(0.01)
+        Intmat(np.full((4, 2), 3, dtype=np.float32), target_device_idx=0).save(im_file)
+        im3 = Intmat.restore(im_file, target_device_idx=0)
+        self.assertEqual(float(im3.intmat.sum()), 24)
+        rows = [r for r in shared_gpu._client_command(self.socket, ('list',))
+                if r[0] == os.path.abspath(im_file)]
+        self.assertEqual(len(rows), 1)
 
 
 if __name__ == '__main__':

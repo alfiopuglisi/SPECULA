@@ -101,11 +101,7 @@ class IFuncInv(BaseDataObj):
     def restore(filename, target_device_idx=None, exten=1):
         with fits.open(filename) as hdul:
             mask = hdul[exten+1].data
-        ifunc_inv = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
-                                                 None, exten=exten)
-        if ifunc_inv is None:
-            ifunc_inv = load_fits_array(filename, exten, target_device_idx)
-        ifunc_inv = ifunc_inv.T
+        ifunc_inv = load_fits_array(filename, exten, target_device_idx).T
         return IFuncInv(ifunc_inv, mask, target_device_idx=target_device_idx)
 
     def get_value(self):

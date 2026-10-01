@@ -46,7 +46,7 @@ def _readinto_full(f, buf):
         got += n
 
 
-def load_fits_array(filename, exten=1, target_device_idx=None, precision=None):
+def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, shared=True):
     '''
     Read the data of an image extension of a FITS file into a
     numpy or cupy array allocated on *target_device_idx*
@@ -61,9 +61,20 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None):
     which are uploaded asynchronously while the next chunk is read,
     and are byteswapped and converted on the GPU. This avoids
     full-size temporary copies in host memory.
+
+    If *shared* is True and the SPECULA_SHARED_GPU environment variable
+    is set, GPU arrays are obtained from the holder of shared GPU arrays
+    (see specula.lib.shared_gpu), and are shared with the other processes
+    that load the same file: they must not be modified in place.
     '''
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
+
+    if shared and target_device_idx >= 0:
+        from specula.lib import shared_gpu
+        arr = shared_gpu.get_shared_array(filename, exten, target_device_idx, precision)
+        if arr is not None:
+            return arr
 
     with fits.open(filename) as hdul:
         hdu = hdul[exten]

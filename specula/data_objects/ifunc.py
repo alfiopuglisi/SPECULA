@@ -199,9 +199,5 @@ class IFunc(BaseDataObj):
     def restore(filename, target_device_idx=None, exten=1):
         with fits.open(filename) as hdul:
             mask = hdul[exten+1].data
-        ifunc = shared_gpu.get_shared_array(shared_gpu.KIND_FITS, filename, target_device_idx,
-                                                 None, exten=exten)
-        if ifunc is None:
-            ifunc = load_fits_array(filename, exten, target_device_idx)
-        ifunc = ifunc.T
+        ifunc = load_fits_array(filename, exten, target_device_idx).T
         return IFunc(ifunc, mask=mask, target_device_idx=target_device_idx)

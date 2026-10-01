@@ -471,16 +471,11 @@ class SH(BaseProcessingObj):
             sodium_altitude = None
             sodium_intensity = None
 
-        kernels = self._kernelobj.kernels
         self._kernelobj.prepare_for_sh(
             sodium_altitude=sodium_altitude,
             sodium_intensity=sodium_intensity,
             current_time=self.current_time
         )
-        # The kernels array is replaced when it is shared with other processes:
-        # the CUDA graph must be captured again with the new one
-        if self._kernelobj.kernels is not kernels:
-            self.invalidate_graph()
 
 
     def trigger_code(self):
