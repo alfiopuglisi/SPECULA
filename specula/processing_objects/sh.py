@@ -144,9 +144,7 @@ class SH(BaseProcessingObj):
 
     __zeros_cache = {}
 
-    # Rows of subapertures rebinned together by toccd() (see trigger_code()).
-    # With 68 subaps of 150 pixels, _psfimage is 23 MB and stays in the L2 cache,
-    # while each toccd() call has enough threads to use the GPU.
+    # Rows of subapertures rebinned together by toccd()
     _toccd_rows = 4
 
     def _zeros_common(self, shape, dtype, key_extra=None):
@@ -513,10 +511,7 @@ class SH(BaseProcessingObj):
            (the rebinning does not mix rows of subapertures, since each one
            covers exactly cutsize -> subap_npx pixels).
 
-        Rebinning a few rows at a time, instead of the whole focal plane image
-        at the end, avoids a full-frame _psfimage (e.g. 10200 x 10200 for 68
-        subaps of 150 pixels). Rebinning each row alone would launch kernels too
-        small to use the GPU. The flux normalization is done in post_trigger().
+        The flux normalization is done in post_trigger().
 
         The CUDA graph is captured at the first trigger(), because the
         interpolation needs the pupil, and captured again if the interpolation
@@ -546,7 +541,7 @@ class SH(BaseProcessingObj):
         cutsize = self._cutsize
         toccd_rows = len(self._psfimage_views)
         for i in range(rows.start, rows.stop):
-            j = (i - rows.start) % toccd_rows
+            j = (i - rows.start) % toccd_rows     # row of _psfimage
             psfimage_view = self._psfimage_views[j]
 
             # Extract 2D subap row
@@ -582,11 +577,13 @@ class SH(BaseProcessingObj):
                 else:
                     psfimage_view[:] = psf_cut
 
+            # Rebin _psfimage when it is full, or after the last row
             if j == toccd_rows - 1 or i == rows.stop - 1:
+                first, nrows = i - j, j + 1
                 with tracer('toccd', self):
                     # set_total=0: no normalization here, it is done in post_trigger()
-                    self._out_i.i[(i - j) * npx: (i + 1) * npx] = toccd(
-                        self._psfimage[:(j + 1) * cutsize], ((j + 1) * npx, self._ccd_side),
+                    self._out_i.i[first * npx: (first + nrows) * npx] = toccd(
+                        self._psfimage[:nrows * cutsize], (nrows * npx, self._ccd_side),
                         set_total=0, xp=xp)
 
 
