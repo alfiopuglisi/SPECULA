@@ -109,16 +109,12 @@ def toccd_gpu(a, newshape, set_total=None):
     dy_out = int(mcmy / outy)
     f = 1.0 / (dx_out * dy_out)
 
+    # The grid x covers the output columns, the grid y the rows
+    # of tmp (iny, step 1) and of the output (outy, step 2)
     block = (16, 16)
-    numBlocks2d = int(outx // block[1])
-    if outx % block[1]:
-        numBlocks2d += 1
-    grid = (numBlocks2d, numBlocks2d)
-
-    numBlocks2d_tmp = int(inx // block[0])
-    if inx % block[0]:
-        numBlocks2d_tmp += 1
-    grid_tmp = (numBlocks2d, numBlocks2d_tmp)  # Note second element is different
+    grid_x = (outx + block[0] - 1) // block[0]
+    grid = (grid_x, (outy + block[1] - 1) // block[1])
+    grid_tmp = (grid_x, (iny + block[1] - 1) // block[1])
 
     tmp = cp.empty_like(a, shape=(iny, outx))  # TODO this is a reallocation and could give problems with streams
     out = cp.empty_like(a, shape=(outy, outx))
