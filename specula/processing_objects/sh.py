@@ -144,6 +144,11 @@ class SH(BaseProcessingObj):
 
     __zeros_cache = {}
 
+    # Rows of subapertures rebinned together by toccd() (see trigger_code()).
+    # With 68 subaps of 150 pixels, _psfimage is 23 MB and stays in the L2 cache,
+    # while each toccd() call has enough threads to use the GPU.
+    _toccd_rows = 4
+
     def _zeros_common(self, shape, dtype, key_extra=None):
         """
         Wrapper around self.xp.zeros to enable reuse cache.
@@ -227,7 +232,7 @@ class SH(BaseProcessingObj):
         self._apply_mask = True
         self._wf3_view = None
         self._subap_cube_view = None
-        self._psfimage_view = None
+        self._psfimage_views = None
         self._kernelobj = None
         self._last_sodium_values = None
         self._fov_ovs = 1
@@ -364,8 +369,11 @@ class SH(BaseProcessingObj):
         self._wf3 = self._zeros_common((self._lenslet.dimx, fft_size, fft_size),
                                        dtype=self.complex_dtype,
                                        key_extra=self._ovs_np_sub)
-        # Focal plane image of one row of subapertures, rebinned to the CCD after each row
-        self._psfimage = self._zeros_common((self._cutsize, self._cutsize * self._lenslet.dimx),
+        # Focal plane image of _toccd_rows rows of subapertures, rebinned to the CCD
+        # after each group of rows
+        toccd_rows = min(self._toccd_rows, self._lenslet.dimy)
+        self._psfimage = self._zeros_common((self._cutsize * toccd_rows,
+                                             self._cutsize * self._lenslet.dimx),
                                             dtype=self.dtype)
 
         # 1/2 Px tilt
@@ -497,16 +505,18 @@ class SH(BaseProcessingObj):
            the top-left corner of the zero-padded cube _wf3;
         2. a batched 2D FFT gives the focal plane field of each subap;
         3. without a convolution kernel, |FFT|^2 is cut to the sensor FoV,
-           multiplied by the focal plane mask and written directly into the
-           _psfimage, all in a single fused kernel. With a kernel (LGS),
+           multiplied by the focal plane mask and written directly into its
+           row of _psfimage, all in a single fused kernel. With a kernel (LGS),
            |FFT|^2 is first convolved with the subap kernels in Fourier space;
-        4. _psfimage is rebinned with toccd() to the subap_npx rows of the CCD
-           covered by this row of subapertures (the rebinning does not mix rows
-           of subapertures, since each one covers exactly cutsize -> subap_npx pixels).
+        4. every _toccd_rows rows (and after the last one), _psfimage is rebinned
+           with toccd() to the CCD rows covered by these rows of subapertures
+           (the rebinning does not mix rows of subapertures, since each one
+           covers exactly cutsize -> subap_npx pixels).
 
-        Rebinning each row, instead of the whole focal plane image at the end,
-        avoids a full-frame _psfimage (e.g. 10200 x 10200 for 68 subaps of 150
-        pixels). The flux normalization is done in post_trigger().
+        Rebinning a few rows at a time, instead of the whole focal plane image
+        at the end, avoids a full-frame _psfimage (e.g. 10200 x 10200 for 68
+        subaps of 150 pixels). Rebinning each row alone would launch kernels too
+        small to use the GPU. The flux normalization is done in post_trigger().
 
         The CUDA graph is captured at the first trigger(), because the
         interpolation needs the pupil, and captured again if the interpolation
@@ -533,8 +543,11 @@ class SH(BaseProcessingObj):
         wf1 = self.ef_interpolator.interpolated_ef()
 
         npx = self._subap_npx
-        psfimage_view = self._psfimage_view
+        cutsize = self._cutsize
+        toccd_rows = len(self._psfimage_views)
         for i in range(rows.start, rows.stop):
+            j = (i - rows.start) % toccd_rows
+            psfimage_view = self._psfimage_views[j]
 
             # Extract 2D subap row
             wf1.ef_at_lambda(self.wavelength_in_nm,
@@ -569,11 +582,12 @@ class SH(BaseProcessingObj):
                 else:
                     psfimage_view[:] = psf_cut
 
-            with tracer('toccd', self):
-                # set_total=0: no normalization here, it is done in post_trigger()
-                self._out_i.i[i * npx: (i + 1) * npx] = toccd(self._psfimage,
-                                                              (npx, self._ccd_side),
-                                                              set_total=0, xp=xp)
+            if j == toccd_rows - 1 or i == rows.stop - 1:
+                with tracer('toccd', self):
+                    # set_total=0: no normalization here, it is done in post_trigger()
+                    self._out_i.i[(i - j) * npx: (i + 1) * npx] = toccd(
+                        self._psfimage[:(j + 1) * cutsize], ((j + 1) * npx, self._ccd_side),
+                        set_total=0, xp=xp)
 
 
     def post_trigger(self):
@@ -640,11 +654,13 @@ class SH(BaseProcessingObj):
         # The field row, as a (dimx, n, n) subap cube
         self._subap_cube_view = self.ef_row.reshape(n, dimx, n).swapaxes(0, 1)
 
-        # _psfimage, as a (dimx, cutsize, cutsize) subap cube
-        self._psfimage_view = self._psfimage.reshape(cutsize, dimx, cutsize).swapaxes(0, 1)
+        # Each row of _psfimage, as a (dimx, cutsize, cutsize) subap cube
+        self._psfimage_views = [self._psfimage[j * cutsize: (j + 1) * cutsize]
+                                .reshape(cutsize, dimx, cutsize).swapaxes(0, 1)
+                                for j in range(self._psfimage.shape[0] // cutsize)]
 
         # Assert that our views are actually views and not temporary allocations
-        for view in [self._wf3_view, self._subap_cube_view, self._psfimage_view]:
+        for view in [self._wf3_view, self._subap_cube_view] + self._psfimage_views:
             assert view.base is not None
 
         # The CUDA graph is captured at the first trigger(), see prepare_trigger()
