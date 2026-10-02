@@ -4,12 +4,12 @@ import sys
 import time
 import shutil
 import tempfile
+import threading
 import unittest
 import subprocess
 from unittest.mock import patch
 
 import numpy as np
-from astropy.io import fits
 
 import specula
 specula.init(0)  # Default target device
@@ -23,63 +23,87 @@ from specula.data_objects.ifunc_inv import IFuncInv
 from specula.data_objects.m2c import M2C
 
 
+def start_holder(directory):
+    '''A holder of its own, so that the tests do not use a running one'''
+    holder = subprocess.Popen([sys.executable, '-c',
+                               'from specula.lib import shared_gpu; '
+                               f'shared_gpu.DIR = {directory!r}; '
+                               'shared_gpu.main(["serve"])'])
+    with patch.object(shared_gpu, 'DIR', directory):
+        for _ in range(300):
+            if shared_gpu.holder_pid() == holder.pid:
+                return holder
+            time.sleep(0.1)
+    holder.kill()
+    raise RuntimeError('Holder did not start')
+
+
+def stop_holder(directory, holder):
+    with patch.object(shared_gpu, 'DIR', directory):
+        shared_gpu.main(['stop'])
+    holder.wait(timeout=30)
+
+
 @unittest.skipIf(specula.cp is None, 'CUDA IPC needs a GPU')
 class TestSharedGpu(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
-        cls.socket = os.path.join(cls.tmpdir, 'holder.sock')
-        # A holder of its own, so that the test does not use a running one
-        cls.holder = subprocess.Popen([sys.executable, '-c',
-                                       'from specula.lib import shared_gpu; '
-                                       f'shared_gpu.SOCKET_PATH = {cls.socket!r}; '
-                                       'shared_gpu.main(["serve"])'])
-        for _ in range(300):
-            if os.path.exists(cls.socket):
-                break
-            time.sleep(0.1)
-        else:
-            cls.holder.kill()
-            raise RuntimeError('Holder did not start')
+        cls.dir = os.path.join(cls.tmpdir, 'holder')
+        cls.holder = start_holder(cls.dir)
 
     @classmethod
     def tearDownClass(cls):
-        shared_gpu._client_command(cls.socket, ('stop', True))
-        cls.holder.wait(timeout=30)
+        stop_holder(cls.dir, cls.holder)
         shutil.rmtree(cls.tmpdir)
 
     def setUp(self):
-        self.socket_patch = patch.object(shared_gpu, 'SOCKET_PATH', self.socket)
-        self.socket_patch.start()
-        shared_gpu._conn = None
-        shared_gpu._conn_failed = False
+        self.dir_patch = patch.object(shared_gpu, 'DIR', self.dir)
+        self.dir_patch.start()
 
     def tearDown(self):
         gc.collect()
-        self.socket_patch.stop()
-        # Do not leave a connection to this holder to the other tests
-        if shared_gpu._conn is not None:
-            shared_gpu._conn.close()
-        shared_gpu._conn = None
-        shared_gpu._conn_failed = False
-
-    def test_holder_terminated(self):
-        # Without a reachable holder, arrays are loaded locally
-        shared_gpu._conn = None
-        with patch.object(shared_gpu, 'SOCKET_PATH', os.path.join(self.tmpdir, 'none.sock')):
-            im_file = os.path.join(self.tmpdir, 'im_local.fits')
-            Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
-            self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
-        # A connection that breaks is the same
-        shared_gpu._conn_failed = False
-        broken = shared_gpu.Client(self.socket, family='AF_UNIX')
-        broken.close()
-        shared_gpu._conn = broken
-        self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
+        self.dir_patch.stop()
 
     def _entries(self):
-        return {row[0]: row for row in shared_gpu._client_command(self.socket, ('list',))}
+        return {info['file']: info for info in shared_gpu.list_arrays()}
+
+    def test_holder_not_running(self):
+        im_file = os.path.join(self.tmpdir, 'im_local.fits')
+        Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
+        with patch.object(shared_gpu, 'DIR', os.path.join(self.tmpdir, 'none')):
+            self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
+
+    def test_holder_stopped(self):
+        directory = os.path.join(self.tmpdir, 'holder2')
+        holder = start_holder(directory)
+        im_file = os.path.join(self.tmpdir, 'im_stopped.fits')
+        data = np.arange(8, dtype=np.float32).reshape(4, 2)
+        Intmat(data, target_device_idx=0).save(im_file)
+        with patch.object(shared_gpu, 'DIR', directory):
+            im = Intmat.restore(im_file, target_device_idx=0)
+            self.assertTrue(shared_gpu.is_shared(im.intmat))
+            published = {name: open(os.path.join(directory, name)).read()
+                         for name in os.listdir(directory) if name.endswith('.json')}
+            stop_holder(directory, holder)
+
+            # The holder files are removed, the array in use is still valid
+            self.assertEqual(os.listdir(directory), [])
+            np.testing.assert_array_equal(cpuArray(im.intmat), data.astype(im.dtype))
+            del im
+            gc.collect()
+
+            # New loads are local
+            self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
+
+            # Also with stale files: a live PID and the handle of a freed array
+            with open(os.path.join(directory, 'holder.pid'), 'w') as f:
+                f.write(str(os.getpid()))
+            for name, content in published.items():
+                with open(os.path.join(directory, name), 'w') as f:
+                    f.write(content)
+            self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
 
     def test_intmat_recmat(self):
         rng = np.random.default_rng(1)
@@ -105,10 +129,10 @@ class TestSharedGpu(unittest.TestCase):
         code = ('import os, specula; specula.init(0, precision=%d); '
                 'from specula.data_objects.intmat import Intmat; '
                 'from specula.lib import shared_gpu; '
-                'shared_gpu.SOCKET_PATH = %r; '
+                'shared_gpu.DIR = %r; '
                 'im = Intmat.restore(%r, target_device_idx=0); '
                 'assert shared_gpu.is_shared(im.intmat); '
-                'print(float(im.intmat.sum()))' % (specula.global_precision, self.socket, im_file))
+                'print(float(im.intmat.sum()))' % (specula.global_precision, self.dir, im_file))
         out = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True,
                              check=True)
         self.assertAlmostEqual(float(out.stdout.split()[-1]), float(im1.intmat.sum()), places=3)
@@ -128,7 +152,7 @@ class TestSharedGpu(unittest.TestCase):
         # Arrays are kept after all simulations released them
         del im1, im2, rec
         gc.collect()
-        self.assertEqual(self._entries()[os.path.abspath(im_file)][7], 0)
+        self.assertIn(os.path.abspath(im_file), self._entries())
 
     def test_ifunc_m2c(self):
         rng = np.random.default_rng(2)
@@ -172,25 +196,27 @@ class TestSharedGpu(unittest.TestCase):
         im = Intmat.restore(im_file, target_device_idx=0)
         self.assertEqual(float(im.intmat.sum()), 8)
 
-        # While the old version is in use, both are kept
+        # The new version replaces the old one, which is still valid
+        # for the simulations that use it
         time.sleep(0.01)
         Intmat(np.full((4, 2), 2, dtype=np.float32), target_device_idx=0).save(im_file)
         im2 = Intmat.restore(im_file, target_device_idx=0)
+        self.assertTrue(shared_gpu.is_shared(im2.intmat))
         self.assertEqual(float(im2.intmat.sum()), 16)
         self.assertEqual(float(im.intmat.sum()), 8)
-        self.assertEqual(len([r for r in shared_gpu._client_command(self.socket, ('list',))
-                              if r[0] == os.path.abspath(im_file)]), 2)
-
-        # Unused old versions are freed when a newer one is loaded
-        del im, im2
-        gc.collect()
-        time.sleep(0.01)
-        Intmat(np.full((4, 2), 3, dtype=np.float32), target_device_idx=0).save(im_file)
-        im3 = Intmat.restore(im_file, target_device_idx=0)
-        self.assertEqual(float(im3.intmat.sum()), 24)
-        rows = [r for r in shared_gpu._client_command(self.socket, ('list',))
-                if r[0] == os.path.abspath(im_file)]
+        rows = [info for info in shared_gpu.list_arrays() if info['file'] == os.path.abspath(im_file)]
         self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['mtime_ns'], os.stat(im_file).st_mtime_ns)
+
+    def test_inotify(self):
+        # The holder is woken up by inotify, not by polling
+        watcher = shared_gpu._DirWatcher(self.tmpdir)
+        self.assertIsNotNone(watcher.fd)
+        t0 = time.monotonic()
+        threading.Timer(0.3, lambda: open(os.path.join(self.tmpdir, 'wake'), 'w').close()).start()
+        watcher.wait()
+        self.assertGreater(time.monotonic() - t0, 0.25)
+        os.close(watcher.fd)
 
 
 if __name__ == '__main__':

@@ -24,6 +24,20 @@ restore() methods of the data objects, and is transparent for its users.
 When the holder is not running, or the array is on the CPU, everything
 is loaded locally as usual.
 
+There is no connection between the holder and the simulations, only
+files in a directory private to the user (DIR):
+
+- holder.pid: the PID of the running holder
+- <key>.request: written by a simulation that needs an array (JSON
+  with file name, modification time, size, FITS extension, precision
+  and GPU)
+- <key>.json: written by the holder when the array is loaded (JSON with
+  the IPC handle, shape and dtype), or <key>.error if it cannot load it
+
+<key> is a hash of the request, so a simulation finds the array of a file
+from the file name alone. The holder is woken up by the requests with
+inotify (on Linux, otherwise it checks the directory periodically).
+
 Notes
 -----
 - Shared arrays are read-only by convention: CuPy cannot enforce it, and
@@ -31,47 +45,85 @@ Notes
   that use shared arrays make a private copy before writing into them
   (copy-on-write), but views of them must not be modified in place
   (for example ``intmat.modes[3:5] += 1``).
-- The holder must stay alive while simulations use its arrays. Arrays
-  are kept until the holder is stopped, so that later simulations find
-  them already loaded.
-- Arrays are identified by file path, modification time, size, FITS
-  extension and precision: a file that is rewritten is loaded again,
-  and the older version is freed when no simulation uses it.
+- The CUDA driver keeps the device memory alive while any process maps
+  it: the holder can free its arrays or terminate at any time without
+  affecting the running simulations. Only the simulations started after
+  that load the arrays locally, since a handle cannot be opened after
+  its memory has been freed by the holder.
+- The holder keeps the arrays until it is stopped. A file that is
+  rewritten is loaded again, and the older version is freed.
 - GPUs are identified by PCI bus id, so that the holder and the
   simulations can have different CUDA_VISIBLE_DEVICES.
 '''
 
 import os
 import sys
-import stat
+import json
+import time
+import ctypes
+import signal
+import hashlib
 import argparse
 import tempfile
 import threading
 import weakref
-from multiprocessing.connection import Listener, Client
 
 import numpy as np
 
 import specula
 
-# Socket of the holder, one per user
-SOCKET_PATH = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(),
-                           f'specula_shared_gpu_{os.getuid()}.sock')
+# Directory of the holder files, one per user. /dev/shm is a RAM filesystem
+DIR = os.path.join('/dev/shm' if os.path.isdir('/dev/shm') else tempfile.gettempdir(),
+                   f'specula_shared_gpu_{os.getuid()}')
+
+# Maximum time a simulation waits for the holder to load an array [s]
+WAIT_TIMEOUT = 600
 
 
-def _file_id(filename):
-    st = os.stat(filename)
-    return os.path.abspath(filename), st.st_mtime_ns, st.st_size
+def _path(name):
+    return os.path.join(DIR, name)
+
+
+def _write_atomic(name, data):
+    '''Write a file of DIR, so that readers see either nothing or all of it'''
+    tmp = _path(f'.{name}.{os.getpid()}.{threading.get_ident()}.tmp')
+    with open(tmp, 'w') as f:
+        f.write(data)
+    os.replace(tmp, _path(name))
+
+
+def _read_json(name):
+    try:
+        with open(_path(name)) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _remove(name):
+    try:
+        os.unlink(_path(name))
+    except FileNotFoundError:
+        pass
+
+
+def holder_pid():
+    '''PID of the running holder, or None'''
+    try:
+        with open(_path('holder.pid')) as f:
+            pid = int(f.read())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
-# Client side (simulation processes)
+# Simulation side
 
 # Reentrant, since _IpcMapping.__del__() can be called by the garbage collector
 _lock = threading.RLock()
-_conn = None
-_conn_failed = False
-_mappings = weakref.WeakValueDictionary()   # key -> _IpcMapping
+_mappings = weakref.WeakValueDictionary()          # key -> _IpcMapping
 _mappings_by_ptr = weakref.WeakValueDictionary()   # (device_id, ptr) -> _IpcMapping
 
 
@@ -79,18 +131,17 @@ class _IpcMapping:
     '''
     A device memory region opened from an IPC handle.
     It is the owner of the UnownedMemory of the arrays built on it,
-    so it is closed (and released in the holder) when the last
-    array or view referencing it is garbage collected.
+    so it is closed when the last array or view referencing it is
+    garbage collected.
     '''
-    def __init__(self, key, handle, shape, dtype, nbytes, device_id):
-        self.key = key
-        self.shape = shape
-        self.dtype = np.dtype(dtype)
-        self.nbytes = nbytes
+    def __init__(self, info, device_id):
+        self.shape = tuple(info['shape'])
+        self.dtype = np.dtype(info['dtype'])
+        self.nbytes = info['nbytes']
         self.device_id = device_id
         cp = specula.cp
         with cp.cuda.Device(device_id):
-            self.ptr = cp.cuda.runtime.ipcOpenMemHandle(handle)
+            self.ptr = cp.cuda.runtime.ipcOpenMemHandle(bytes.fromhex(info['handle']))
 
     def __del__(self):
         try:
@@ -104,46 +155,25 @@ class _IpcMapping:
                 # Work queued on the memory must be completed before unmapping it
                 cp.cuda.runtime.deviceSynchronize()
                 cp.cuda.runtime.ipcCloseMemHandle(self.ptr)
-            _request(('release', self.key))
         except Exception:
-            # Interpreter shutdown: the driver and the holder clean up anyway
+            # Interpreter shutdown: the driver cleans up anyway
             pass
 
 
-def _connect():
-    global _conn, _conn_failed
-    if _conn is None and not _conn_failed:
-        try:
-            _conn = Client(SOCKET_PATH, family='AF_UNIX')
-        except OSError as e:
-            # Stale socket of a holder that has terminated
-            _conn_failed = True
-            specula.get_specula_logger(__name__).warning(
-                f'The shared GPU array holder is not reachable at {SOCKET_PATH} ({e}): '
-                'arrays will be loaded locally')
-    return _conn
-
-
-def _request(msg):
-    global _conn, _conn_failed
-    with _lock:
-        conn = _connect()
-        if conn is None:
+def _wait_for_holder(key, request):
+    '''Ask the holder to load an array, and wait for it. Returns its info, or None'''
+    _write_atomic(f'{key}.request', json.dumps(request))
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < WAIT_TIMEOUT:
+        info = _read_json(f'{key}.json')
+        if info is not None:
+            return info
+        if os.path.exists(_path(f'{key}.error')) or holder_pid() is None:
             return None
-        try:
-            conn.send(msg)
-            status, payload = conn.recv()
-        except (OSError, EOFError) as e:
-            # The holder has terminated: load locally from now on
-            _conn = None
-            _conn_failed = True
-            specula.get_specula_logger(__name__).warning(
-                f'Lost connection to the shared GPU array holder ({e!r}): '
-                'arrays will be loaded locally')
-            return None
-    if status != 'ok':
-        raise RuntimeError(f'Shared GPU array holder: {payload}')
-    return payload
+        time.sleep(0.05)
+    specula.get_specula_logger(__name__).warning(
+        f'Timeout waiting for the shared GPU array holder: {request["file"]} loaded locally')
+    return None
 
 
 def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
@@ -166,30 +196,37 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
 
     Returns
     -------
-    cupy.ndarray, or None if the holder is not running or the array
-    is on the CPU. In this case the caller must load the array itself.
+    cupy.ndarray, or None if the holder is not running, it cannot load
+    the array, or the array is on the CPU. In this case the caller must
+    load the array itself.
     '''
-    if _conn is None and not os.path.exists(SOCKET_PATH):
-        return None
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
-    if target_device_idx < 0 or specula.cp is None:
+    if target_device_idx < 0 or specula.cp is None or holder_pid() is None:
         return None
     if precision is None:
         precision = specula.global_precision
 
     cp = specula.cp
-    pci_bus_id = cp.cuda.Device(target_device_idx).pci_bus_id
-    key = (_file_id(filename), exten, precision, pci_bus_id)
+    st = os.stat(filename)
+    request = {'file': os.path.abspath(filename), 'mtime_ns': st.st_mtime_ns, 'size': st.st_size,
+               'exten': exten, 'precision': precision,
+               'pci_bus_id': cp.cuda.Device(target_device_idx).pci_bus_id}
+    key = hashlib.sha1(json.dumps(request, sort_keys=True).encode()).hexdigest()
 
     with _lock:
         mapping = _mappings.get(key)
         if mapping is None:
-            # One holder reference per process, released when the mapping is closed
-            payload = _request(('get', key))
-            if payload is None:
+            info = _read_json(f'{key}.json')
+            if info is None:
+                info = _wait_for_holder(key, request)
+                if info is None:
+                    return None
+            try:
+                mapping = _IpcMapping(info, target_device_idx)
+            except cp.cuda.runtime.CUDARuntimeError:
+                # Stale handle: the holder has terminated, or freed the array
                 return None
-            mapping = _IpcMapping(key, *payload, device_id=target_device_idx)
             _mappings[key] = mapping
             _mappings_by_ptr[(target_device_idx, mapping.ptr)] = mapping
 
@@ -219,15 +256,42 @@ def writable(arr):
     return arr.copy() if is_shared(arr) else arr
 
 
+def list_arrays():
+    '''Info of the arrays published by the holder'''
+    if not os.path.isdir(DIR):
+        return []
+    return [info for info in (_read_json(name) for name in sorted(os.listdir(DIR))
+                              if name.endswith('.json') and not name.startswith('.'))
+            if info is not None]
+
+
 # ---------------------------------------------------------------------------
 # Holder side
 
-class _Entry:
-    def __init__(self, arr):
-        cp = specula.cp
-        self.arr = arr
-        self.handle = cp.cuda.runtime.ipcGetMemHandle(arr.data.ptr)
-        self.refs = 0
+_IN_CLOSE_WRITE = 0x08
+_IN_MOVED_TO = 0x80
+
+
+class _DirWatcher:
+    '''Waits until a file is written in a directory: inotify on Linux, polling elsewhere'''
+
+    def __init__(self, path):
+        self.fd = None
+        try:
+            libc = ctypes.CDLL(None, use_errno=True)
+            fd = libc.inotify_init1(os.O_CLOEXEC)
+            if fd >= 0 and libc.inotify_add_watch(fd, path.encode(),
+                                                  _IN_CLOSE_WRITE | _IN_MOVED_TO) >= 0:
+                self.fd = fd
+        except (OSError, AttributeError):
+            pass
+
+    def wait(self):
+        if self.fd is None:
+            time.sleep(0.2)
+        else:
+            # The events are not needed: the caller scans the directory again
+            os.read(self.fd, 65536)
 
 
 def _load_fits(filename, exten, device_idx, precision):
@@ -242,152 +306,89 @@ def _load_fits(filename, exten, device_idx, precision):
     def alloc(size):
         return cp.cuda.MemoryPointer(cp.cuda.Memory(size), 0)
 
-    with cp.cuda.using_allocator(alloc):
+    with cp.cuda.Device(device_idx), cp.cuda.using_allocator(alloc):
         arr = load_fits_array(filename, exten, device_idx, precision, shared=False)
         if arr.data.ptr != arr.data.mem.ptr or not arr.flags.c_contiguous:
             arr = arr.copy()
+        cp.cuda.runtime.deviceSynchronize()
     return arr
 
 
 class Holder:
-    '''Loads arrays on request and keeps them for the clients'''
+    '''Loads the requested arrays and keeps them for the simulations'''
 
-    def __init__(self, path, logger):
-        self.path = path
+    def __init__(self, logger):
         self.logger = logger
-        self.entries = {}
-        self.lock = threading.Lock()
-        self.key_locks = {}
-        self.listener = None
-        self.stopping = False
+        self.arrays = {}     # key -> (request, array)
 
-    def _get(self, key, conn_refs):
-        (filename, mtime_ns, size), exten, precision, pci_bus_id = key
-        with self.lock:
-            key_lock = self.key_locks.setdefault(key, threading.Lock())
-        # One load per key, other keys can be loaded concurrently
-        with key_lock:
-            with self.lock:
-                entry = self.entries.get(key)
-            if entry is None:
-                if _file_id(filename) != (filename, mtime_ns, size):
-                    raise ValueError(f'{filename} changed while loading it')
-                cp = specula.cp
-                device_idx = cp.cuda.runtime.deviceGetByPCIBusId(pci_bus_id)
-                self.logger.info(f'Loading {filename} extension {exten} on GPU {pci_bus_id}')
-                with cp.cuda.Device(device_idx):
-                    arr = _load_fits(filename, exten, device_idx, precision)
-                    cp.cuda.runtime.deviceSynchronize()
-                    entry = _Entry(arr)
-                self.logger.info(f'Loaded {filename}: {arr.shape} {arr.dtype}, '
-                                 f'{arr.nbytes / 2**20:.1f} MiB')
-            with self.lock:
-                self.entries[key] = entry
-                entry.refs += 1
-                conn_refs[key] = conn_refs.get(key, 0) + 1
-                # Free older versions of a rewritten file, if nobody uses them
-                for old_key, old in list(self.entries.items()):
-                    if old_key != key and old.refs <= 0 and old_key[0][0] == filename \
-                            and old_key[1:] == key[1:]:
-                        self.logger.info(f'Freeing old version of {filename}')
-                        del self.entries[old_key]
-        arr = entry.arr
-        return entry.handle, arr.shape, arr.dtype.str, arr.nbytes
-
-    def _release(self, key, conn_refs, count=1):
-        with self.lock:
-            entry = self.entries.get(key)
-            if entry is None:
-                return
-            entry.refs -= count
-            conn_refs[key] = conn_refs.get(key, 0) - count
-            if conn_refs[key] <= 0:
-                del conn_refs[key]
-
-    def _list(self):
-        with self.lock:
-            return [(key[0][0], key[1], key[2], key[3], e.arr.shape, e.arr.dtype.str,
-                     e.arr.nbytes, e.refs) for key, e in self.entries.items()]
-
-    def _serve_connection(self, conn):
-        conn_refs = {}
+    def _serve_request(self, key):
+        request = _read_json(f'{key}.request')
+        _remove(f'{key}.request')
+        if request is None or key in self.arrays:
+            return
+        filename = request['file']
         try:
-            while True:
-                try:
-                    msg = conn.recv()
-                except (EOFError, OSError):
-                    break
-                try:
-                    cmd = msg[0]
-                    if cmd == 'get':
-                        reply = self._get(msg[1], conn_refs)
-                    elif cmd == 'release':
-                        reply = self._release(msg[1], conn_refs)
-                    elif cmd == 'list':
-                        reply = self._list()
-                    elif cmd == 'stop':
-                        force = msg[1]
-                        with self.lock:
-                            in_use = sum(e.refs for e in self.entries.values())
-                        if in_use and not force:
-                            raise RuntimeError(f'{in_use} arrays are in use by simulations, '
-                                               'use --force to stop anyway')
-                        self.stopping = True
-                        reply = None
-                    else:
-                        raise ValueError(f'Unknown command {cmd}')
-                    conn.send(('ok', reply))
-                except Exception as e:
-                    self.logger.exception('Error serving request')
-                    conn.send(('error', f'{type(e).__name__}: {e}'))
-                if self.stopping:
-                    # Unblock accept() in serve()
-                    try:
-                        Client(self.path, family='AF_UNIX').close()
-                    except OSError:
-                        pass
-                    break
-        finally:
-            # A simulation that terminates releases all its arrays
-            for key, count in list(conn_refs.items()):
-                self._release(key, conn_refs, count)
-            conn.close()
+            st = os.stat(filename)
+            if (st.st_mtime_ns, st.st_size) != (request['mtime_ns'], request['size']):
+                raise ValueError(f'{filename} has changed')
+            cp = specula.cp
+            device_idx = cp.cuda.runtime.deviceGetByPCIBusId(request['pci_bus_id'])
+            self.logger.info(f'Loading {filename} extension {request["exten"]} '
+                             f'on GPU {request["pci_bus_id"]}')
+            arr = _load_fits(filename, request['exten'], device_idx, request['precision'])
+            info = dict(request, handle=cp.cuda.runtime.ipcGetMemHandle(arr.data.ptr).hex(),
+                        shape=arr.shape, dtype=arr.dtype.str, nbytes=arr.nbytes)
+        except Exception as e:
+            self.logger.exception(f'Cannot load {filename}')
+            _write_atomic(f'{key}.error', f'{type(e).__name__}: {e}')
+            return
+
+        # Free the older versions of a rewritten file. The simulations that
+        # use them are not affected, the driver keeps the memory they map.
+        same = ('file', 'exten', 'precision', 'pci_bus_id')
+        for old_key, (old_request, _) in list(self.arrays.items()):
+            if all(old_request[k] == request[k] for k in same):
+                self.logger.info(f'Freeing old version of {filename}')
+                _remove(f'{old_key}.json')
+                del self.arrays[old_key]
+
+        self.arrays[key] = (request, arr)
+        _write_atomic(f'{key}.json', json.dumps(info))
+        self.logger.info(f'Loaded {filename}: {arr.shape} {arr.dtype}, '
+                         f'{arr.nbytes / 2**20:.1f} MiB')
 
     def serve(self):
-        if os.path.exists(self.path):
-            try:
-                Client(self.path, family='AF_UNIX').close()
-                raise RuntimeError(f'A holder is already running on {self.path}')
-            except ConnectionRefusedError:
-                os.unlink(self.path)   # stale socket
-        old_umask = os.umask(0o077)
+        os.makedirs(DIR, mode=0o700, exist_ok=True)
+        os.chmod(DIR, 0o700)
+        pid = holder_pid()
+        if pid is not None:
+            raise RuntimeError(f'A holder is already running (PID {pid})')
+        # Files of a holder that did not terminate cleanly
+        for name in os.listdir(DIR):
+            if not name.endswith('.request'):
+                _remove(name)
+
+        # SIGTERM (stop command) terminates like Ctrl-C, removing the files
+        signal.signal(signal.SIGTERM, lambda *args: sys.exit(0))
+        watcher = _DirWatcher(DIR)
+        _write_atomic('holder.pid', str(os.getpid()))
+        self.logger.info(f'Shared GPU array holder running, files in {DIR}'
+                         + ('' if watcher.fd is not None else ' (polling, inotify not available)'))
         try:
-            # Only the user can connect: the protocol uses pickle
-            self.listener = Listener(self.path, family='AF_UNIX')
+            while True:
+                for name in sorted(os.listdir(DIR)):
+                    if name.endswith('.request') and not name.startswith('.'):
+                        self._serve_request(name[:-len('.request')])
+                watcher.wait()
+        except KeyboardInterrupt:
+            pass
         finally:
-            os.umask(old_umask)
-        os.chmod(self.path, stat.S_IRUSR | stat.S_IWUSR)
-        self.logger.info(f'Shared GPU array holder listening on {self.path}')
-        try:
-            while not self.stopping:
-                conn = self.listener.accept()
-                if self.stopping:
-                    conn.close()
-                    break
-                threading.Thread(target=self._serve_connection, args=(conn,),
-                                 daemon=True).start()
-        finally:
-            self.listener.close()
+            # Handles first, so that no simulation tries to open a freed array
+            for name in os.listdir(DIR):
+                if name != 'holder.pid':
+                    _remove(name)
+            _remove('holder.pid')
             self.logger.info('Shared GPU array holder stopped')
-
-
-def _client_command(path, msg):
-    with Client(path, family='AF_UNIX') as conn:
-        conn.send(msg)
-        status, payload = conn.recv()
-    if status != 'ok':
-        raise SystemExit(payload)
-    return payload
 
 
 def main(argv=None):
@@ -395,26 +396,23 @@ def main(argv=None):
                                      description='Holder of GPU arrays shared between '
                                                  'SPECULA simulations')
     parser.add_argument('command', choices=['serve', 'list', 'stop'])
-    parser.add_argument('--force', action='store_true',
-                        help='stop even if simulations are using the arrays')
     args = parser.parse_args(argv)
-
-    path = SOCKET_PATH
 
     if args.command == 'serve':
         # The holder serves all GPUs, with explicit device and precision in each request
         specula.init(0, precision=1)
-        Holder(path, specula.get_specula_logger(__name__)).serve()
+        Holder(specula.get_specula_logger(__name__)).serve()
     elif args.command == 'list':
-        rows = _client_command(path, ('list',))
-        total = 0
-        for filename, exten, precision, bus, shape, dtype, nbytes, refs in rows:
-            total += nbytes
-            print(f'{bus} {nbytes / 2**20:10.1f} MiB  refs={refs} '
-                  f'{shape} {dtype} {filename}[{exten}]')
-        print(f'{len(rows)} arrays, {total / 2**30:.2f} GiB')
+        rows = list_arrays()
+        for info in rows:
+            print(f'{info["pci_bus_id"]} {info["nbytes"] / 2**20:10.1f} MiB  '
+                  f'{tuple(info["shape"])} {info["dtype"]} {info["file"]}[{info["exten"]}]')
+        print(f'{len(rows)} arrays, {sum(i["nbytes"] for i in rows) / 2**30:.2f} GiB')
     elif args.command == 'stop':
-        _client_command(path, ('stop', args.force))
+        pid = holder_pid()
+        if pid is None:
+            raise SystemExit('The holder is not running')
+        os.kill(pid, signal.SIGTERM)
 
 
 if __name__ == '__main__':
