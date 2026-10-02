@@ -33,6 +33,9 @@ files in a directory private to the user (DIR):
   and GPU)
 - <key>.json: written by the holder when the array is loaded (JSON with
   the IPC handle, shape and dtype), or <key>.error if it cannot load it
+- <key>.<pid>.user: written by each simulation that maps the array, and
+  removed when it unmaps it. The holder ignores the files of processes
+  that have terminated.
 
 <key> is a hash of the request, so a simulation finds the array of a file
 from the file name alone. The holder is woken up by the requests with
@@ -50,8 +53,10 @@ Notes
   affecting the running simulations. Only the simulations started after
   that load the arrays locally, since a handle cannot be opened after
   its memory has been freed by the holder.
-- The holder keeps the arrays until it is stopped. A file that is
-  rewritten is loaded again, and the older version is freed.
+- The holder frees an array when no simulation has used it for an idle
+  time (10 minutes by default, ``serve --idle-timeout``), so that
+  simulations run one after the other find it already loaded. A file
+  that is rewritten is loaded again, and the older version is freed.
 - GPUs are identified by PCI bus id, so that the holder and the
   simulations can have different CUDA_VISIBLE_DEVICES.
 '''
@@ -61,6 +66,7 @@ import sys
 import json
 import time
 import ctypes
+import select
 import signal
 import hashlib
 import argparse
@@ -78,6 +84,9 @@ DIR = os.path.join('/dev/shm' if os.path.isdir('/dev/shm') else tempfile.gettemp
 
 # Maximum time a simulation waits for the holder to load an array [s]
 WAIT_TIMEOUT = 600
+
+# Interval of the holder checks of the arrays in use [s]
+CHECK_INTERVAL = 30
 
 
 def _path(name):
@@ -134,7 +143,8 @@ class _IpcMapping:
     so it is closed when the last array or view referencing it is
     garbage collected.
     '''
-    def __init__(self, info, device_id):
+    def __init__(self, key, info, device_id):
+        self.user_file = f'{key}.{os.getpid()}.user'
         self.shape = tuple(info['shape'])
         self.dtype = np.dtype(info['dtype'])
         self.nbytes = info['nbytes']
@@ -142,6 +152,8 @@ class _IpcMapping:
         cp = specula.cp
         with cp.cuda.Device(device_id):
             self.ptr = cp.cuda.runtime.ipcOpenMemHandle(bytes.fromhex(info['handle']))
+        # Tell the holder that the array is in use
+        open(_path(self.user_file), 'w').close()
 
     def __del__(self):
         try:
@@ -155,6 +167,7 @@ class _IpcMapping:
                 # Work queued on the memory must be completed before unmapping it
                 cp.cuda.runtime.deviceSynchronize()
                 cp.cuda.runtime.ipcCloseMemHandle(self.ptr)
+            _remove(self.user_file)
         except Exception:
             # Interpreter shutdown: the driver cleans up anyway
             pass
@@ -223,7 +236,7 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
                 if info is None:
                     return None
             try:
-                mapping = _IpcMapping(info, target_device_idx)
+                mapping = _IpcMapping(key, info, target_device_idx)
             except cp.cuda.runtime.CUDARuntimeError:
                 # Stale handle: the holder has terminated, or freed the array
                 return None
@@ -256,13 +269,41 @@ def writable(arr):
     return arr.copy() if is_shared(arr) else arr
 
 
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _users():
+    '''Live users of each array, as {key: [pid, ...]}. Removes the files of terminated processes'''
+    users = {}
+    for name in os.listdir(DIR):
+        parts = name.split('.')
+        if len(parts) == 3 and parts[2] == 'user' and parts[1].isdigit():
+            if _pid_alive(int(parts[1])):
+                users.setdefault(parts[0], []).append(int(parts[1]))
+            else:
+                _remove(name)
+    return users
+
+
 def list_arrays():
-    '''Info of the arrays published by the holder'''
+    '''Info of the arrays published by the holder, with their live users'''
     if not os.path.isdir(DIR):
         return []
-    return [info for info in (_read_json(name) for name in sorted(os.listdir(DIR))
-                              if name.endswith('.json') and not name.startswith('.'))
-            if info is not None]
+    users = _users()
+    infos = []
+    for name in sorted(os.listdir(DIR)):
+        if name.endswith('.json') and not name.startswith('.'):
+            info = _read_json(name)
+            if info is not None:
+                infos.append(dict(info, users=users.get(name[:-len('.json')], [])))
+    return infos
 
 
 # ---------------------------------------------------------------------------
@@ -286,10 +327,10 @@ class _DirWatcher:
         except (OSError, AttributeError):
             pass
 
-    def wait(self):
+    def wait(self, timeout):
         if self.fd is None:
-            time.sleep(0.2)
-        else:
+            time.sleep(min(0.2, timeout))
+        elif select.select([self.fd], [], [], timeout)[0]:
             # The events are not needed: the caller scans the directory again
             os.read(self.fd, 65536)
 
@@ -317,9 +358,29 @@ def _load_fits(filename, exten, device_idx, precision):
 class Holder:
     '''Loads the requested arrays and keeps them for the simulations'''
 
-    def __init__(self, logger):
+    def __init__(self, logger, idle_timeout=600):
         self.logger = logger
-        self.arrays = {}     # key -> (request, array)
+        self.idle_timeout = idle_timeout
+        self.arrays = {}      # key -> (request, array)
+        self.last_used = {}   # key -> time.monotonic() of the last check with users
+
+    def _free(self, key, reason):
+        self.logger.info(f'Freeing {self.arrays[key][0]["file"]} ({reason})')
+        # The handle first, so that no simulation tries to open a freed array.
+        # The simulations that use the array are not affected, the driver
+        # keeps the memory they map.
+        _remove(f'{key}.json')
+        del self.arrays[key]
+        del self.last_used[key]
+
+    def _free_unused(self):
+        now = time.monotonic()
+        users = _users()
+        for key in list(self.arrays):
+            if key in users:
+                self.last_used[key] = now
+            elif now - self.last_used[key] >= self.idle_timeout:
+                self._free(key, f'unused for {self.idle_timeout / 60:g} minutes')
 
     def _serve_request(self, key):
         request = _read_json(f'{key}.request')
@@ -343,16 +404,14 @@ class Holder:
             _write_atomic(f'{key}.error', f'{type(e).__name__}: {e}')
             return
 
-        # Free the older versions of a rewritten file. The simulations that
-        # use them are not affected, the driver keeps the memory they map.
+        # Free the older versions of a rewritten file
         same = ('file', 'exten', 'precision', 'pci_bus_id')
         for old_key, (old_request, _) in list(self.arrays.items()):
             if all(old_request[k] == request[k] for k in same):
-                self.logger.info(f'Freeing old version of {filename}')
-                _remove(f'{old_key}.json')
-                del self.arrays[old_key]
+                self._free(old_key, 'file rewritten')
 
         self.arrays[key] = (request, arr)
+        self.last_used[key] = time.monotonic()
         _write_atomic(f'{key}.json', json.dumps(info))
         self.logger.info(f'Loaded {filename}: {arr.shape} {arr.dtype}, '
                          f'{arr.nbytes / 2**20:.1f} MiB')
@@ -379,7 +438,8 @@ class Holder:
                 for name in sorted(os.listdir(DIR)):
                     if name.endswith('.request') and not name.startswith('.'):
                         self._serve_request(name[:-len('.request')])
-                watcher.wait()
+                self._free_unused()
+                watcher.wait(min(CHECK_INTERVAL, self.idle_timeout) if self.arrays else None)
         except KeyboardInterrupt:
             pass
         finally:
@@ -396,16 +456,20 @@ def main(argv=None):
                                      description='Holder of GPU arrays shared between '
                                                  'SPECULA simulations')
     parser.add_argument('command', choices=['serve', 'list', 'stop'])
+    parser.add_argument('--idle-timeout', type=float, default=10,
+                        help='serve: free the arrays not used by any simulation '
+                             'for this time [minutes] (default: 10)')
     args = parser.parse_args(argv)
 
     if args.command == 'serve':
         # The holder serves all GPUs, with explicit device and precision in each request
         specula.init(0, precision=1)
-        Holder(specula.get_specula_logger(__name__)).serve()
+        Holder(specula.get_specula_logger(__name__), args.idle_timeout * 60).serve()
     elif args.command == 'list':
         rows = list_arrays()
         for info in rows:
             print(f'{info["pci_bus_id"]} {info["nbytes"] / 2**20:10.1f} MiB  '
+                  f'users={len(info["users"])}  '
                   f'{tuple(info["shape"])} {info["dtype"]} {info["file"]}[{info["exten"]}]')
         print(f'{len(rows)} arrays, {sum(i["nbytes"] for i in rows) / 2**30:.2f} GiB')
     elif args.command == 'stop':

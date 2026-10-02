@@ -23,12 +23,13 @@ from specula.data_objects.ifunc_inv import IFuncInv
 from specula.data_objects.m2c import M2C
 
 
-def start_holder(directory):
+def start_holder(directory, *args, check_interval=30):
     '''A holder of its own, so that the tests do not use a running one'''
     holder = subprocess.Popen([sys.executable, '-c',
                                'from specula.lib import shared_gpu; '
                                f'shared_gpu.DIR = {directory!r}; '
-                               'shared_gpu.main(["serve"])'])
+                               f'shared_gpu.CHECK_INTERVAL = {check_interval}; '
+                               f'shared_gpu.main(["serve", *{list(args)!r}])'])
     with patch.object(shared_gpu, 'DIR', directory):
         for _ in range(300):
             if shared_gpu.holder_pid() == holder.pid:
@@ -104,6 +105,47 @@ class TestSharedGpu(unittest.TestCase):
                 with open(os.path.join(directory, name), 'w') as f:
                     f.write(content)
             self.assertFalse(shared_gpu.is_shared(Intmat.restore(im_file, target_device_idx=0).intmat))
+
+    def test_idle_timeout(self):
+        directory = os.path.join(self.tmpdir, 'holder_idle')
+        holder = start_holder(directory, '--idle-timeout', '0.02', check_interval=0.2)   # 1.2 s
+        im_file = os.path.join(self.tmpdir, 'im_idle.fits')
+        Intmat(np.ones((4, 2), dtype=np.float32), target_device_idx=0).save(im_file)
+        try:
+            with patch.object(shared_gpu, 'DIR', directory):
+                def published():
+                    return [info['users'] for info in shared_gpu.list_arrays()
+                            if info['file'] == os.path.abspath(im_file)]
+
+                # In use: kept beyond the idle time
+                im = Intmat.restore(im_file, target_device_idx=0)
+                self.assertTrue(shared_gpu.is_shared(im.intmat))
+                time.sleep(2)
+                self.assertEqual(published(), [[os.getpid()]])
+
+                # Unused: freed after the idle time
+                del im
+                gc.collect()
+                self.assertEqual(published(), [[]])
+                time.sleep(2)
+                self.assertEqual(published(), [])
+
+                # A simulation that terminates is not a user anymore, even
+                # if it does not remove its file
+                code = ('import os, specula; specula.init(0, precision=%d); '
+                        'from specula.data_objects.intmat import Intmat; '
+                        'from specula.lib import shared_gpu; '
+                        'shared_gpu.DIR = %r; '
+                        'im = Intmat.restore(%r, target_device_idx=0); '
+                        'assert shared_gpu.is_shared(im.intmat); '
+                        'os._exit(0)' % (specula.global_precision, directory, im_file))
+                subprocess.run([sys.executable, '-c', code], check=True)
+                self.assertEqual(len(published()), 1)
+                time.sleep(2)
+                self.assertEqual(published(), [])
+                self.assertEqual([n for n in os.listdir(directory) if n.endswith('.user')], [])
+        finally:
+            stop_holder(directory, holder)
 
     def test_intmat_recmat(self):
         rng = np.random.default_rng(1)
@@ -214,8 +256,8 @@ class TestSharedGpu(unittest.TestCase):
         self.assertIsNotNone(watcher.fd)
         t0 = time.monotonic()
         threading.Timer(0.3, lambda: open(os.path.join(self.tmpdir, 'wake'), 'w').close()).start()
-        watcher.wait()
-        self.assertGreater(time.monotonic() - t0, 0.25)
+        watcher.wait(10)
+        self.assertTrue(0.25 < time.monotonic() - t0 < 5)
         os.close(watcher.fd)
 
 
