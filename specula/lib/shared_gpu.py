@@ -146,10 +146,11 @@ class _SharedMemory:
     def __del__(self):
         try:
             # The garbage collector can run during a CUDA graph capture, where
-            # synchronizing and freeing are not allowed: the memory is then
-            # kept until the process terminates
+            # synchronizing, freeing and unmapping are not allowed: the memory
+            # is then kept until the process terminates
             if cp.cuda.get_current_stream().is_capturing():
-                _capture_leftovers.append(self.memory)
+                if self.memory is not None:
+                    _capture_leftovers.append(self.memory)
             elif self.memory is None:
                 with cp.cuda.Device(self.device_id):
                     # Work queued on the memory must be completed before unmapping it
