@@ -256,18 +256,24 @@ class ZernikeGenerator():
         return self.getZernikeDict(indexVector)
 
     def getZernike(self, index, cache=True):
+        '''
+        Return the Zernike polynomial of Noll index *index*.
+        If *cache* is False, a polynomial not already cached is
+        not stored, to avoid keeping many full-frame arrays in memory.
+        '''
         if not self._is_integer_num(index):
             raise ValueError("Invalid Zernike index %s" % index)
         if index <= 0:
             raise ValueError("Invalid Zernike index %d" % index)
-        if index not in list(self._dictCache.keys()):
-            res = self._polar(index, self._rhoMap,
-                              self._thetaMap)
-            res[self._boolean_mask] = 0
-            self._dictCache[index] = to_xp(self.xp, res, dtype=self.dtype)
-            if not cache:
-                return self._dictCache.pop(index)
-        return self._dictCache[index]
+        if index in self._dictCache:
+            return self._dictCache[index]
+        res = self._polar(index, self._rhoMap,
+                          self._thetaMap)
+        res[self._boolean_mask] = 0
+        res = to_xp(self.xp, res, dtype=self.dtype)
+        if cache:
+            self._dictCache[index] = res
+        return res
 
     @staticmethod
     def _is_integer_num(n):
