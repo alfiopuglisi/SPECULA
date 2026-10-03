@@ -11,10 +11,12 @@ loading their own copy.
 Sharing is done by specula.lib.fits_io.load_fits_array(), used by the
 restore() methods of the data objects, and is transparent for its users.
 There is no process to start: each array is published in a file
-<key>.json of a directory shared by all users (DIR), with its IPC handle
-and the modification time and size of the FITS file. <key> is a hash of
-the file name, FITS extension, precision and GPU, so that a simulation
-finds the array of a file from the file name alone. If the file cannot
+<dir>_<name>_<hash>.json of a directory shared by all users (DIR), with
+its IPC handle and the modification time and size of the FITS file.
+<dir> and <name> are the last directory and the name without extension
+of the FITS file, <hash> is a hash of its full path, FITS extension,
+precision and GPU, so that a simulation finds the array of a file from
+the file name alone. If the file cannot
 be read, the file has changed, or the handle cannot be opened, the
 simulation loads the array itself and publishes it again.
 
@@ -81,7 +83,7 @@ def _publish(name, info):
             os.chmod(DIR, 0o777)
         except PermissionError:
             pass
-    tmp = _path(f'.{name}.{os.getpid()}.tmp')
+    tmp = _path(f'{name}.{os.getpid()}.tmp')
     try:
         with open(tmp, 'w') as f:
             json.dump(info, f)
@@ -101,6 +103,10 @@ _HEADER = 256
 _by_key = weakref.WeakValueDictionary()   # key -> _SharedMemory
 _by_ptr = weakref.WeakValueDictionary()   # (device_id, ptr) -> _SharedMemory
 _capture_leftovers = []                   # memory released during a CUDA graph capture
+
+# CUDA IPC is available on Linux only (not on WSL). Disabled after the first
+# error, so that the arrays are then loaded as without sharing.
+_enabled = sys.platform.startswith('linux')
 
 
 class _SharedMemory:
@@ -215,12 +221,13 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
 
     Returns
     -------
-    cupy.ndarray, or None if the array is on the CPU. If the array cannot
-    be shared, it is loaded locally.
+    cupy.ndarray, or None if the array is on the CPU or sharing is not
+    available. If the array cannot be shared, it is loaded locally.
     '''
+    global _enabled
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
-    if target_device_idx < 0 or specula.cp is None:
+    if target_device_idx < 0 or specula.cp is None or not _enabled:
         return None
     if precision is None:
         precision = specula.global_precision
@@ -229,7 +236,9 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
     st = os.stat(filename)
     request = {'file': os.path.abspath(filename), 'exten': exten, 'precision': precision,
                'pci_bus_id': cp.cuda.Device(target_device_idx).pci_bus_id}
-    key = hashlib.sha1(json.dumps(request, sort_keys=True).encode()).hexdigest()
+    path, name = os.path.split(request['file'])
+    key = '_'.join([os.path.basename(path)[:100], os.path.splitext(name)[0][:100],
+                    hashlib.sha1(json.dumps(request, sort_keys=True).encode()).hexdigest()[:16]])
     request.update(mtime_ns=st.st_mtime_ns, size=st.st_size)
 
     def current(info):
@@ -253,8 +262,10 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
             try:
                 shared = _publish_array(key, request, arr, target_device_idx)
             except Exception as e:
+                _enabled = False
                 specula.get_specula_logger(__name__).warning(
-                    f'Cannot share {filename} on GPU {target_device_idx}: {e}')
+                    f'Cannot share {filename} on GPU {target_device_idx}, '
+                    f'GPU arrays will not be shared: {e}')
                 return arr
         _by_key[key] = shared
         _by_ptr[(target_device_idx, shared.ptr)] = shared
@@ -285,7 +296,7 @@ def list_arrays():
     if not os.path.isdir(DIR):
         return []
     infos = [_read_json(name) for name in sorted(os.listdir(DIR))
-             if name.endswith('.json') and not name.startswith('.')]
+             if name.endswith('.json')]
     return [info for info in infos if info is not None]
 
 

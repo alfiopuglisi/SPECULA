@@ -242,10 +242,22 @@ class TestSharedGpu(unittest.TestCase):
     def test_cannot_publish(self):
         # A directory that cannot be written: the array is loaded locally
         im_file = self._save_intmat('im_nodir.fits', np.ones((4, 2), dtype=np.float32))
-        with patch.object(shared_gpu, 'DIR', os.path.join(im_file, 'not_a_dir')):
+        with patch.object(shared_gpu, 'DIR', os.path.join(im_file, 'not_a_dir')), \
+             patch.object(shared_gpu, '_enabled', True):
+            im = Intmat.restore(im_file, target_device_idx=0)
+            self.assertFalse(shared_gpu.is_shared(im.intmat))
+            self.assertEqual(float(im.intmat.sum()), 8)
+            # Sharing is then disabled: arrays from the CuPy memory pool
+            self.assertFalse(shared_gpu._enabled)
+            im = Intmat.restore(im_file, target_device_idx=0)
+            self.assertFalse(isinstance(im.intmat.data.mem, specula.cp.cuda.Memory))
+
+    def test_not_linux(self):
+        im_file = self._save_intmat('im_platform.fits', np.ones((4, 2), dtype=np.float32))
+        with patch.object(shared_gpu, '_enabled', False):
             im = Intmat.restore(im_file, target_device_idx=0)
         self.assertFalse(shared_gpu.is_shared(im.intmat))
-        self.assertEqual(float(im.intmat.sum()), 8)
+        self.assertEqual(shared_gpu.list_arrays(), [])
 
 
 if __name__ == '__main__':
