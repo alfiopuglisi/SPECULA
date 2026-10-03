@@ -50,16 +50,15 @@ import os
 import sys
 import json
 import hashlib
-import tempfile
 import weakref
 
 import numpy as np
 
 import specula
 
-# Directory of the published arrays, shared by all users. /dev/shm is a RAM filesystem
-DIR = os.path.join('/dev/shm' if os.path.isdir('/dev/shm') else tempfile.gettempdir(),
-                   'specula_shared_gpu')
+# Directory of the published arrays, shared by all users. A fixed path, unlike
+# TMPDIR (per user or job on some systems) and /tmp (private for some services)
+DIR = '/dev/shm/specula_shared_gpu'
 
 
 def _path(name):
