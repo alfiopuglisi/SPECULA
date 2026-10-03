@@ -98,7 +98,7 @@ def _publish(name, info):
 # token of its file. A handle can also open the memory allocated and published
 # later at the same address: the token tells if it is the right one. 256 bytes
 # keep the data aligned as allocated by cudaMalloc().
-_HEADER = 256
+_HEADER_SIZE = 256
 
 _by_key = weakref.WeakValueDictionary()   # key -> _SharedMemory
 _by_ptr = weakref.WeakValueDictionary()   # (device_id, ptr) -> _SharedMemory
@@ -135,7 +135,7 @@ class _SharedMemory:
 
     @property
     def ptr(self):
-        return self.base + _HEADER
+        return self.base + _HEADER_SIZE
 
     def array(self):
         mem = cp.cuda.UnownedMemory(self.ptr, self.info['nbytes'], owner=self,
@@ -173,12 +173,12 @@ def _load(request, device_id):
     from specula.lib.fits_io import load_fits_array
 
     def alloc(size):
-        return cp.cuda.MemoryPointer(cp.cuda.Memory(size + _HEADER), _HEADER)
+        return cp.cuda.MemoryPointer(cp.cuda.Memory(size + _HEADER_SIZE), _HEADER_SIZE)
 
     with cp.cuda.Device(device_id), cp.cuda.using_allocator(alloc):
         arr = load_fits_array(request['file'], request['exten'], device_id,
                               request['precision'], shared=False)
-        if arr.data.ptr != arr.data.mem.ptr + _HEADER or not arr.flags.c_contiguous:
+        if arr.data.ptr != arr.data.mem.ptr + _HEADER_SIZE or not arr.flags.c_contiguous:
             arr = arr.copy()
         # Other processes must not see the array before it is complete
         cp.cuda.get_current_stream().synchronize()
