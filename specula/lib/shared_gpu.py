@@ -55,6 +55,7 @@ import weakref
 import numpy as np
 
 import specula
+from specula import cp
 
 # Directory of the published arrays, shared by all users. A fixed path, unlike
 # TMPDIR (per user or job on some systems) and /tmp (private for some services)
@@ -117,7 +118,6 @@ class _SharedMemory:
     when the last array or view referencing it is garbage collected.
     '''
     def __init__(self, info, device_id, memory=None):
-        cp = specula.cp
         self.info = info
         self.device_id = device_id
         self.memory = memory
@@ -138,7 +138,6 @@ class _SharedMemory:
         return self.base + _HEADER
 
     def array(self):
-        cp = specula.cp
         mem = cp.cuda.UnownedMemory(self.ptr, self.info['nbytes'], owner=self,
                                     device_id=self.device_id)
         return cp.ndarray(tuple(self.info['shape']), dtype=np.dtype(self.info['dtype']),
@@ -146,7 +145,6 @@ class _SharedMemory:
 
     def __del__(self):
         try:
-            cp = specula.cp
             # The garbage collector can run during a CUDA graph capture, where
             # synchronizing and freeing are not allowed: the memory is then
             # kept until the process terminates
@@ -172,7 +170,6 @@ def _load(request, device_id):
     after a header for the token.
     '''
     from specula.lib.fits_io import load_fits_array
-    cp = specula.cp
 
     def alloc(size):
         return cp.cuda.MemoryPointer(cp.cuda.Memory(size + _HEADER), _HEADER)
@@ -182,12 +179,12 @@ def _load(request, device_id):
                               request['precision'], shared=False)
         if arr.data.ptr != arr.data.mem.ptr + _HEADER or not arr.flags.c_contiguous:
             arr = arr.copy()
-        cp.cuda.runtime.deviceSynchronize()
+        # Other processes must not see the array before it is complete
+        cp.cuda.get_current_stream().synchronize()
     return arr
 
 
 def _publish_array(key, request, arr, device_id):
-    cp = specula.cp
     token = np.frombuffer(os.urandom(8), dtype=np.uint8)
     with cp.cuda.Device(device_id):
         cp.cuda.runtime.memcpy(arr.data.mem.ptr, token.ctypes.data, token.nbytes,
@@ -226,12 +223,11 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
     global _enabled
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
-    if target_device_idx < 0 or specula.cp is None or not _enabled:
+    if target_device_idx < 0 or cp is None or not _enabled:
         return None
     if precision is None:
         precision = specula.global_precision
 
-    cp = specula.cp
     st = os.stat(filename)
     request = {'file': os.path.abspath(filename), 'exten': exten, 'precision': precision,
                'pci_bus_id': cp.cuda.Device(target_device_idx).pci_bus_id}
@@ -273,7 +269,6 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
 
 def is_shared(arr):
     '''True if *arr* (or the array it is a view of) is a shared array'''
-    cp = specula.cp
     if cp is None or not isinstance(arr, cp.ndarray):
         return False
     mem = arr.data.mem
@@ -299,19 +294,8 @@ def list_arrays():
     return [info for info in infos if info is not None]
 
 
-def _pid_alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # Process of another user
-        return True
-
-
 def main():
-    rows = [info for info in list_arrays() if _pid_alive(info['pid'])]
+    rows = [info for info in list_arrays() if os.path.isdir(f'/proc/{info["pid"]}')]
     for info in rows:
         print(f'{info["pci_bus_id"]} {info["nbytes"] / 2**20:10.1f} MiB  pid={info["pid"]}  '
               f'{tuple(info["shape"])} {info["dtype"]} {info["file"]}[{info["exten"]}]')
