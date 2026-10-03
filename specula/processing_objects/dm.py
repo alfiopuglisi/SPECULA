@@ -158,7 +158,10 @@ class DM(BaseProcessingObj):
                 raise ValueError(f'm2c has {m2c.m2c.shape[0]} rows, but the influence function '
                                  f'has {self._ifunc.nmodes()} modes')
             self.m2c = m2c.m2c
-            nmodes_m2c = m2c.m2c[:, self._valid_modes].shape[1]
+            # Columns of the valid modes, made contiguous once here: the matrix
+            # product would otherwise copy them at each trigger
+            self._m2c_valid = self.xp.ascontiguousarray(self.m2c[:, self._valid_modes])
+            nmodes_m2c = self._m2c_valid.shape[1]
             self.m2c_commands = self.xp.zeros(nmodes_m2c, dtype=self.dtype)
             out_comm_len = self.m2c.shape[0]
         else:
@@ -171,6 +174,7 @@ class DM(BaseProcessingObj):
         self.if_commands = self.xp.zeros(nmodes_if, dtype=self.dtype)
 
         self.if_commands_selector = slice(0, self.n_valid_modes)
+        self._select_ifunc()
 
         self.layer = Layer(s[0], s[1], self.pixel_pitch, height, target_device_idx=target_device_idx, precision=precision)
         self.layer.A = self._ifunc.mask_inf_func
@@ -207,7 +211,7 @@ class DM(BaseProcessingObj):
             self.max_force = self.xp.ones(out_comm_len, dtype=self.dtype) * \
                              self.xp.asarray(max_force, dtype=self.dtype)
             # Force of each mode for a unit coefficient, one column per mode
-            self._mode_forces = self.stiffness @ self.m2c[:, self._valid_modes]
+            self._mode_forces = self.stiffness @ self._m2c_valid
             self._mode_idx = self.xp.arange(len(self.m2c_commands))
 
         self.forces = BaseValue(
@@ -254,7 +258,7 @@ class DM(BaseProcessingObj):
                 self.m2c_commands[:] = limited_commands
                 self.force_nmodes.value[0] = n_keep
                 self.force_nmodes.generation_time = self.current_time
-            cmd = self.m2c[:, self._valid_modes] @ self.m2c_commands
+            cmd = self._m2c_valid @ self.m2c_commands
         else:
             cmd = input_commands
         # Perform clipping
@@ -266,7 +270,7 @@ class DM(BaseProcessingObj):
             self.layer.phaseInNm[self._ifunc.idx_inf_func] = self.if_commands @ self._ifunc.influence_function
         else:
             self.layer.phaseInNm[self._ifunc.idx_inf_func] = \
-                self.if_commands[self.if_commands_selector] @ self._ifunc.influence_function[self._valid_modes, :]
+                self.if_commands[self.if_commands_selector] @ self._ifunc_valid
         self.layer.generation_time = self.current_time
         self.clip_command.value[:len(cmd)] = cmd
         self.clip_command.generation_time = self.current_time
@@ -288,6 +292,17 @@ class DM(BaseProcessingObj):
         n_keep = len(ok) - 1 - self.xp.argmax(ok[::-1])
         return commands * (self._mode_idx < n_keep), n_keep
 
+    def _select_ifunc(self):
+        '''
+        Influence functions of the valid modes, used without m2c. A slice is a view,
+        while idx_modes is copied once here instead of at each trigger.
+        '''
+        if self.m2c is None:
+            self._ifunc_valid = self.xp.ascontiguousarray(
+                self.to_xp(self._ifunc.influence_function[self._valid_modes, :]))
+        else:
+            self._ifunc_valid = None
+
     # Getters and Setters for the attributes
     @property
     def ifunc(self):
@@ -301,6 +316,7 @@ class DM(BaseProcessingObj):
     @ifunc.setter
     def ifunc(self, value):
         self._ifunc.influence_function = value
+        self._select_ifunc()
 
     @property
     def mask(self):
