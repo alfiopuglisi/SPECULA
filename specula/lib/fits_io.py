@@ -49,9 +49,10 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None):
     and are byteswapped and converted on the GPU. This avoids
     full-size temporary copies in host memory.
 
-    GPU arrays are shared with the other processes that load the same
-    file on the same GPU, unless *shared=False* is given (see
-    specula.lib.shared_gpu.shareable): they must not be modified in place.
+    The specula.lib.shared_gpu.shareable decorator adds a *shared*
+    keyword argument (default True): GPU arrays are then shared with
+    the other processes that load the same file on the same GPU, and
+    must not be modified in place.
     '''
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
