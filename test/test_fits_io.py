@@ -10,7 +10,7 @@ specula.init(0)  # Default target device
 
 from specula import cpuArray
 from specula.lib import fits_io
-from specula.lib.fits_io import load_fits_array
+from specula.lib.fits_io import load_fits_array, load_fits_getdata
 
 from test.specula_testlib import cpu_and_gpu
 
@@ -39,11 +39,12 @@ class TestLoadFitsArray(unittest.TestCase):
                  (rng.integers(0, 255, (37, 53)).astype(np.uint8), np.uint8)]
         for data, dtype in cases:
             self._write(data)
-            out = load_fits_array(self.filename, 1, target_device_idx)
-            self.assertIsInstance(out, xp.ndarray)
-            self.assertEqual(out.dtype, dtype)
-            self.assertTrue(out.dtype.isnative)
-            np.testing.assert_array_equal(cpuArray(out), data.astype(dtype))
+            for loader in [load_fits_array, load_fits_getdata]:
+                out = loader(self.filename, 1, target_device_idx)
+                self.assertIsInstance(out, xp.ndarray)
+                self.assertEqual(out.dtype, dtype)
+                self.assertTrue(out.dtype.isnative)
+                np.testing.assert_array_equal(cpuArray(out), data.astype(dtype))
 
     @cpu_and_gpu
     def test_multiple_chunks(self, target_device_idx, xp):
@@ -63,9 +64,10 @@ class TestLoadFitsArray(unittest.TestCase):
         # astropy stores uint16 as int16 with BZERO=32768
         data = np.array([[0, 1, 40000, 65535]], dtype=np.uint16)
         self._write(data)
-        out = load_fits_array(self.filename, 1, target_device_idx)
-        self.assertIsInstance(out, xp.ndarray)
-        np.testing.assert_array_equal(cpuArray(out), data)
+        for loader in [load_fits_array, load_fits_getdata]:
+            out = loader(self.filename, 1, target_device_idx)
+            self.assertIsInstance(out, xp.ndarray)
+            np.testing.assert_array_equal(cpuArray(out), data)
 
     @cpu_and_gpu
     def test_restore_objects(self, target_device_idx, xp):

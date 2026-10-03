@@ -215,6 +215,23 @@ class TestSharedGpu(unittest.TestCase):
         self.assertNotEqual(self._published(im_file1)[0]['pid'], os.getpid())
         self.assertEqual(float(im2.intmat.sum()), 2 * 400 * 200)
 
+    def test_loaders(self):
+        # Each loader publishes its own array of the same file
+        from specula.lib.fits_io import load_fits_array, load_fits_getdata
+        data = np.arange(8, dtype=np.float32).reshape(4, 2)
+        im_file = self._save_intmat('im_loaders.fits', data)
+        a = load_fits_array(im_file, 1, 0)
+        b = load_fits_getdata(im_file, 1, 0)
+        self.assertTrue(shared_gpu.is_shared(a))
+        self.assertTrue(shared_gpu.is_shared(b))
+        self.assertNotEqual(a.data.ptr, b.data.ptr)
+        np.testing.assert_array_equal(cpuArray(a), cpuArray(b))
+        self.assertEqual(sorted(info['loader'] for info in self._published(im_file)),
+                         ['specula.lib.fits_io.load_fits_array',
+                          'specula.lib.fits_io.load_fits_getdata'])
+        # Not shared on request
+        self.assertFalse(shared_gpu.is_shared(load_fits_getdata(im_file, 1, 0, shared=False)))
+
     def test_rewritten_file(self):
         im_file = self._save_intmat('im_rewritten.fits', np.ones((4, 2), dtype=np.float32))
         im = Intmat.restore(im_file, target_device_idx=0)

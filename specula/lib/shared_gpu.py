@@ -8,17 +8,18 @@ first simulation that loads an array publishes a CUDA IPC handle of it,
 and the others map the same device memory instead of allocating and
 loading their own copy.
 
-Sharing is done by specula.lib.fits_io.load_fits_array(), used by the
-restore() methods of the data objects, and is transparent for its users.
-There is no process to start: each array is published in a file
+Sharing is added to a loader function by the shareable() decorator, as
+for specula.lib.fits_io.load_fits_array(), used by the restore() methods
+of the data objects: it is transparent for its users. There is no
+process to start: each array is published in a file
 <dir>_<name>_<hash>.json of a directory shared by all users (DIR), with
 its IPC handle and the modification time and size of the FITS file.
 <dir> and <name> are the last directory and the name without extension
 of the FITS file, <hash> is a hash of its full path, FITS extension,
-precision and GPU, so that a simulation finds the array of a file from
-the file name alone. If the file cannot
-be read, the file has changed, or the handle cannot be opened, the
-simulation loads the array itself and publishes it again.
+precision, GPU and loader, so that a simulation finds the array of a
+file from the file name alone. If the file cannot be read, the file has
+changed, or the handle cannot be opened, the simulation loads the array
+itself and publishes it again.
 
     python -m specula.lib.shared_gpu    # show the arrays published by running processes
 
@@ -50,6 +51,7 @@ import os
 import sys
 import json
 import hashlib
+import functools
 import weakref
 
 import numpy as np
@@ -163,21 +165,18 @@ class _SharedMemory:
             pass
 
 
-def _load(request, device_id):
+def _load(loader, request, device_id):
     '''
     Load the array with dedicated cudaMalloc() allocations instead of
     sub-allocations of the CuPy memory pool, so that it owns a whole
     allocation that can be exported with a IPC handle of its own,
     after a header for the token.
     '''
-    from specula.lib.fits_io import load_fits_array
-
     def alloc(size):
         return cp.cuda.MemoryPointer(cp.cuda.Memory(size + _HEADER_SIZE), _HEADER_SIZE)
 
     with cp.cuda.Device(device_id), cp.cuda.using_allocator(alloc):
-        arr = load_fits_array(request['file'], request['exten'], device_id,
-                              request['precision'], shared=False)
+        arr = loader(request['file'], request['exten'], device_id, request['precision'])
         if arr.data.ptr != arr.data.mem.ptr + _HEADER_SIZE or not arr.flags.c_contiguous:
             arr = arr.copy()
         # Other processes must not see the array before it is complete
@@ -201,15 +200,39 @@ def _publish_array(key, request, arr, device_id):
     return shared
 
 
-def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
+def shareable(loader):
+    '''
+    Decorator of the functions that load an array from a FITS file, with
+    the signature of specula.lib.fits_io.load_fits_array(). The decorated
+    function shares its GPU arrays with the other processes that load the
+    same file with the same function, unless it is called with
+    *shared=False*.
+
+    The loader must allocate the array it returns with CuPy, on the
+    current device, and must return the same array for the same
+    arguments, since another process can return its copy instead of
+    calling it.
+    '''
+    @functools.wraps(loader)
+    def wrapper(filename, exten=1, target_device_idx=None, precision=None, shared=True):
+        if shared:
+            arr = get_shared_array(loader, filename, exten, target_device_idx, precision)
+            if arr is not None:
+                return arr
+        return loader(filename, exten, target_device_idx, precision)
+    return wrapper
+
+
+def get_shared_array(loader, filename, exten=1, target_device_idx=None, precision=None):
     '''
     Get a shared, read-only copy of an image extension of a FITS file,
-    as returned by specula.lib.fits_io.load_fits_array() with the same
-    arguments. Called by load_fits_array() itself, so that sharing is
-    transparent for its users.
+    as returned by *loader* with the same arguments. Called by the
+    functions decorated with shareable().
 
     Parameters
     ----------
+    loader: function
+        function that loads the array (see shareable())
     filename: str
         FITS file name
     exten: int
@@ -233,8 +256,10 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
         precision = specula.global_precision
 
     st = os.stat(filename)
+    # The loader too, since different loaders can return different arrays
     request = {'file': os.path.abspath(filename), 'exten': exten, 'precision': precision,
-               'pci_bus_id': cp.cuda.Device(target_device_idx).pci_bus_id}
+               'pci_bus_id': cp.cuda.Device(target_device_idx).pci_bus_id,
+               'loader': f'{loader.__module__}.{loader.__qualname__}'}
     path, name = os.path.split(request['file'])
     key = '_'.join([os.path.basename(path)[:100], os.path.splitext(name)[0][:100],
                     hashlib.sha1(json.dumps(request, sort_keys=True).encode()).hexdigest()[:16]])
@@ -259,7 +284,7 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
                 # terminated. Or the file is corrupted.
                 pass
         if shared is None:
-            arr = _load(request, target_device_idx)
+            arr = _load(loader, request, target_device_idx)
             try:
                 shared = _publish_array(key, request, arr, target_device_idx)
             except Exception as e:

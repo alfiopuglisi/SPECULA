@@ -4,6 +4,7 @@ import numpy as np
 from astropy.io import fits
 
 import specula
+from specula.lib import shared_gpu
 
 _BITPIX2DTYPE = {8: np.uint8, 16: np.int16, 32: np.int32, 64: np.int64,
                  -32: np.float32, -64: np.float64}
@@ -23,7 +24,16 @@ def _swap_kernel():
         ''', 'specula_fits_swap')
 
 
-def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, shared=True):
+def _target_dtype(dtype, precision):
+    '''Float dtype of *precision* for floating point data, else *dtype* in native byte order'''
+    if dtype.kind == 'f':
+        return np.dtype(specula.cpu_float_dtype_list[
+            specula.global_precision if precision is None else precision])
+    return dtype.newbyteorder('=')
+
+
+@shared_gpu.shareable
+def load_fits_array(filename, exten=1, target_device_idx=None, precision=None):
     '''
     Read the data of an image extension of a FITS file into a
     numpy or cupy array allocated on *target_device_idx*
@@ -39,24 +49,12 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, s
     and are byteswapped and converted on the GPU. This avoids
     full-size temporary copies in host memory.
 
-    If *shared* is True, GPU arrays are shared with the other processes
-    that load the same file on the same GPU (see specula.lib.shared_gpu):
-    they must not be modified in place.
+    GPU arrays are shared with the other processes that load the same
+    file on the same GPU, unless *shared=False* is given (see
+    specula.lib.shared_gpu.shareable): they must not be modified in place.
     '''
     if target_device_idx is None:
         target_device_idx = specula.default_target_device_idx
-
-    if shared and target_device_idx >= 0:
-        from specula.lib import shared_gpu
-        arr = shared_gpu.get_shared_array(filename, exten, target_device_idx, precision)
-        if arr is not None:
-            return arr
-
-    float_dtype = np.dtype(specula.cpu_float_dtype_list[
-        specula.global_precision if precision is None else precision])
-
-    def target_dtype(dtype):
-        return float_dtype if dtype.kind == 'f' else dtype.newbyteorder('=')
 
     with fits.open(filename) as hdul:
         hdu = hdul[exten]
@@ -70,10 +68,11 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, s
                 and hdr.get('BITPIX') in _BITPIX2DTYPE)
         if not fast:
             data = hdu.data
+            dtype = _target_dtype(data.dtype, precision)
             if target_device_idx < 0:
-                return np.array(data, dtype=target_dtype(data.dtype))
+                return np.array(data, dtype=dtype)
             with specula.cp.cuda.Device(target_device_idx):
-                return specula.cp.asarray(np.asarray(data, dtype=target_dtype(data.dtype)))
+                return specula.cp.asarray(np.asarray(data, dtype=dtype))
         src_dtype = np.dtype(_BITPIX2DTYPE[hdr['BITPIX']])
         shape = hdu.shape
         offset = info['datLoc']
@@ -82,7 +81,7 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, s
     size = int(np.prod(shape))
     chunk = max(1, min(_CHUNK_BYTES // src_dtype.itemsize, size))
     with cp.cuda.Device(target_device_idx), cp.cuda.Stream(non_blocking=True) as stream:
-        out = cp.empty(shape, dtype=target_dtype(src_dtype))
+        out = cp.empty(shape, dtype=_target_dtype(src_dtype, precision))
         out_flat = out.reshape(-1)
         # Double buffering: a chunk is read while the previous one is uploaded and converted
         host = [np.frombuffer(cp.cuda.alloc_pinned_memory(chunk * src_dtype.itemsize),
@@ -102,3 +101,20 @@ def load_fits_array(filename, exten=1, target_device_idx=None, precision=None, s
                 done[k].record(stream)
         stream.synchronize()
     return out
+
+
+@shared_gpu.shareable
+def load_fits_getdata(filename, exten=1, target_device_idx=None, precision=None):
+    '''
+    Same as load_fits_array(), with plain astropy.io.fits.getdata():
+    simpler, but the whole file is read in host memory before being
+    converted and uploaded to the GPU.
+    '''
+    if target_device_idx is None:
+        target_device_idx = specula.default_target_device_idx
+    data = fits.getdata(filename, exten)
+    data = data.astype(_target_dtype(data.dtype, precision), copy=False)
+    if target_device_idx < 0:
+        return data
+    with specula.cp.cuda.Device(target_device_idx):
+        return specula.cp.asarray(data)
