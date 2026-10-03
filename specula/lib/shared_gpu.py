@@ -191,9 +191,9 @@ def _publish_array(key, request, arr, device_id):
         cp.cuda.runtime.memcpy(arr.data.mem.ptr, token.ctypes.data, token.nbytes,
                                cp.cuda.runtime.memcpyHostToDevice)
         handle = cp.cuda.runtime.ipcGetMemHandle(arr.data.mem.ptr)
-    # device_id is for humans only: device numbers can change between
+    # target_device_idx is for humans only: device numbers can change between
     # processes with CUDA_VISIBLE_DEVICES, the GPU is pci_bus_id
-    info = dict(request, device_id=device_id,
+    info = dict(request, target_device_idx=device_id,
                 handle=bytes(handle).hex(), token=token.tobytes().hex(),
                 shape=arr.shape, dtype=arr.dtype.str, nbytes=arr.nbytes, pid=os.getpid())
     shared = _SharedMemory(info, device_id, memory=arr.data.mem)
