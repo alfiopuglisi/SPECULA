@@ -126,7 +126,9 @@ class ModalrecMultirate(BaseProcessingObj):
         for n_slopes in slopes_per_sensor:
             self.sensor_col_offsets.append(self.sensor_col_offsets[-1] + n_slopes)
 
-        for validity_tuple, recmat_obj in self.recmat_by_mask.items():
+        # The full matrices are released while their blocks are built (see below)
+        for validity_tuple in list(self.recmat_by_mask):
+            recmat_obj = self.recmat_by_mask.pop(validity_tuple)
             if len(validity_tuple) != self.n_sensors:
                 raise ValueError(f"Validity tuple {validity_tuple} length does not match "
                                  f"number of connected sensors ({self.n_sensors}).")
@@ -136,8 +138,12 @@ class ModalrecMultirate(BaseProcessingObj):
                 raise ValueError(f"Matrix for mask {validity_tuple} has {n_cols} columns, "
                                  f"expected {total_cols} from the full sensor vector.")
 
-            self.xp_recmat_by_mask[validity_tuple] = self.to_xp(recmat_obj.recmat,
-                                                                dtype=self.dtype)
+            # One contiguous block per sensor: cupy would copy a column
+            # slice of the full matrix before each matrix product
+            recmat = self.to_xp(recmat_obj.recmat, dtype=self.dtype)
+            self.xp_recmat_by_mask[validity_tuple] = [
+                self.xp.ascontiguousarray(recmat[:, start:end])
+                for start, end in zip(self.sensor_col_offsets[:-1], self.sensor_col_offsets[1:])]
 
     def trigger_code(self):
         slopes_list = self.local_inputs['in_slopes_list']
@@ -161,19 +167,14 @@ class ModalrecMultirate(BaseProcessingObj):
         if validity_tuple not in self.xp_recmat_by_mask:
             raise KeyError(f"No reconstruction matrix provided for validity state {validity_tuple}")
 
-        current_recmat = self.xp_recmat_by_mask[validity_tuple]
+        current_blocks = self.xp_recmat_by_mask[validity_tuple]
 
-        # 3. Dynamic Matrix Slicing and Multiplication
+        # 3. Multiplication by the per-sensor blocks
         for i, s in enumerate(slopes_list):
             if validity[i]:
-                start = self.sensor_col_offsets[i]
-                end = self.sensor_col_offsets[i + 1]
-
-                # Extract the M x (N_slopes) block for this specific sensor
-                R_block = current_recmat[:, start:end]
-
                 # Project this sensor slopes into the full M-dimensional modal space
-                self.out_modes_list[i].value[:] = R_block @ s.slopes
+                # using the M x (N_slopes) block for this specific sensor
+                self.out_modes_list[i].value[:] = current_blocks[i] @ s.slopes
             else:
                 # Sensor is inactive, output M zeros
                 self.out_modes_list[i].value[:] = 0

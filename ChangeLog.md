@@ -25,6 +25,7 @@
 
 ### Other
 
+- `ModalrecMultirate` keeps one contiguous matrix block per sensor, built in `setup()` (the full matrices are released): cupy copied the column slice of the full matrix before each product (9 sensors, 0.87 GB matrix: 4.5 -> 0.7 ms per step).
 - Fixed `filt_modes` in `make_modal_base_from_ifs_fft()`, whose content was ignored: only their number was used, to drop the same number of the highest-order KL modes. They are now projected on the influence functions span and removed from the KL basis; modes outside the span, or duplicating piston, the Zernike modes or other `filt_modes`, are discarded with a warning.
 - Fixed display grouping: displays can share a window again, each one in its own `subplot` (an error is raised only if the same subplot of a window is used twice). The window size is set by the first display of the window. Each simulation now starts with no windows, closing those of a previous simulation in the same process (with `--nsimul` or in a notebook, explicit window numbers raised an error).
 - Fixed `DoublePhaseDisplay`, which always showed an error: its `trigger_code()` called `_update_display()` without the data.

@@ -184,6 +184,31 @@ class TestModalrecMultirate(unittest.TestCase):
                               n_modes_total=5, target_device_idx=target_device_idx)
 
     @cpu_and_gpu
+    def test_setup_splits_contiguous_sensor_blocks(self, target_device_idx, xp):
+        n_modes = 3
+        mat = xp.arange(n_modes * 5, dtype=xp.float32).reshape(n_modes, 5)
+        rec = ModalrecMultirate(
+            recmat_list=[Recmat(mat, target_device_idx=target_device_idx)],
+            validity_masks=[[True, True]],
+            n_modes_total=n_modes,
+            target_device_idx=target_device_idx
+        )
+
+        slopes_s1 = Slopes(length=2, target_device_idx=target_device_idx)
+        slopes_s2 = Slopes(length=3, target_device_idx=target_device_idx)
+        rec.inputs['in_slopes_list'].set([slopes_s1, slopes_s2])
+        rec.local_inputs['in_slopes_list'] = rec.inputs['in_slopes_list'].get(target_device_idx)
+        rec.setup()
+
+        blocks = rec.xp_recmat_by_mask[(True, True)]
+        self.assertEqual(len(blocks), 2)
+        for block, (start, end) in zip(blocks, [(0, 2), (2, 5)]):
+            self.assertTrue(block.flags.c_contiguous)
+            np.testing.assert_array_equal(cpuArray(block), cpuArray(mat[:, start:end]))
+        # The full matrices are not kept after setup
+        self.assertEqual(rec.recmat_by_mask, {})
+
+    @cpu_and_gpu
     def test_setup_loads_masks_from_list_order(self, target_device_idx, xp):
         n_modes = 5
         mat_both = xp.full((n_modes, 4), 1.0, dtype=xp.float32)
