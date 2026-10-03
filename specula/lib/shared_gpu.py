@@ -86,7 +86,7 @@ def _publish(name, info):
     tmp = _path(f'{name}.{os.getpid()}.tmp')
     try:
         with open(tmp, 'w') as f:
-            json.dump(info, f)
+            json.dump(info, f, indent=2)
         os.chmod(tmp, 0o666)
         os.replace(tmp, _path(name))
     finally:
@@ -191,7 +191,10 @@ def _publish_array(key, request, arr, device_id):
         cp.cuda.runtime.memcpy(arr.data.mem.ptr, token.ctypes.data, token.nbytes,
                                cp.cuda.runtime.memcpyHostToDevice)
         handle = cp.cuda.runtime.ipcGetMemHandle(arr.data.mem.ptr)
-    info = dict(request, handle=bytes(handle).hex(), token=token.tobytes().hex(),
+    # device_id is for humans only: device numbers can change between
+    # processes with CUDA_VISIBLE_DEVICES, the GPU is pci_bus_id
+    info = dict(request, device_id=device_id,
+                handle=bytes(handle).hex(), token=token.tobytes().hex(),
                 shape=arr.shape, dtype=arr.dtype.str, nbytes=arr.nbytes, pid=os.getpid())
     shared = _SharedMemory(info, device_id, memory=arr.data.mem)
     _publish(f'{key}.json', info)
@@ -235,6 +238,8 @@ def get_shared_array(filename, exten=1, target_device_idx=None, precision=None):
     path, name = os.path.split(request['file'])
     key = '_'.join([os.path.basename(path)[:100], os.path.splitext(name)[0][:100],
                     hashlib.sha1(json.dumps(request, sort_keys=True).encode()).hexdigest()[:16]])
+    # Not in the hash, so that a rewritten file replaces its json file instead
+    # of adding one, but checked by current() against the published array
     request.update(mtime_ns=st.st_mtime_ns, size=st.st_size)
 
     def current(info):
