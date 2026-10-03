@@ -58,7 +58,7 @@ class BaseModalrec(BaseProcessingObj):
         slopes_list = self.local_inputs['in_slopes_list']
 
         if slopes is None:
-            self.slopes[:] = self.xp.hstack([x.slopes for x in slopes_list])
+            self.xp.concatenate([x.slopes for x in slopes_list], out=self.slopes)
         else:
             self.slopes[:] = slopes.slopes
 
@@ -111,7 +111,7 @@ class BasePolcModalrec(BaseModalrec):
 
         if commands is None:
             # Handle list of commands (e.g. from multiple DMs)
-            self.commands[:] = self.xp.hstack([x.value for x in commands_list])
+            self.xp.concatenate([x.value for x in commands_list], out=self.commands)
         else:
             if commands.value is None:
                 self.commands[:] = 0.0
