@@ -73,6 +73,13 @@ class BaseProcessingObj(BaseTimeObj):
     def addRemoteOutput(self, name, remote_output):
         self.remote_outputs[name].append(remote_output)
 
+    def output_connected(self, output_name):
+        '''
+        Called by Simul each time the output *output_name* is connected
+        to an input (local or remote). Override to react to it.
+        '''
+        pass
+
     def checkInputTimes(self):
         '''
         Determine whether this processing object needs to execute

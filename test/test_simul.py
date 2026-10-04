@@ -23,7 +23,7 @@ from specula.lib.utils import import_class as real_import_class
 from specula.processing_objects.modalrec_multirate import ModalrecMultirate
 from specula.data_objects.iir_filter_data import IirFilterData
 from specula.scalar_values import IntValue
-from specula.base_processing_obj import InputDesc
+from specula.base_processing_obj import BaseProcessingObj, InputDesc
 
 class DummyObj:
     def __init__(self):
@@ -116,6 +116,24 @@ class TestSimul(unittest.TestCase):
         val = simul.objs['b'].inputs['in'].get(-1)
         assert isinstance(val, list)
         assert all(isinstance(x, DummyOutputDerived) for x in val)
+
+    def test_output_connected_is_called(self):
+        '''Test that the output owner is notified of each connection'''
+        simul = self.dummySimul
+        simul.objs['a'] = BaseProcessingObj()
+        simul.objs['a'].outputs['out1'] = DummyOutputDerived()
+        simul.objs['a'].outputs['out2'] = DummyOutputDerived()
+        simul.objs['b'].inputs['in'] = InputList(type=DummyOutput)
+
+        with patch.object(simul.objs['a'], 'output_connected') as mock:
+            simul.connect_objects({
+                'b': {
+                    'inputs': {
+                        'in': ['a.out1', 'a.out2']
+                    }
+                }
+            })
+        assert [c.args for c in mock.call_args_list] == [('out1',), ('out2',)]
 
     def test_missing_output_raises(self):
         simul = self.dummySimul

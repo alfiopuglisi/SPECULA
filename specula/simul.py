@@ -521,6 +521,11 @@ class Simul():
         if send or recv:
             tag = computeTag(output.obj_name, dest_object, output.output_key, input_name)
 
+        if send or local:
+            output_obj = self.objs[output.obj_name]
+            if isinstance(output_obj, BaseProcessingObj):
+                output_obj.output_connected(output.output_key)
+
         self.logger.mpi_debug(f'{output.obj_name}.{output.output_key} -> {dest_object} : {send=} {recv=} {local=}')
 
         if recv:
