@@ -227,6 +227,26 @@ class TestSimul(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = simul.build_trigger_order(pars)
 
+    def test_circular_loop_without_delays_raises(self):
+
+        pars = {
+            'obj1': {
+                'class': 'WaveGenerator',
+                'inputs': {
+                    'in1': 'obj2.output'
+                },
+            },
+            'obj2': {
+                'class': 'WaveGenerator',
+                'inputs': {
+                    'in2': 'obj1.output'
+                }
+            },
+        }
+        simul = Simul('dummy.yaml')
+        with self.assertRaisesRegex(ValueError, 'obj1'):
+            _ = simul.build_trigger_order(pars)
+
 
     def test_combine_params(self):
 
