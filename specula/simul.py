@@ -29,6 +29,14 @@ def computeTag(output_obj_name, dest_object, output_attr_name, input_attr_name):
     return rr
 
 
+# Bytes added to the array sizes of each output sent via MPI, for the pickled
+# attributes and the generation time message
+MPI_MESSAGE_MARGIN = 64 * 1024
+
+# Minimum size of the MPI buffer
+MPI_MIN_BUFFER_SIZE = 16 * 1024**2
+
+
 class Simul():
     '''
     Simulation organizer
@@ -600,6 +608,28 @@ class Simul():
                         raise
 
 
+    def mpi_buffer_size(self, bsend_overhead):
+        '''
+        Size in bytes of the MPI buffer needed by the buffered sends of the
+        outputs connected to remote inputs, estimated from the sizes of their
+        arrays. Since the messages of two consecutive iterations can be in the
+        buffer at the same time, twice the size of one iteration is returned.
+        *bsend_overhead* is MPI.BSEND_OVERHEAD, added to each message.
+        '''
+        array_types = tuple(specula.array_types)
+        iteration_bytes = 0
+        for obj in self.objs.values():
+            if not isinstance(obj, BaseProcessingObj):
+                continue
+            for out_name, remote_specs in obj.remote_outputs.items():
+                output = obj.outputs[out_name]
+                for item in output if isinstance(output, list) else [output]:
+                    item_bytes = sum(v.nbytes for v in vars(item).values() if isinstance(v, array_types))
+                    # Two messages: data and generation time
+                    item_bytes += MPI_MESSAGE_MARGIN + 2 * bsend_overhead
+                    iteration_bytes += item_bytes * len(remote_specs)
+        return max(2 * iteration_bytes, MPI_MIN_BUFFER_SIZE)
+
     def isReplay(self, params):
         return 'data_source' in params
 
@@ -1026,6 +1056,13 @@ class Simul():
             preroll_objs = self.find_preroll_objects(params)
             self._check_preroll_is_local(preroll_objs)
 
+        if specula.process_comm is not None:
+            from mpi4py import MPI
+            mpi_buffer_size = self.mpi_buffer_size(MPI.BSEND_OVERHEAD)
+            self.logger.info(f'MPI buffer size: {mpi_buffer_size / 1024**2:.1f} MB')
+            mpi_buffer = bytearray(mpi_buffer_size)
+            MPI.Attach_buffer(mpi_buffer)
+
         # Run simulation loop
         total_time = self.mainParams['total_time']
         run_time = (end_time if end_time is not None else total_time) - start_time
@@ -1038,6 +1075,11 @@ class Simul():
                           preroll_objs=preroll_objs)
         finally:
             display_process.stop(self.logger)
+
+        # Not in the finally clause: after an exception, detaching may wait
+        # forever for messages that will never be received
+        if specula.process_comm is not None:
+            MPI.Detach_buffer()
 
         self.logger.debug(f'Simulation finished')
 #        if data_store.has_key('sr'):

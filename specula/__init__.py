@@ -221,15 +221,10 @@ def main_simul(yml_files: list,
             logger.error("mpi4py import failed.")
             raise
 
+        # The buffer for the buffered sends is attached by Simul.run(),
+        # sized for the outputs sent by this rank
         comm = pkl5.Intracomm(MPI.COMM_WORLD)
         rank = comm.Get_rank()
-        N = 10000000
-        datatype = MPI.FLOAT
-        num_bytes = N * (datatype.Pack_size(count=1, comm=comm) + MPI.BSEND_OVERHEAD)
-
-        logger.debug(f'MPI buffer size: {num_bytes/1024**2:.2f} MB')
-        attached_buf = bytearray(num_bytes)
-        MPI.Attach_buffer(attached_buf)
     else:
         rank = None
         comm = None
@@ -290,8 +285,5 @@ def main_simul(yml_files: list,
         pr.disable()
         stats = pstats.Stats(pr).sort_stats("cumtime")
         stats.print_stats(r"\((?!\_).*\)$", 200)
-        
-    if mpi:
-        MPI.Detach_buffer()
 
 

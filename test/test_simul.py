@@ -912,6 +912,31 @@ store:
 
         assert len(set((tag1, tag2, tag3, tag4, tag5))) == 5
 
+    def test_mpi_buffer_size(self):
+        '''Test that the MPI buffer is sized for two iterations of the remote outputs'''
+        from specula.base_processing_obj import BaseProcessingObj
+        from specula.base_value import BaseValue
+        from specula.simul import MPI_MESSAGE_MARGIN, MPI_MIN_BUFFER_SIZE
+
+        big = BaseValue(value=np.zeros((2048, 2048), dtype=np.float32))  # 16 MB
+        small = BaseValue(value=np.zeros(10, dtype=np.float32))
+        sender = BaseProcessingObj()
+        sender.outputs = {'out_big': big, 'out_small': small, 'out_local': big}
+        sender.addRemoteOutput('out_big', (1, 0, 0))
+        sender.addRemoteOutput('out_big', (2, 2, 0))
+        sender.addRemoteOutput('out_small', (1, 4, 0))
+
+        simul = Simul('dummy.yaml')
+        simul.objs = {'sender': sender, 'data': big}
+        overhead = 100
+        expected = 2 * (2 * (big.value.nbytes + MPI_MESSAGE_MARGIN + 2 * overhead) +
+                        small.value.nbytes + MPI_MESSAGE_MARGIN + 2 * overhead)
+        assert simul.mpi_buffer_size(overhead) == expected
+
+        # Without remote outputs, the minimum size is used
+        simul.objs = {'data': big}
+        assert simul.mpi_buffer_size(overhead) == MPI_MIN_BUFFER_SIZE
+
     def test_target_device_idx(self):
 
         yml = '''
