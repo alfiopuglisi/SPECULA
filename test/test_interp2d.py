@@ -321,6 +321,35 @@ class TestInterp2D(unittest.TestCase):
             self.skipTest("This test only runs on GPU with CuPy")
 
     @cpu_and_gpu
+    def test_grid_matches_precomputed(self, target_device_idx, xp):
+        '''
+        A regular grid given with grid_scale and grid_offset must give the same
+        result as the equivalent precomputed xx and yy, including rotation and
+        clamping at the edges. On GPU, the grid is computed on the fly.
+        '''
+        input_shape = (60, 70)
+        output_shape = (40, 40)
+        scale = (0.9, 0.9)
+        offset = (12.3, 8.7)
+        for dtype in (xp.float32, xp.float64):
+            for rot in (0, 33.0):
+                with self.subTest(dtype=dtype, rot=rot):
+                    data = xp.asarray(np.random.default_rng(1).standard_normal(input_shape), dtype=dtype)
+                    yy, xx = np.mgrid[0:output_shape[0], 0:output_shape[1]]
+                    interp_ref = Interp2D(input_shape, output_shape,
+                                          xx=xx * scale[1] + offset[1], yy=yy * scale[0] + offset[0],
+                                          rotInDeg=rot, xp=xp, dtype=dtype)
+                    interp = Interp2D(input_shape, output_shape,
+                                      grid_scale=scale, grid_offset=offset,
+                                      rotInDeg=rot, xp=xp, dtype=dtype)
+                    if xp == cp:
+                        assert not interp.use_precomputed
+                    rtol = 1e-4 if dtype == xp.float32 else 1e-10
+                    np.testing.assert_allclose(cpuArray(interp.interpolate(data)),
+                                               cpuArray(interp_ref.interpolate(data)),
+                                               rtol=rtol, atol=rtol)
+
+    @cpu_and_gpu
     @unittest.skipIf(cp is None, "This test requires CuPy (GPU)")
     def test_onthefly_float64(self, target_device_idx, xp):
         '''

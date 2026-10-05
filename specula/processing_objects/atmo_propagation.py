@@ -1,5 +1,4 @@
 from specula.base_value import BaseValue
-from specula.lib.make_xy import make_xy
 from specula.lib.utils import local_mean_rebin
 from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.lib.interp2d import Interp2D
@@ -595,9 +594,12 @@ class AtmoPropagation(BaseProcessingObj):
             pixel_pupmeta /= self.magnification_list[layer]
 
         angle = -layer.rotInDeg % 360
-        xx, yy = make_xy(self.pixel_pupil_size, pixel_pupmeta/2., xp=self.xp)
-        xx1 = xx + half_pixel_layer[0] + pixel_position[0]
-        yy1 = yy + half_pixel_layer[1] + pixel_position[1]
+        # Regular grid of pixel_pupil_size points with pixel_pupmeta/pixel_pupil_size
+        # spacing, centered on the source position (same sampling as make_xy())
+        scale = pixel_pupmeta / self.pixel_pupil_size
+        grid_start = -(self.pixel_pupil_size - 1) / 2 * scale
+        offset_x = grid_start + half_pixel_layer[0] + pixel_position[0]
+        offset_y = grid_start + half_pixel_layer[1] + pixel_position[1]
 
         # Check that the source falls within the usable FoV of the layer.
         # Use pixel_pupmeta (effective footprint after cone/magnification) rather than
@@ -613,7 +615,8 @@ class AtmoPropagation(BaseProcessingObj):
                   f' which may lead to artifacts if the layer has significant shift or rotation.')  
             return None
 
-        return Interp2D(layer.size, (self.pixel_pupil_size, self.pixel_pupil_size), xx=xx1, yy=yy1,
+        return Interp2D(layer.size, (self.pixel_pupil_size, self.pixel_pupil_size),
+                        grid_scale=(scale, scale), grid_offset=(offset_y, offset_x),
                         rotInDeg=angle, xp=self.xp, dtype=self.dtype)
 
     def setup(self):

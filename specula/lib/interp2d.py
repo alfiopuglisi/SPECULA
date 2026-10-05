@@ -109,7 +109,8 @@ class Interp2D():
     def __init__(self, input_shape, output_shape,
                  rotInDeg=0, rowShiftInPixels=0,
                  colShiftInPixels=0, magnification=1.0,
-                 yy=None, xx=None, dtype=np.float32, xp=np):
+                 yy=None, xx=None, grid_scale=None, grid_offset=None,
+                 dtype=np.float32, xp=np):
         '''
         Initialize an Interp2D object for 2D interpolation between arrays.
 
@@ -131,6 +132,12 @@ class Interp2D():
             Precomputed y-coordinates for the output grid (same shape as output_shape).
         xx : array-like, optional
             Precomputed x-coordinates for the output grid (same shape as output_shape).
+        grid_scale : tuple of float, optional
+            (row, col) input pixels per output pixel of a regular output grid, an
+            alternative to `xx` and `yy` (default: (input_shape - 1) / output_shape).
+        grid_offset : tuple of float, optional
+            (row, col) input coordinates of the first output pixel of the regular
+            output grid (default: (0, 0)).
         dtype : data-type, optional
             Data type for interpolation (default: np.float32).
         xp : module, optional
@@ -139,7 +146,10 @@ class Interp2D():
         Notes
         -----
         If `xx` and `yy` are not provided, they are generated to map the output grid
-        to the input grid, with optional rotation and shift applied.
+        to the input grid, with optional rotation and shift applied. Output pixel
+        (row, col) is mapped to input coordinates grid_offset + (row, col) * grid_scale
+        before rotation, magnification and shift. On GPU these coordinates are computed
+        on the fly, without storing them.
         '''
         self.xp = xp
         self.dtype = dtype
@@ -153,7 +163,8 @@ class Interp2D():
             rowShiftInPixels == 0 and
             colShiftInPixels == 0 and
             magnification == 1.0 and
-            xx is None and yy is None):
+            xx is None and yy is None and
+            grid_scale is None and grid_offset is None):
             # If not, it will be skipped later
             self.do_interp = False
             self.shift_x = 0.0
@@ -161,6 +172,17 @@ class Interp2D():
             self.rot_angle = 0.0
             self.magnification = 1.0
             return
+
+        if (xx is not None or yy is not None) and \
+                (grid_scale is not None or grid_offset is not None):
+            raise ValueError('xx and yy cannot be used together with grid_scale and grid_offset')
+        if grid_scale is None:
+            grid_scale = ((input_shape[0] - 1) / output_shape[0],
+                          (input_shape[1] - 1) / output_shape[1])
+        if grid_offset is None:
+            grid_offset = (0, 0)
+        offset_x = 0.0
+        offset_y = 0.0
 
         # Decide whether to use on-the-fly or precomputed coordinates
         # Use on-the-fly ONLY when:
@@ -170,18 +192,23 @@ class Interp2D():
 
         if use_onthefly:
             self.use_precomputed = False
-            self.scale_x = self.dtype((input_shape[1] - 1) / output_shape[1])
-            self.scale_y = self.dtype((input_shape[0] - 1) / output_shape[0])
+            self.scale_x = self.dtype(grid_scale[1])
+            self.scale_y = self.dtype(grid_scale[0])
+            # The kernel applies the shift after rotation and magnification,
+            # so the grid offset is rotated and demagnified into it
+            cos_ = np.cos(rotInDeg * np.pi / 180.0)
+            sin_ = np.sin(rotInDeg * np.pi / 180.0)
+            offset_x = (grid_offset[1] * cos_ - grid_offset[0] * sin_) / magnification
+            offset_y = (grid_offset[1] * sin_ + grid_offset[0] * cos_) / magnification
             self.xx = None
             self.yy = None
         else:
             self.use_precomputed = True
             if xx is None or yy is None:
                 yy, xx = map(self.dtype, np.mgrid[0:output_shape[0], 0:output_shape[1]])
-                # This -1 appears to be correct by comparing with IDL code
-                # It is not used in propagation, where xx and yy are set from the caller code
-                yy *= (input_shape[0]-1) / output_shape[0]
-                xx *= (input_shape[1]-1) / output_shape[1]
+                # The -1 of the default grid_scale appears to be correct by comparing with IDL code
+                yy = yy * grid_scale[0] + grid_offset[0]
+                xx = xx * grid_scale[1] + grid_offset[1]
             else:
                 if yy.shape != output_shape or xx.shape != output_shape:
                     raise ValueError(f'yy and xx must have shape {output_shape}')
@@ -222,8 +249,8 @@ class Interp2D():
             self.scale_x = None
             self.scale_y = None
 
-        self.shift_x = self.dtype(colShiftInPixels)
-        self.shift_y = self.dtype(rowShiftInPixels)
+        self.shift_x = self.dtype(colShiftInPixels + offset_x)
+        self.shift_y = self.dtype(rowShiftInPixels + offset_y)
         self.rot_angle = rotInDeg * np.pi / 180.0
         self.magnification = self.dtype(magnification)
         self.cos_angle = self.dtype(np.cos(self.rot_angle))
