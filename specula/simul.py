@@ -934,14 +934,19 @@ class Simul():
         if len(self.overrides) > 0:
             for k, v in yaml.full_load(self.overrides).items():
                 parts = k.split('.')
-                if len(parts) == 2:
-                    params[parts[0]][parts[1]] = v
-                    self.logger.debug(f'{parts} {v}')
-                elif len(parts) == 3:
-                    params[parts[0]][parts[1]][parts[2]] = v
-                    self.logger.debug(f'{parts} {v}')
-                else:
-                    raise ValueError(f"Invalid number of parts detected in override: {parts}. Did you add/forget a '.'?")
+                if len(parts) < 2:
+                    raise ValueError(f"Invalid override {k}: expected at least 'object.parameter'")
+                # All keys except the last one must already exist
+                target = params
+                for i, part in enumerate(parts[:-1]):
+                    if not isinstance(target, dict) or part not in target:
+                        raise ValueError(f"Invalid override {k}: {'.'.join(parts[:i+1])} not found."
+                                         f" Did you add/forget a '.'?")
+                    target = target[part]
+                if not isinstance(target, dict):
+                    raise ValueError(f"Invalid override {k}: {'.'.join(parts[:-1])} is not a dictionary")
+                target[parts[-1]] = v
+                self.logger.debug(f'{parts} {v}')
     
     def run(self, start_time=0, end_time=None):
         # Forget the display windows of a previous simulation in the same process

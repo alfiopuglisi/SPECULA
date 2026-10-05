@@ -351,6 +351,22 @@ class TestSimul(unittest.TestCase):
         with self.assertRaises(ValueError):
             simul.apply_overrides(params)
 
+    def test_overrides_any_depth(self):
+        params = {'obj': {'class': 'Foo',
+                          'a': {'b': {'c': 1, 'd': 2}},
+                          'lst': [1, 2]}}
+        simul = Simul('dummy.yaml')
+
+        simul.overrides = "{obj.a.b.c: 10, obj.a.b.e: 3}"
+        simul.apply_overrides(params)
+        assert params['obj']['a']['b'] == {'c': 10, 'd': 2, 'e': 3}
+
+        # Missing intermediate key, non-dict intermediate value, single key
+        for override in ["{obj.x.c: 1}", "{obj.a.b.c.d: 1}", "{obj.lst.x: 1}", "{obj: 1}"]:
+            simul.overrides = override
+            with self.assertRaises(ValueError):
+                simul.apply_overrides(params)
+
     def test_ref_suffix_resolves_referenced_object(self):
         '''
         Test that a _ref suffix in a YAML key is stripped and the value is resolved
