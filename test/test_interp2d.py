@@ -8,7 +8,6 @@ specula.init(0)  # Default target device
 
 from specula import np, cp, cpuArray
 
-from specula.lib.make_xy import make_xy
 from specula.lib.interp2d import Interp2D
 
 from test.specula_testlib import cpu_and_gpu
@@ -27,11 +26,14 @@ class TestInterp2D(unittest.TestCase):
         pixel_pupil = 480
         pixel_pupmeta = 479.84003
 
-        xx, yy = make_xy(pixel_pupil, pixel_pupmeta/2., xp=xp)
-        xx1 = xx + half_pixel_layer[0] + pixel_position[0]
-        yy1 = yy + half_pixel_layer[1] + pixel_position[1]
-        interpolator = Interp2D(phase.shape, (pixel_pupil, pixel_pupil), xx=xx1, yy=yy1,
-                      rotInDeg=0, xp=xp, dtype=xp.float32)
+        # Same sampling as make_xy(pixel_pupil, pixel_pupmeta/2.), as in AtmoPropagation
+        scale = pixel_pupmeta / pixel_pupil
+        grid_start = -(pixel_pupil - 1) / 2 * scale
+        interpolator = Interp2D(phase.shape, (pixel_pupil, pixel_pupil),
+                                grid_scale=(scale, scale),
+                                grid_offset=(grid_start + half_pixel_layer[1] + pixel_position[1],
+                                             grid_start + half_pixel_layer[0] + pixel_position[0]),
+                                rotInDeg=0, xp=xp, dtype=xp.float32)
 
         output_phase = interpolator.interpolate(xp.array(phase))
 
@@ -75,7 +77,7 @@ class TestInterp2D(unittest.TestCase):
     def test_interp2d_magnification(self, target_device_idx, xp):
         '''
         Test that magnification correctly scales the input array.
-        Works on both CPU (scipy) and GPU (cupy/precomputed or on-the-fly).
+        Works on both CPU (scipy) and GPU (on-the-fly kernel).
         '''
         input_shape = (10, 10)
         output_shape = (10, 10)
@@ -122,109 +124,70 @@ class TestInterp2D(unittest.TestCase):
 
     @cpu_and_gpu
     @unittest.skipIf(cp is None, "This test requires CuPy (GPU)")
-    def test_onthefly_vs_precomputed(self, target_device_idx, xp):
+    def test_gpu_vs_cpu(self, target_device_idx, xp):
         '''
-        Test that interp2_kernel_onthefly produces the same results as interp2_kernel
-        with precomputed coordinates. This test runs only on GPU.
+        Test that the on-the-fly GPU kernel produces the same results as the CPU
+        path, which precomputes the coordinates. This test runs only on GPU.
         '''
         if xp == cp: # pragma: no cover
             # Test various scenarios
             test_cases = [
-                # (input_shape, output_shape, rotInDeg, rowShift, colShift, magnification, description)
-                ((100, 100), (50, 50), 0, 0, 0, 1.0, "simple downscaling"),
-                ((100, 100), (150, 150), 0, 0, 0, 1.0, "simple upscaling"),
-                ((100, 100), (100, 100), 45, 0, 0, 1.0, "rotation 45 degrees"),
-                ((100, 100), (100, 100), 0, 10, 5, 1.0, "shift only"),
-                ((100, 100), (80, 80), 30, 5, -3, 1.0, "rotation + shift + scaling"),
-                ((200, 150), (100, 120), 15, 2.5, 1.5, 1.0, "non-square with rotation and shift"),
-                ((100, 100), (100, 100), 45, 1, 1, 0.5, "rotation, shift and magnification"),
+                # (input_shape, output_shape, rotInDeg, rowShift, colShift, magnification,
+                #  grid_scale, grid_offset, description)
+                ((100, 100), (50, 50), 0, 0, 0, 1.0, None, None, "simple downscaling"),
+                ((100, 100), (150, 150), 0, 0, 0, 1.0, None, None, "simple upscaling"),
+                ((100, 100), (100, 100), 45, 0, 0, 1.0, None, None, "rotation 45 degrees"),
+                ((100, 100), (100, 100), 0, 10, 5, 1.0, None, None, "shift only"),
+                ((100, 100), (80, 80), 30, 5, -3, 1.0, None, None, "rotation + shift + scaling"),
+                ((200, 150), (100, 120), 15, 2.5, 1.5, 1.0, None, None, "non-square with rotation and shift"),
+                ((100, 100), (100, 100), 45, 1, 1, 0.5, None, None, "rotation, shift and magnification"),
+                ((60, 70), (40, 40), 0, 0, 0, 1.0, (0.9, 0.9), (12.3, 8.7), "grid scale and offset"),
+                ((60, 70), (40, 40), 33, 1, 2, 1.5, (0.9, 0.8), (12.3, 8.7),
+                 "grid with rotation, shift and magnification"),
             ]
 
-            for input_shape, output_shape, rot, row_shift, col_shift, magnification, description in test_cases:
+            rng = np.random.default_rng(1)
+            for (input_shape, output_shape, rot, row_shift, col_shift, magnification,
+                 grid_scale, grid_offset, description) in test_cases:
                 with self.subTest(case=description):
                     # Create test input array with some structure
-                    phase_in = xp.random.rand(*input_shape).astype(xp.float32)
+                    phase_in = rng.random(input_shape).astype(np.float32)
                     # Add some features to make interpolation differences visible
-                    y, x = xp.mgrid[0:input_shape[0], 0:input_shape[1]]
-                    phase_in += xp.sin(x * 0.1) * xp.cos(y * 0.1)
+                    y, x = np.mgrid[0:input_shape[0], 0:input_shape[1]]
+                    phase_in += np.sin(x * 0.1) * np.cos(y * 0.1)
 
-                    # Method 1: on-the-fly (no xx, yy provided)
-                    interp_onthefly = Interp2D(
-                        input_shape, output_shape,
-                        rotInDeg=rot,
-                        rowShiftInPixels=row_shift,
-                        colShiftInPixels=col_shift,
-                        magnification=magnification,
-                        xp=xp,
-                        dtype=xp.float32
-                    )
-                    assert not interp_onthefly.use_precomputed, \
-                        f"Expected on-the-fly mode for {description}"
-
-                    output_onthefly = interp_onthefly.interpolate(phase_in)
-
-                    # Method 2: precomputed coordinates (generate xx, yy manually)
-                    yy, xx = xp.mgrid[0:output_shape[0], 0:output_shape[1]]
-                    yy = yy.astype(xp.float32)
-                    xx = xx.astype(xp.float32)
-                    yy *= (input_shape[0]-1) / output_shape[0]
-                    xx *= (input_shape[1]-1) / output_shape[1]
-
-                    # Apply rotation and magnification
-                    if rot != 0 or magnification != 1.0:
-                        yc = input_shape[0] / 2 - 0.5
-                        xc = input_shape[1] / 2 - 0.5
-
-                        xx_centered = (xx - xc) / magnification
-                        yy_centered = (yy - yc) / magnification
-
-                        if rot != 0:
-                            cos_ = xp.cos(rot * xp.pi / 180.0)
-                            sin_ = xp.sin(rot * xp.pi / 180.0)
-                            xxr = xx_centered * cos_ - yy_centered * sin_
-                            yyr = xx_centered * sin_ + yy_centered * cos_
-                            xx_centered = xxr
-                            yy_centered = yyr
-
-                        xx = xx_centered + xc
-                        yy = yy_centered + yc
-
-                    # Apply shift
-                    if row_shift != 0 or col_shift != 0:
-                        yy += row_shift
-                        xx += col_shift
-
-                    # Clamp
-                    yy = xp.clip(yy, 0, input_shape[0] - 1)
-                    xx = xp.clip(xx, 0, input_shape[1] - 1)
-
-                    interp_precomputed = Interp2D(
-                        input_shape, output_shape,
-                        xx=xx, yy=yy,
-                        xp=xp,
-                        dtype=xp.float32
-                    )
-                    assert interp_precomputed.use_precomputed, \
-                        f"Expected precomputed mode for {description}"
-
-                    output_precomputed = interp_precomputed.interpolate(phase_in)
+                    outputs = []
+                    for xp_ in (cp, np):
+                        interp = Interp2D(
+                            input_shape, output_shape,
+                            rotInDeg=rot,
+                            rowShiftInPixels=row_shift,
+                            colShiftInPixels=col_shift,
+                            magnification=magnification,
+                            grid_scale=grid_scale,
+                            grid_offset=grid_offset,
+                            xp=xp_,
+                            dtype=np.float32
+                        )
+                        outputs.append(cpuArray(interp.interpolate(xp_.asarray(phase_in))))
+                    output_gpu, output_cpu = outputs
 
                     # Compare results
-                    diff = cpuArray(xp.abs(output_onthefly - output_precomputed))
-                    max_diff = xp.max(diff)
-                    mean_diff = xp.mean(diff)
+                    diff = np.abs(output_gpu - output_cpu)
+                    max_diff = np.max(diff)
+                    mean_diff = np.mean(diff)
 
                     plot_debug = False
                     if plot_debug: # pragma: no cover
                         import matplotlib.pyplot as plt
                         plt.figure(figsize=(12,4))
                         plt.subplot(1,3,1)
-                        plt.title('On-the-fly output')
-                        plt.imshow(cpuArray(output_onthefly), cmap='viridis')
+                        plt.title('GPU output')
+                        plt.imshow(output_gpu, cmap='viridis')
                         plt.colorbar()
                         plt.subplot(1,3,2)
-                        plt.title('Precomputed output')
-                        plt.imshow(cpuArray(output_precomputed), cmap='viridis')
+                        plt.title('CPU output')
+                        plt.imshow(output_cpu, cmap='viridis')
                         plt.colorbar()
                         plt.subplot(1,3,3)
                         plt.title('Absolute difference')
@@ -258,7 +221,7 @@ class TestInterp2D(unittest.TestCase):
 
     @cpu_and_gpu
     @unittest.skipIf(cp is None, "This test requires CuPy (GPU)")
-    def test_precomputed_corner_no_out_of_bounds_read(self, target_device_idx, xp):
+    def test_exact_corner_no_out_of_bounds_read(self, target_device_idx, xp):
         '''
         Sampling the last row and column exactly must not read past the end
         of the input array (bottom-right corner).
@@ -269,8 +232,7 @@ class TestInterp2D(unittest.TestCase):
                 with self.subTest(dtype=dtype):
                     data = xp.arange(input_shape[0] * input_shape[1], dtype=dtype).reshape(input_shape)
                     phase_in = self._with_nan_sentinel(xp, data)
-                    yy, xx = xp.mgrid[0:input_shape[0], 0:input_shape[1]].astype(dtype)
-                    interp = Interp2D(input_shape, input_shape, xx=xx, yy=yy, xp=xp, dtype=dtype)
+                    interp = Interp2D(input_shape, input_shape, grid_scale=(1, 1), xp=xp, dtype=dtype)
                     output = interp.interpolate(phase_in)
                     np.testing.assert_array_equal(cpuArray(output), cpuArray(data))
         else:
@@ -292,7 +254,6 @@ class TestInterp2D(unittest.TestCase):
                     interp = Interp2D(input_shape, input_shape,
                                       rowShiftInPixels=1000, colShiftInPixels=1000,
                                       xp=xp, dtype=dtype)
-                    assert not interp.use_precomputed
                     output = cpuArray(interp.interpolate(phase_in))
                     np.testing.assert_array_equal(output, np.full(input_shape, cpuArray(data[-1, -1])))
         else:
@@ -311,43 +272,15 @@ class TestInterp2D(unittest.TestCase):
                 with self.subTest(dtype=dtype):
                     data = xp.arange(input_shape[0] * input_shape[1], dtype=dtype).reshape(input_shape)
                     data[:, 0] = xp.nan
-                    yy = xp.repeat(xp.arange(input_shape[0], dtype=dtype)[:, None], 5, axis=1)
-                    xx = xp.full_like(yy, input_shape[1] - 1)
-                    interp = Interp2D(input_shape, yy.shape, xx=xx, yy=yy, xp=xp, dtype=dtype)
+                    # Every output column samples the last input column
+                    interp = Interp2D(input_shape, (input_shape[0], 5),
+                                      grid_scale=(1, 0), grid_offset=(0, input_shape[1] - 1),
+                                      xp=xp, dtype=dtype)
                     output = cpuArray(interp.interpolate(data))
                     expected = np.repeat(cpuArray(data[:, -1])[:, None], 5, axis=1)
                     np.testing.assert_array_equal(output, expected)
         else:
             self.skipTest("This test only runs on GPU with CuPy")
-
-    @cpu_and_gpu
-    def test_grid_matches_precomputed(self, target_device_idx, xp):
-        '''
-        A regular grid given with grid_scale and grid_offset must give the same
-        result as the equivalent precomputed xx and yy, including rotation and
-        clamping at the edges. On GPU, the grid is computed on the fly.
-        '''
-        input_shape = (60, 70)
-        output_shape = (40, 40)
-        scale = (0.9, 0.9)
-        offset = (12.3, 8.7)
-        for dtype in (xp.float32, xp.float64):
-            for rot in (0, 33.0):
-                with self.subTest(dtype=dtype, rot=rot):
-                    data = xp.asarray(np.random.default_rng(1).standard_normal(input_shape), dtype=dtype)
-                    yy, xx = np.mgrid[0:output_shape[0], 0:output_shape[1]]
-                    interp_ref = Interp2D(input_shape, output_shape,
-                                          xx=xx * scale[1] + offset[1], yy=yy * scale[0] + offset[0],
-                                          rotInDeg=rot, xp=xp, dtype=dtype)
-                    interp = Interp2D(input_shape, output_shape,
-                                      grid_scale=scale, grid_offset=offset,
-                                      rotInDeg=rot, xp=xp, dtype=dtype)
-                    if xp == cp:
-                        assert not interp.use_precomputed
-                    rtol = 1e-4 if dtype == xp.float32 else 1e-10
-                    np.testing.assert_allclose(cpuArray(interp.interpolate(data)),
-                                               cpuArray(interp_ref.interpolate(data)),
-                                               rtol=rtol, atol=rtol)
 
     @cpu_and_gpu
     @unittest.skipIf(cp is None, "This test requires CuPy (GPU)")

@@ -5,7 +5,7 @@ from scipy.interpolate import RegularGridInterpolator
 class Interp2D():
 
     if cp: # pragma: no cover
-        # Definition of bilinear interpolation device function used by both kernels
+        # Definition of bilinear interpolation device function
         bilinear_interp_device = r'''
             __device__ TYPE bilinear_interp(TYPE *g_in, int in_dx, int in_dy, TYPE xcoord, TYPE ycoord) {
                 int xin = floor(xcoord);
@@ -29,24 +29,6 @@ class Interp2D():
                        g_in[idx_d] * xdist * ydist;
             }
             '''
-
-        interp2_kernel = bilinear_interp_device + r'''
-            extern "C" __global__
-            void interp2_kernel_TYPE(TYPE *g_in, TYPE *g_out, int out_dx, int out_dy, int in_dx, int in_dy, TYPE *xx, TYPE *yy) {
-                int y = blockIdx.y * blockDim.y + threadIdx.y;
-                int x = blockIdx.x * blockDim.x + threadIdx.x;
-
-                if ((y < out_dy) && (x < out_dx)) {
-                    TYPE xcoord = xx[y * out_dx + x];
-                    TYPE ycoord = yy[y * out_dx + x];
-                    g_out[y * out_dx + x] = bilinear_interp(g_in, in_dx, in_dy, xcoord, ycoord);
-                }
-            }
-            '''
-        interp2_kernel_float = \
-            cp.RawKernel(interp2_kernel.replace('TYPE', 'float'), name='interp2_kernel_float')
-        interp2_kernel_double = \
-            cp.RawKernel(interp2_kernel.replace('TYPE', 'double'), name='interp2_kernel_double')
 
         interp2_kernel_onthefly = bilinear_interp_device + r'''
             extern "C" __global__
@@ -109,7 +91,7 @@ class Interp2D():
     def __init__(self, input_shape, output_shape,
                  rotInDeg=0, rowShiftInPixels=0,
                  colShiftInPixels=0, magnification=1.0,
-                 yy=None, xx=None, grid_scale=None, grid_offset=None,
+                 grid_scale=None, grid_offset=None,
                  dtype=np.float32, xp=np):
         '''
         Initialize an Interp2D object for 2D interpolation between arrays.
@@ -128,13 +110,9 @@ class Interp2D():
             Horizontal shift (in pixels) to apply to the sampling grid (default: 0).
         magnification : float, optional
             Magnification factor to apply to the sampling grid (default: 1.0).
-        yy : array-like, optional
-            Precomputed y-coordinates for the output grid (same shape as output_shape).
-        xx : array-like, optional
-            Precomputed x-coordinates for the output grid (same shape as output_shape).
         grid_scale : tuple of float, optional
-            (row, col) input pixels per output pixel of a regular output grid, an
-            alternative to `xx` and `yy` (default: (input_shape - 1) / output_shape).
+            (row, col) input pixels per output pixel of the regular output grid
+            (default: (input_shape - 1) / output_shape).
         grid_offset : tuple of float, optional
             (row, col) input coordinates of the first output pixel of the regular
             output grid (default: (0, 0)).
@@ -145,11 +123,11 @@ class Interp2D():
 
         Notes
         -----
-        If `xx` and `yy` are not provided, they are generated to map the output grid
-        to the input grid, with optional rotation and shift applied. Output pixel
-        (row, col) is mapped to input coordinates grid_offset + (row, col) * grid_scale
-        before rotation, magnification and shift. On GPU these coordinates are computed
-        on the fly, without storing them.
+        Output pixel (row, col) is mapped to input coordinates
+        grid_offset + (row, col) * grid_scale, before rotation and magnification
+        around the input center and shift. Coordinates are clamped to the input array.
+        On GPU these coordinates are computed on the fly, without storing them;
+        on CPU they are precomputed.
         '''
         self.xp = xp
         self.dtype = dtype
@@ -163,7 +141,6 @@ class Interp2D():
             rowShiftInPixels == 0 and
             colShiftInPixels == 0 and
             magnification == 1.0 and
-            xx is None and yy is None and
             grid_scale is None and grid_offset is None):
             # If not, it will be skipped later
             self.do_interp = False
@@ -173,9 +150,6 @@ class Interp2D():
             self.magnification = 1.0
             return
 
-        if (xx is not None or yy is not None) and \
-                (grid_scale is not None or grid_offset is not None):
-            raise ValueError('xx and yy cannot be used together with grid_scale and grid_offset')
         if grid_scale is None:
             grid_scale = ((input_shape[0] - 1) / output_shape[0],
                           (input_shape[1] - 1) / output_shape[1])
@@ -184,14 +158,7 @@ class Interp2D():
         offset_x = 0.0
         offset_y = 0.0
 
-        # Decide whether to use on-the-fly or precomputed coordinates
-        # Use on-the-fly ONLY when:
-        # 1. On GPU (xp is cp)
-        # 2. No custom coordinates provided (xx, yy are None)
-        use_onthefly = (self.xp is cp and xx is None and yy is None)
-
-        if use_onthefly:
-            self.use_precomputed = False
+        if self.xp is cp:
             self.scale_x = self.dtype(grid_scale[1])
             self.scale_y = self.dtype(grid_scale[0])
             # The kernel applies the shift after rotation and magnification,
@@ -203,18 +170,10 @@ class Interp2D():
             self.xx = None
             self.yy = None
         else:
-            self.use_precomputed = True
-            if xx is None or yy is None:
-                yy, xx = map(self.dtype, np.mgrid[0:output_shape[0], 0:output_shape[1]])
-                # The -1 of the default grid_scale appears to be correct by comparing with IDL code
-                yy = yy * grid_scale[0] + grid_offset[0]
-                xx = xx * grid_scale[1] + grid_offset[1]
-            else:
-                if yy.shape != output_shape or xx.shape != output_shape:
-                    raise ValueError(f'yy and xx must have shape {output_shape}')
-                else:
-                    yy = xp.array(yy, dtype=dtype)
-                    xx = xp.array(xx, dtype=dtype)
+            yy, xx = map(self.dtype, np.mgrid[0:output_shape[0], 0:output_shape[1]])
+            # The -1 of the default grid_scale appears to be correct by comparing with IDL code
+            yy = yy * grid_scale[0] + grid_offset[0]
+            xx = xx * grid_scale[1] + grid_offset[1]
 
             if rotInDeg != 0 or magnification != 1.0:
                 yc = input_shape[0] / 2 - 0.5
@@ -306,41 +265,21 @@ class Interp2D():
             grid_y = (self.output_shape[0] + block[1] - 1) // block[1]
             grid = (grid_x, grid_y)
 
-            if not self.use_precomputed:
-                # Use on-the-fly coordinate calculation kernel
-                if self.dtype == cp.float32:
-                    self.interp2_kernel_onthefly_float(grid, block, (
-                        value, out,
-                        self.output_shape[1], self.output_shape[0],
-                        self.input_shape[1], self.input_shape[0],
-                        self.scale_x, self.scale_y,
-                        self.shift_x, self.shift_y,
-                        self.cos_angle, self.sin_angle,
-                        self.center_x, self.center_y,
-                        self.magnification))
-                elif self.dtype == cp.float64:
-                    self.interp2_kernel_onthefly_double(grid, block, (
-                        value, out,
-                        self.output_shape[1], self.output_shape[0],
-                        self.input_shape[1], self.input_shape[0],
-                        self.scale_x, self.scale_y,
-                        self.shift_x, self.shift_y,
-                        self.cos_angle, self.sin_angle,
-                        self.center_x, self.center_y,
-                        self.magnification))
-                else:
-                    raise ValueError(f'Unsupported dtype {self.dtype}')
+            if self.dtype == cp.float32:
+                kernel = self.interp2_kernel_onthefly_float
+            elif self.dtype == cp.float64:
+                kernel = self.interp2_kernel_onthefly_double
             else:
-                if self.dtype == cp.float32:
-                    self.interp2_kernel_float(grid, block,
-                        (value, out, self.output_shape[1], self.output_shape[0],
-                         self.input_shape[1], self.input_shape[0], self.xx, self.yy))
-                elif self.dtype == cp.float64:
-                    self.interp2_kernel_double(grid, block,
-                        (value, out, self.output_shape[1], self.output_shape[0],
-                         self.input_shape[1], self.input_shape[0], self.xx, self.yy))
-                else:
-                    raise ValueError('Unsupported dtype {self.dtype}')
+                raise ValueError(f'Unsupported dtype {self.dtype}')
+            kernel(grid, block, (
+                value, out,
+                self.output_shape[1], self.output_shape[0],
+                self.input_shape[1], self.input_shape[0],
+                self.scale_x, self.scale_y,
+                self.shift_x, self.shift_y,
+                self.cos_angle, self.sin_angle,
+                self.center_x, self.center_y,
+                self.magnification))
 
             return out
 
