@@ -273,6 +273,23 @@ class Simul():
             if pars['class'] == 'DataBuffer':
                 self.objs[key].setOutputs()
 
+    def restore_object(self, cm, klass, subdir, tag, target_device_idx, name=None):
+        '''
+        Restore a data object of class *klass* from the calibration
+        file *tag*, found in the calibration subdirectory *subdir*.
+        Data objects are restored into each process (multiple copies),
+        target_rank is not checked.
+        '''
+        filename = cm.filename(subdir, tag)
+        self.logger.info(f'Restoring: {filename}')
+        obj = klass.restore(filename, target_device_idx=target_device_idx)
+        if name is not None:
+            obj.name = name
+        obj.init_logging(self.logger.getEffectiveLevel())
+        obj.printMemUsage()
+        obj.tag = tag
+        return obj
+
     def build_objects(self, params):
 
         self.setSimulParams(params)
@@ -326,14 +343,8 @@ class Simul():
                 extra_pars = set(pars.keys()) - {'class', 'tag', 'gui_pos'}
                 if extra_pars:
                     raise ValueError(f'Extra parameters with "tag" are not allowed: {sorted(extra_pars)}')
-                filename = cm.filename(classname, pars['tag'])
-                # tags are restored into each process (multiple copies), target_rank is not checked
-                self.logger.info(f'Restoring: {filename}')
-                self.objs[key] = klass.restore(filename, target_device_idx=target_device_idx)
-                self.objs[key].name = key
-                self.objs[key].init_logging(self.logger.getEffectiveLevel())
-                self.objs[key].printMemUsage()
-                self.objs[key].tag = pars['tag']
+                self.objs[key] = self.restore_object(cm, klass, classname, pars['tag'],
+                                                     target_device_idx, name=key)
                 continue
 
             pars2 = {}
@@ -386,17 +397,9 @@ class Simul():
                             partype = resolve_type(hints[parname], require_list=True)
                         except TypeError:
                             raise ValueError(f'Parameter {parname} must be typed as List[DataObjType]')
-
-                        loaded = []
-                        for tag in value:
-                            filename = cm.filename(partype.__name__, tag)
-                            self.logger.info(f'Restoring: {filename}')
-                            obj = partype.restore(filename, target_device_idx=target_device_idx)
-                            obj.printMemUsage()
-                            obj.tag = tag
-                            loaded.append(obj)
-
-                        pars2[parname] = loaded
+                        pars2[parname] = [self.restore_object(cm, partype, partype.__name__,
+                                                              tag, target_device_idx)
+                                          for tag in value]
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
 
@@ -411,17 +414,9 @@ class Simul():
                             partype = resolve_type(hints[parname], require_dict=True)
                         except TypeError:
                             raise ValueError(f'Parameter {parname} must be typed as Dict[str, DataObjType]')
-
-                        loaded = {}
-                        for dict_key, tag in value.items():
-                            filename = cm.filename(partype.__name__, tag)
-                            self.logger.info(f'Restoring: {filename}')
-                            obj = partype.restore(filename, target_device_idx=target_device_idx)
-                            obj.printMemUsage()
-                            obj.tag = tag
-                            loaded[dict_key] = obj
-
-                        pars2[parname] = loaded
+                        pars2[parname] = {dict_key: self.restore_object(cm, partype, partype.__name__,
+                                                                        tag, target_device_idx)
+                                          for dict_key, tag in value.items()}
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
                 elif name.endswith('_ref') and parname != name:
@@ -448,16 +443,10 @@ class Simul():
                     elif parname in hints:
                         partype = resolve_type(hints[parname])
 
-                        # data objects are restored into each process (multiple copies), target_rank is not checked
-                        filename = cm.filename(parname, value)  # TODO use partype instead of parname?
-                        self.logger.info(f'Restoring: {filename}')
-                        parobj = partype.restore(filename, target_device_idx=target_device_idx)
-                        parobj.init_logging(self.logger.getEffectiveLevel())
-                        parobj.printMemUsage()
-
-                        # Set data_tag
-                        parobj.tag = value
-                        pars2[parname] = parobj
+                        # The calibration subdirectory comes from the parameter name,
+                        # not from its type: e.g. sn_object is a Slopes in slopenulls/
+                        pars2[parname] = self.restore_object(cm, partype, parname, value,
+                                                             target_device_idx)
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
 
