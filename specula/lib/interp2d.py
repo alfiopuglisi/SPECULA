@@ -33,20 +33,19 @@ class Interp2D():
         interp2_kernel_onthefly = bilinear_interp_device + r'''
             extern "C" __global__
             void interp2_kernel_onthefly_TYPE(TYPE *g_in, TYPE *g_out, int out_dx, int out_dy, int in_dx, int in_dy,
-                                            TYPE scale_x, TYPE scale_y, TYPE shift_x, TYPE shift_y,
+                                            TYPE scale_x, TYPE scale_y,
+                                            TYPE centered_offset_x, TYPE centered_offset_y,
+                                            TYPE shift_x, TYPE shift_y,
                                             TYPE cos_angle, TYPE sin_angle, TYPE center_x, TYPE center_y, 
                                             TYPE magnification) {
                 int y = blockIdx.y * blockDim.y + threadIdx.y;
                 int x = blockIdx.x * blockDim.x + threadIdx.x;
 
                 if ((y < out_dy) && (x < out_dx)) {
-                    // Compute coordinates on-the-fly
-                    TYPE xcoord = x * scale_x;
-                    TYPE ycoord = y * scale_y;
-                    
-                    // Center coordinates for rotation and magnification
-                    TYPE xx_centered = xcoord - center_x;
-                    TYPE yy_centered = ycoord - center_y;
+                    // Compute coordinates on-the-fly, centered for rotation and magnification
+                    // (centered_offset = grid offset - center, computed in double on the host)
+                    TYPE xx_centered = x * scale_x + centered_offset_x;
+                    TYPE yy_centered = y * scale_y + centered_offset_y;
                     
                     // Apply magnification
                     if (magnification != 1.0) {
@@ -63,8 +62,8 @@ class Interp2D():
                     }
                     
                     // Restore center
-                    xcoord = xx_centered + center_x;
-                    ycoord = yy_centered + center_y;
+                    TYPE xcoord = xx_centered + center_x;
+                    TYPE ycoord = yy_centered + center_y;
                     
                     // Apply shift
                     xcoord += shift_x;
@@ -155,18 +154,12 @@ class Interp2D():
                           (input_shape[1] - 1) / output_shape[1])
         if grid_offset is None:
             grid_offset = (0, 0)
-        offset_x = 0.0
-        offset_y = 0.0
 
         if self.xp is cp:
             self.scale_x = self.dtype(grid_scale[1])
             self.scale_y = self.dtype(grid_scale[0])
-            # The kernel applies the shift after rotation and magnification,
-            # so the grid offset is rotated and demagnified into it
-            cos_ = np.cos(rotInDeg * np.pi / 180.0)
-            sin_ = np.sin(rotInDeg * np.pi / 180.0)
-            offset_x = (grid_offset[1] * cos_ - grid_offset[0] * sin_) / magnification
-            offset_y = (grid_offset[1] * sin_ + grid_offset[0] * cos_) / magnification
+            self.centered_offset_x = self.dtype(grid_offset[1] - (input_shape[1] / 2 - 0.5))
+            self.centered_offset_y = self.dtype(grid_offset[0] - (input_shape[0] / 2 - 0.5))
             self.xx = None
             self.yy = None
         else:
@@ -207,9 +200,11 @@ class Interp2D():
 
             self.scale_x = None
             self.scale_y = None
+            self.centered_offset_x = None
+            self.centered_offset_y = None
 
-        self.shift_x = self.dtype(colShiftInPixels + offset_x)
-        self.shift_y = self.dtype(rowShiftInPixels + offset_y)
+        self.shift_x = self.dtype(colShiftInPixels)
+        self.shift_y = self.dtype(rowShiftInPixels)
         self.rot_angle = rotInDeg * np.pi / 180.0
         self.magnification = self.dtype(magnification)
         self.cos_angle = self.dtype(np.cos(self.rot_angle))
@@ -276,6 +271,7 @@ class Interp2D():
                 self.output_shape[1], self.output_shape[0],
                 self.input_shape[1], self.input_shape[0],
                 self.scale_x, self.scale_y,
+                self.centered_offset_x, self.centered_offset_y,
                 self.shift_x, self.shift_y,
                 self.cos_angle, self.sin_angle,
                 self.center_x, self.center_y,
