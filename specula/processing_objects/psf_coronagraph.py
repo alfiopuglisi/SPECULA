@@ -117,6 +117,8 @@ class PsfCoronagraph(PSF):
         self.int_coronagraph_psf.value = self.xp.zeros_like(self.int_psf.value)
         self._sum_coronagraph_psf_squared = self.xp.zeros_like(self.int_psf.value)
         self.std_coronagraph_psf.value = self.xp.zeros_like(self.std_psf.value)
+        # Written in place at each trigger
+        self.coronagraph_psf.value = self.xp.zeros_like(self.psf.value)
 
     def calc_coronagraph_psf(self, phase, amp, imwidth=None, normalize=False, nocenter=False):
         """
@@ -192,7 +194,7 @@ class PsfCoronagraph(PSF):
         in_ef = self.local_inputs['in_ef']
 
         # Calculate coronagraph PSF
-        self.coronagraph_psf.value = self.calc_coronagraph_psf(
+        self.coronagraph_psf.value[:] = self.calc_coronagraph_psf(
             in_ef.phi_at_lambda(self.wavelengthInNm),
             in_ef.A,
             imwidth=self.out_size[0],

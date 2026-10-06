@@ -23,6 +23,12 @@ from specula.data_objects.simul_params import SimulParams
 from test.specula_testlib import cpu_and_gpu
 
 
+class ReallocatingSlicer(BaseSlicer):
+    '''BaseSlicer that rebinds its output value at each step, instead of writing it in place'''
+    def trigger_code(self):
+        self.out_value.value = self.local_inputs['in_value'].value[self.indices]
+
+
 class TestAtmoEvolution(unittest.TestCase):
 
     data_dir = os.path.join(os.path.dirname(__file__), 'data')
@@ -601,13 +607,13 @@ class TestAtmoEvolution(unittest.TestCase):
 
     @cpu_and_gpu
     def test_reallocated_input_raises_with_cuda_graph(self, target_device_idx, xp):
-        """With a CUDA graph, an input reallocated by its producer (here BaseSlicer,
-        which rebinds its output value at each step) raises an error, instead of
+        """With a CUDA graph, an input reallocated by its producer (here a slicer
+        that rebinds its output value at each step) raises an error, instead of
         being silently ignored. Without a graph (CPU) it works."""
         simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
         seeing = WaveGenerator(constant=0.8, target_device_idx=target_device_idx)
         all_speeds = WaveGenerator(constant=[25.5, 30.0, 12.0], target_device_idx=target_device_idx)
-        wind_speed = BaseSlicer(indices=[0, 1], target_device_idx=target_device_idx)
+        wind_speed = ReallocatingSlicer(indices=[0, 1], target_device_idx=target_device_idx)
         wind_direction = WaveGenerator(constant=[90, 33.3], target_device_idx=target_device_idx)
         wind_speed.inputs['in_value'].set(all_speeds.output)
         atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir, heights=[0, 10000],

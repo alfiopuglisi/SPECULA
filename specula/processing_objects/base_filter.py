@@ -120,24 +120,24 @@ class BaseFilter(BaseProcessingObj):
     def post_trigger(self):
         super().post_trigger()
 
-        # Calculate delayed output with interpolation
+        # Calculate delayed output with interpolation.
+        # Outputs are written in place: consumers may read them at a fixed address
         if self.delay == 0:
-            output = self.output_buffer[:, 0]
+            self.out_comm.value[:] = self.output_buffer[:, 0]
         else:
             remainder_delay = self.delay % 1
             delay_idx = int(np.ceil(self.delay))
 
             if remainder_delay == 0:
-                output = self.output_buffer[:, delay_idx]
+                self.out_comm.value[:] = self.output_buffer[:, delay_idx]
             else:
-                output = (remainder_delay * self.output_buffer[:, delay_idx] +
-                         (1 - remainder_delay) * self.output_buffer[:, delay_idx - 1])
+                self.out_comm.value[:] = (remainder_delay * self.output_buffer[:, delay_idx] +
+                                          (1 - remainder_delay) * self.output_buffer[:, delay_idx - 1])
 
-        self.out_comm.value = output
         self.out_comm.generation_time = self.current_time
 
         # No-delay output (for POLC)
-        self.out_comm_no_delay.value = self.output_buffer[:, 0]
+        self.out_comm_no_delay.value[:] = self.output_buffer[:, 0]
         self.out_comm_no_delay.generation_time = self.current_time
 
     @abstractmethod

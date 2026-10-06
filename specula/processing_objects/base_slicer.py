@@ -54,11 +54,19 @@ class BaseSlicer(BaseProcessingObj):
     def trigger_code(self):
         value = self.local_inputs['in_value'].value
         if self.indices is not None:
-            self.out_value.value = value[self.indices]
+            sliced = value[self.indices]
         elif self.slice_obj is not None:
             # Use slice object to extract the desired values
-            self.out_value.value = value[self.slice_obj]
+            sliced = value[self.slice_obj]
         else:
             # No slicing, copy the whole value
-            self.out_value.value = value.copy()
+            sliced = value
+        # In place, so that consumers can read the output at a fixed address.
+        # Allocated only at the first trigger, if the output shape or dtype
+        # was not known in advance
+        out = self.out_value.value
+        if out.shape == sliced.shape and out.dtype == sliced.dtype:
+            out[...] = sliced
+        else:
+            self.out_value.value = self.xp.array(sliced)
         self.out_value.generation_time = self.current_time

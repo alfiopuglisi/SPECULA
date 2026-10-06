@@ -317,9 +317,9 @@ class BaseSprintEstimator(BaseProcessingObj):
 
         # Update outputs
         self.estimated_intmat.generation_time = t
-        self.misreg_output.value = self.misreg_params.copy()
+        self.misreg_output.value[:] = self.misreg_params
         self.misreg_output.generation_time = t
-        self.error_output.value = self.xp.array([self.current_error], dtype=self.dtype)
+        self.error_output.value[0] = self.current_error
         self.error_output.generation_time = t
 
     def _demodulate_slopes(self):

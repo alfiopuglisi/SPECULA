@@ -37,9 +37,11 @@ class PowerLoss(BaseProcessingObj):
         self.psf_ref = 0.0
 
         self.inputs['in_ef'] = InputValue(type=ElectricField)
-        self.power_loss = BaseValue(target_device_idx=self.target_device_idx, precision=self.precision)
+        self.power_loss = BaseValue(value=self.xp.zeros((), dtype=self.dtype),
+                                    target_device_idx=self.target_device_idx, precision=self.precision)
         self.outputs['out_power_loss'] = self.power_loss
-        self.sr = BaseValue(target_device_idx=self.target_device_idx, precision=self.precision)
+        self.sr = BaseValue(value=self.xp.zeros((), dtype=self.dtype),
+                            target_device_idx=self.target_device_idx, precision=self.precision)
         self.outputs['out_sr'] = self.sr
         self.psf = BaseValue(target_device_idx=self.target_device_idx, precision=self.precision)
         self.psf.value = self.xp.zeros([self.pad_size, self.pad_size], dtype=self.dtype)
@@ -91,9 +93,9 @@ class PowerLoss(BaseProcessingObj):
         self.psf.value[:] = calc_psf(in_ef.phi_at_lambda(self.prop_obj.wavelengthInNm), in_ef.A, imwidth=self.pad_size,
                                      xp=self.xp, complex_dtype=self.complex_dtype)
 
-        self.sr.value = self.psf.value[self.pad_size // 2, self.pad_size // 2] / self.psf_ref
+        self.sr.value[...] = self.psf.value[self.pad_size // 2, self.pad_size // 2] / self.psf_ref
         self.logger.info(f'SR at {int(self.prop_obj.wavelengthInNm)}nm : {self.sr.value}')
-        self.power_loss.value = 10 * np.log10(self.psf.value[self.pad_size // 2, self.pad_size // 2] / self.psf_ref)
+        self.power_loss.value[...] = 10 * np.log10(self.psf.value[self.pad_size // 2, self.pad_size // 2] / self.psf_ref)
         self.logger.info(f'Power loss at {int(self.prop_obj.wavelengthInNm)}nm : {self.power_loss.value}')
 
     def post_trigger(self):

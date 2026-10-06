@@ -24,6 +24,21 @@ class TestBaseSlicer(unittest.TestCase):
         output = cpuArray(slicer.outputs['out_value'].value)
         np.testing.assert_array_equal(output, [1, 3, 5])
 
+    def test_output_written_in_place(self):
+        slicer = BaseSlicer(indices=[1, 3, 5])
+        arr = np.arange(10, dtype=slicer.dtype)
+        value = BaseValue(value=arr)
+        value.generation_time = value.seconds_to_t(1)
+        slicer.inputs['in_value'].set(value)
+        out = slicer.outputs['out_value'].value
+
+        loop = LoopControl()
+        loop.add(slicer, idx=0)
+        loop.run(run_time=2, dt=1, t0=1)
+
+        assert slicer.outputs['out_value'].value is out
+        np.testing.assert_array_equal(cpuArray(out), [1, 3, 5])
+
     def test_slice_args(self):
         arr = np.arange(10)
         value = BaseValue(value=arr)

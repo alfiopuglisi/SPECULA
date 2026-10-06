@@ -534,9 +534,9 @@ class Lift(BaseProcessingObj):
         currentPhaseEstimate, coeffs, niters = self.phaseEstimation(psf) 
 
         coeffs_xp = self.to_xp(coeffs)
-        self.outputs['out_pistons'].value = coeffs_xp[:self.nPistons]
+        self.outputs['out_pistons'].value[:] = coeffs_xp[:self.nPistons]
         self.outputs['out_pistons'].generation_time = self.current_time
-        self.outputs['out_zern'].value = coeffs_xp[self.nPistons:]
+        self.outputs['out_zern'].value[:] = coeffs_xp[self.nPistons:]
         self.outputs['out_zern'].generation_time = self.current_time
 
         # self.outputs["phase_estimate"] = currentPhaseEstimate

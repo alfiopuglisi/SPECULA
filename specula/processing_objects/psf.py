@@ -157,9 +157,12 @@ class PSF(BaseProcessingObj):
         self.int_psf.value = self.xp.zeros(s, dtype=self.dtype)
         self._sum_psf_squared = self.xp.zeros(s, dtype=self.dtype)
         self.std_psf.value = self.xp.zeros(s, dtype=self.dtype)
-        self.int_sr.value = 0
+        self.int_sr.value = self.xp.zeros((), dtype=self.dtype)
 
         self.out_size = [int(np.around(dim * self.nd/2)*2) for dim in in_ef.size]
+        # Instantaneous outputs, written in place at each trigger
+        self.psf.value = self.xp.zeros(self.out_size, dtype=self.dtype)
+        self.sr.value = self.xp.zeros((), dtype=self.dtype)
         self.ref = Intensity(self.out_size[0], self.out_size[1],
                              target_device_idx=self.target_device_idx)
 
@@ -180,13 +183,13 @@ class PSF(BaseProcessingObj):
 
     def trigger_code(self):
         in_ef = self.local_inputs['in_ef']
-        self.psf.value, self.total_psf = calc_psf(in_ef.phi_at_lambda(self.wavelengthInNm),
-                                                  in_ef.A, imwidth=self.out_size[0], normalize=True,
-                                                  xp=self.xp, complex_dtype=self.complex_dtype,
-                                                  return_total=True)
-        self.sr.value = self.psf.value[self.out_size[0] // 2, \
-                                       self.out_size[1] // 2] / self.ref.i[self.out_size[0] // 2, \
-                                       self.out_size[1] // 2]
+        self.psf.value[:], self.total_psf = calc_psf(in_ef.phi_at_lambda(self.wavelengthInNm),
+                                                     in_ef.A, imwidth=self.out_size[0], normalize=True,
+                                                     xp=self.xp, complex_dtype=self.complex_dtype,
+                                                     return_total=True)
+        self.sr.value[...] = self.psf.value[self.out_size[0] // 2, \
+                                            self.out_size[1] // 2] / self.ref.i[self.out_size[0] // 2, \
+                                            self.out_size[1] // 2]
         self.logger.info(f'SR at {int(self.wavelengthInNm)}nm : {self.sr.value}')
 
     def _compute_radial_profile_data(self, psf, peak:float=None):
