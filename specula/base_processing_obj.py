@@ -56,6 +56,10 @@ class BaseProcessingObj(BaseTimeObj):
         self.remote_outputs = defaultdict(list)
         self.sent_valid = {}
 
+        # Set to False during the trigger if the outputs have not been
+        # refreshed, see post_trigger(). Reset to True by prepare_trigger().
+        self.outputs_refreshed = True
+
         # Use the correct CUDA device for allocations in derived classes'  __init__
         if self.target_device_idx >= 0:
             self._target_device.use()
@@ -69,6 +73,20 @@ class BaseProcessingObj(BaseTimeObj):
         self.current_time_seconds = self.t_to_seconds(self.current_time)
         if self.target_device_idx >= 0:
             self._target_device.use()
+        # Outputs are not valid until post_trigger() marks them
+        # as refreshed or not refreshed
+        self.outputs_refreshed = True
+        for output in self.output_objs():
+            output.set_not_valid()
+
+    def output_objs(self):
+        '''
+        Iterate over all output data objects, including those in output lists
+        '''
+        for output_obj in self.outputs.values():
+            for output in output_obj if isinstance(output_obj, list) else [output_obj]:
+                if output is not None:
+                    yield output
 
     def addRemoteOutput(self, name, remote_output):
         self.remote_outputs[name].append(remote_output)
@@ -153,7 +171,16 @@ class BaseProcessingObj(BaseTimeObj):
     def post_trigger(self):
         '''
         Make sure we are using the correct device and that any previous
-        CUDA graph has been synchronized
+        CUDA graph has been synchronized.
+
+        Outputs not yet marked with set_refreshed() or set_not_refreshed()
+        are marked as refreshed at the current time if self.outputs_refreshed
+        is True (the default), otherwise as not refreshed. Derived classes
+        that do not refresh their outputs at every trigger set
+        self.outputs_refreshed = False in trigger_code() (not captured in a
+        CUDA graph) or before calling super().post_trigger(). Single outputs
+        can be marked with set_refreshed() or set_not_refreshed() at any
+        time during the trigger, before or after this method.
         '''
         # Double check that we can execute
         if not self.inputs_changed:
@@ -166,6 +193,23 @@ class BaseProcessingObj(BaseTimeObj):
             self._target_device.use()
             if self.cuda_graph:
                 self.stream.synchronize()
+
+        for output in self.output_objs():
+            if not output.valid:
+                if self.outputs_refreshed:
+                    output.set_refreshed(self.current_time)
+                else:
+                    output.set_not_refreshed()
+
+    def check_outputs_valid(self):
+        '''
+        Raise an error if an output has not been marked as refreshed
+        or not refreshed during the last trigger
+        '''
+        for output_name, output_obj in self.outputs.items():
+            for output in output_obj if isinstance(output_obj, list) else [output_obj]:
+                if output is not None and not output.valid:
+                    raise ValueError(f'Output "{output_name}" for object {self.name} is not valid')
 
     def send_remote_output(self, item, dest_rank, dest_tag, first_mpi_send=True, out_name=''):
         self.logger.mpi_send_debug(f'SEND to rank {dest_rank} {dest_tag=} {(dest_tag in self.sent_valid)=} (from {self.name}.{out_name})')
@@ -199,6 +243,8 @@ class BaseProcessingObj(BaseTimeObj):
         This is used while setting up the simulation to initialize outputs
         that are delayed and would not be received otherwise.
         '''
+        self.check_outputs_valid()
+
         self.logger.mpi_debug(f'My outputs are:')
         for out_name, out_value in self.outputs.items():
             self.logger.mpi_debug(f'{out_name=}, {out_value=}')

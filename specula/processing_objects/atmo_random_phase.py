@@ -182,16 +182,9 @@ class AtmoRandomPhase(BaseProcessingObj):
     def trigger_code(self):
         current_phase = self.phasescreens[self.new_position,:,:] * self.scale_coeff
 
-        for output_name, layer in self.layer_outputs.items():
+        for layer in self.layer_outputs.values():
             layer.phaseInNm[:] = current_phase
             layer.A[:] = self.pupilstop.A
-            layer.generation_time = self.current_time
-
-            # Update the corresponding electric field output generation time
-            # Note: the electric field output shares the same array (ef.field)
-            #       as the layer output (layer.field)
-            ef_output_name = output_name.replace('_layer', '_ef')
-            self.outputs[ef_output_name].generation_time = self.current_time
 
     def post_trigger(self):
         super().post_trigger()

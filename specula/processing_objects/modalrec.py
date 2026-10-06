@@ -32,4 +32,3 @@ class Modalrec(BaseModalrec):
 
     def trigger_code(self):
         self.modes.value[:] = self.recmat.recmat @ self.slopes
-        self.modes.generation_time = self.current_time

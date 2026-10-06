@@ -64,9 +64,14 @@ class ProcessingObjName(BaseProcessingObj):
 
 
     def post_trigger(self):
+        # Always call super(): by default it marks all outputs as refreshed
+        # at self.current_time. If the outputs have not been computed
+        # in this trigger, set self.outputs_refreshed = False before calling it.
+        # Single outputs can be marked with self.result_data1.set_refreshed(t)
+        # or self.result_data1.set_not_refreshed() at any time during the trigger.
+        # When a stream is used, Python code in trigger_code() runs only once
+        # at capture time, so this must be done here or in prepare_trigger()
         super().post_trigger()
-        # note that this cannot be done in the trigger when stream is used
-        self.result_data1.generation_time = self.current_time
 
 
     def setup(self):

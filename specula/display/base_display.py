@@ -147,7 +147,6 @@ class BaseDisplay(BaseProcessingObj):
 
         self.__plot_completed[self.window][self.subplot] = True
         self.output_id.value = self.window
-        self.output_id.generation_time = self.current_time
 
         if self.async_mode:
             return

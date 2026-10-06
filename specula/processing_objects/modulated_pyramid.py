@@ -644,12 +644,6 @@ class ModulatedPyramid(BaseProcessingObj):
             self.flux_frac_inside_ccd.value[:] = self.xp.sum(self.out_i.i[:])/self.xp.sum(ccd_internal)
         else:
             self.out_i.i[:] = ccd_internal
-        
-        self.flux_frac_inside_ccd.generation_time = self.current_time
-        self.out_i.generation_time = self.current_time
-        self.psf_tot.generation_time = self.current_time
-        self.psf_bfm.generation_time = self.current_time
-        self.transmission.generation_time = self.current_time
 
         if self.mod_type == 'alternating':
             # Increment iteration counter at the end

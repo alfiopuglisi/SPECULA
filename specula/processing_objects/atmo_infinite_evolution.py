@@ -301,7 +301,6 @@ class AtmoInfiniteEvolution(BaseProcessingObj):
             layer_list[ii].field[:] = self.xp.stack((layer_phase, layer_phase))
             layer_list[ii].phaseInNm *= self.scale_coeff * self.xp.sqrt(self.Cn2[ii])
             layer_list[ii].A = 1
-            layer_list[ii].generation_time = self.current_time
 
         # Update positions
         last_position[:] = last_position + delta_position

@@ -171,8 +171,3 @@ class PupilstopController(BaseProcessingObj):
                 mask = mask >= self.mask_threshold
 
             self._out_layer.A[:] = mask
-
-
-    def post_trigger(self):
-        super().post_trigger()
-        self._out_layer.generation_time = self.current_time

@@ -61,4 +61,3 @@ class BaseSlicer(BaseProcessingObj):
         else:
             # No slicing, copy the whole value
             self.out_value.value = value.copy()
-        self.out_value.generation_time = self.current_time

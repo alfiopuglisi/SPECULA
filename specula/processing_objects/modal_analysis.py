@@ -220,10 +220,15 @@ class ModalAnalysis(BaseProcessingObj):
             ef_list = [self.in_ef]
             output_list = [self.out_modes]
             rms_list = [self.rms]
+            unused_outputs = self.out_modes_list + self.rms_list
         else:
             ef_list = self.in_ef_list
             output_list = self.out_modes_list
             rms_list = self.rms_list
+            unused_outputs = [self.out_modes, self.rms]
+
+        for out in unused_outputs:
+            out.set_not_refreshed()
 
         for li, current_ef in enumerate(ef_list):
             if self.wavelengthInNm > 0:
@@ -239,9 +244,7 @@ class ModalAnalysis(BaseProcessingObj):
 
             # This also sets self.out_modes in case of a non-list input
             output_list[li].value[:] = m
-            output_list[li].generation_time = self.current_time
             rms_list[li].value[:] = self.xp.std(ph)
-            rms_list[li].generation_time = self.current_time
 
     def post_trigger(self):
         super().post_trigger()

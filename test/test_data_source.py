@@ -152,7 +152,7 @@ class TestDataSource(unittest.TestCase):
 
         ds.trigger_code()
         mock_output.set_value.assert_called_once()
-        self.assertEqual(mock_output.generation_time, ds.current_time)
+        mock_output.set_refreshed.assert_called_once_with(ds.current_time)
 
     def test_trigger_code_skips_missing_time(self):
         """Test DataSource.trigger_code() skips outputs when data not available at current time."""
@@ -228,7 +228,7 @@ class TestDataSource(unittest.TestCase):
 
         # First output should be updated
         mock_output1.set_value.assert_called_once()
-        self.assertEqual(mock_output1.generation_time, 1.0)
+        mock_output1.set_refreshed.assert_called_once_with(1.0)
 
         # Second output should NOT be updated
         mock_output2.set_value.assert_not_called()
@@ -260,4 +260,4 @@ class TestDataSource(unittest.TestCase):
         ds.current_time = 1.0
         ds.trigger_code()
         mock_psf.set_value.assert_called_once()  # Data available!
-        self.assertEqual(mock_psf.generation_time, 1.0)
+        mock_psf.set_refreshed.assert_called_once_with(1.0)

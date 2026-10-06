@@ -77,4 +77,3 @@ class BaseInserter(BaseProcessingObj):
         small = self.local_inputs['in_value'].value
         for src_sel, dest_sel in zip(self._src_selectors, self._dest_selectors):
             self.out_value.value[dest_sel] = small[src_sel]
-        self.out_value.generation_time = self.current_time

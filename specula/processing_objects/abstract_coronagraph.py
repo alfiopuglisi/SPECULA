@@ -183,7 +183,6 @@ class Coronagraph(BaseProcessingObj):
         # Scale S0 by transmission
         in_ef = self.local_inputs['in_ef']
         self.out_ef.S0 = in_ef.S0 * transmission
-        self.out_ef.generation_time = self.current_time
 
     @classmethod
     def input_names(cls):

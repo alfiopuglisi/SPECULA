@@ -40,6 +40,5 @@ class ElectricFieldReflection(BaseProcessingObj):
         self._out_ef.A[:] = in_ef.A
         # Invert phase sign
         self._out_ef.phaseInNm[:] = -in_ef.phaseInNm
-        # Copy S0 and generation time
+        # Copy S0
         self._out_ef.S0 = in_ef.S0
-        self._out_ef.generation_time = self.current_time

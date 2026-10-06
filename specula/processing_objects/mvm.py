@@ -57,4 +57,4 @@ class MVM(BaseProcessingObj):
 
         # Simple matrix multiplication
         self.output.value[:] = self.recmat.recmat @ vector.get_value()
-        self.output.generation_time = self.current_time
+        self.output.set_refreshed(self.current_time)

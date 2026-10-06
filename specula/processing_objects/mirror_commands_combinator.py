@@ -105,10 +105,3 @@ class MirrorCommandsCombinator(BaseProcessingObj):
         self.result_commands1.value[:] = y1
         self.result_commands2.value[:] = y2
         self.result_commands3.value[:] = y3
-
-    def post_trigger(self):
-        super().post_trigger()
-        # note that this cannot be done in the trigger when stream is used
-        self.result_commands1.generation_time = self.current_time
-        self.result_commands2.generation_time = self.current_time
-        self.result_commands3.generation_time = self.current_time

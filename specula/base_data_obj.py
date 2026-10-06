@@ -31,6 +31,35 @@ class BaseDataObj(BaseTimeObj):
         super().__init__(target_device_idx, precision)
         self.generation_time = -1
         self.tag = ''
+        # Valid during setup. When this object is the output of a processing
+        # object, it is not valid during the trigger of its producer,
+        # until set_refreshed() or set_not_refreshed() is called.
+        self.valid = True
+        self._previous_generation_time = -1
+
+    def set_not_valid(self):
+        '''
+        Mark the object as not valid. Called at the start of
+        the trigger of the processing object that produces it.
+        set_refreshed() or set_not_refreshed() make it valid again.
+        '''
+        self.valid = False
+        self._previous_generation_time = self.generation_time
+
+    def set_refreshed(self, t):
+        '''
+        Mark the object as valid and refreshed at time *t*
+        '''
+        self.valid = True
+        self.generation_time = t
+
+    def set_not_refreshed(self):
+        '''
+        Mark the object as valid but not refreshed: the generation time
+        goes back to the value it had before the trigger of its producer.
+        '''
+        self.valid = True
+        self.generation_time = self._previous_generation_time
 
     def transferDataTo(self, destobj, force_reallocation=False):
         '''

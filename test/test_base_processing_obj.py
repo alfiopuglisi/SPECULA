@@ -528,3 +528,45 @@ class TestBaseProcessingObj(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             obj.check_output_names()
+
+    def _triggered_obj(self, t):
+        '''Object with two outputs (one in a list), ready for post_trigger() at time *t*'''
+        obj = BaseProcessingObj(target_device_idx=-1)
+        obj.outputs = {
+            "out_a": BaseValue(target_device_idx=-1),
+            "out_b": [BaseValue(target_device_idx=-1)],
+        }
+        for output in obj.output_objs():
+            output.set_refreshed(1)
+        obj.check_ready(t)
+        return obj
+
+    def test_outputs_refreshed_by_default(self):
+        obj = self._triggered_obj(5)
+        assert not obj.outputs["out_a"].valid
+        obj.post_trigger()
+        assert obj.outputs["out_a"].generation_time == 5
+        assert obj.outputs["out_b"][0].generation_time == 5
+        obj.check_outputs_valid()  # Should not raise
+
+    def test_outputs_not_refreshed_flag(self):
+        obj = self._triggered_obj(5)
+        obj.outputs_refreshed = False
+        obj.post_trigger()
+        assert obj.outputs["out_a"].generation_time == 1
+        assert obj.outputs["out_b"][0].generation_time == 1
+        obj.check_outputs_valid()  # Should not raise
+
+    def test_explicit_output_marks_take_precedence(self):
+        obj = self._triggered_obj(5)
+        obj.outputs["out_a"].set_refreshed(3)
+        obj.post_trigger()
+        # Marked as not refreshed after the default stamp: previous time is restored
+        obj.outputs["out_b"][0].set_not_refreshed()
+        assert obj.outputs["out_a"].generation_time == 3
+        assert obj.outputs["out_b"][0].generation_time == 1
+
+    def test_invalid_output_raises(self):
+        obj = self._triggered_obj(5)
+        with self.assertRaises(ValueError):
+            obj.send_outputs()

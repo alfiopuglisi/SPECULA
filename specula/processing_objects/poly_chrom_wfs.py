@@ -144,7 +144,7 @@ class PolyChromWFS(BaseProcessingObj):
             modified_ef.phaseInNm[:] = in_ef.phaseInNm + tilt_phase_nm
 
             # update generation time
-            modified_ef.generation_time = in_ef.generation_time
+            modified_ef.set_refreshed(in_ef.generation_time)
 
         # Prepare all SH instances
         for wfs in self._wfs_instances:
@@ -170,9 +170,6 @@ class PolyChromWFS(BaseProcessingObj):
             # Add weighted contribution
             flux_factor = self.flux_factor_normalized[i]
             self._out_i.i += wfs.outputs['out_i'].i * flux_factor
-
-        # Set generation time
-        self._out_i.generation_time = self.current_time
 
         # Optional: normalize total intensity to match input photon flux
         in_ef = self.local_inputs['in_ef']

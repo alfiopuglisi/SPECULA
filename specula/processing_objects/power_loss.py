@@ -95,8 +95,3 @@ class PowerLoss(BaseProcessingObj):
         self.logger.info(f'SR at {int(self.prop_obj.wavelengthInNm)}nm : {self.sr.value}')
         self.power_loss.value = 10 * np.log10(self.psf.value[self.pad_size // 2, self.pad_size // 2] / self.psf_ref)
         self.logger.info(f'Power loss at {int(self.prop_obj.wavelengthInNm)}nm : {self.power_loss.value}')
-
-    def post_trigger(self):
-        self.power_loss.generation_time = self.current_time
-        self.sr.generation_time = self.current_time
-        self.psf.generation_time = self.current_time

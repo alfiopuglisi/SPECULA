@@ -81,8 +81,7 @@ class AtmoEvolution(BaseProcessingObj):
       transfers are
       involved, so the captured graph stays valid when positions, wind or seeing
       change.
-    - post_trigger() updates the host-side state: last_t and the generation_time
-      of the output layers.
+    - post_trigger() updates the host-side state (last_t).
 
     On CPU, the same code runs with numpy (affine_transform() has fast CPU paths).
     """
@@ -372,10 +371,7 @@ class AtmoEvolution(BaseProcessingObj):
                 layer.phaseInNm *= self.scale_coef
 
     def post_trigger(self):
-        """Host-side state update: last_t and generation_time of all output layers."""
+        """Host-side state update: last_t."""
         super().post_trigger()
         self.last_t = self.current_time
-        for layer_list in self.layer_lists:
-            for layer in layer_list:
-                layer.generation_time = self.current_time
 

@@ -249,6 +249,4 @@ class IdealDerivativeSensor(BaseProcessingObj):
         # Store slopes
         self.slopes.xslopes = self.sx
         self.slopes.yslopes = self.sy
-        # Update generation time
-        self.slopes.generation_time = self.current_time
 

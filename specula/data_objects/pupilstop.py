@@ -55,7 +55,7 @@ class Pupilstop(Layer):
         self.A = mask_amp
 
         # Initialise time for at least the first iteration
-        self.generation_time = 0
+        self.set_refreshed(0)
 
     def get_value(self):
         '''

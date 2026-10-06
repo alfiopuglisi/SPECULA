@@ -242,9 +242,10 @@ class SprintPyr(BaseSprintEstimator):
                 cmd = self.xp.zeros(self.dm.nmodes, dtype=self.dtype)
                 cmd[mode_idx] = sign * self.push_amp
                 self.internal_command.set_value(cmd)
-                self.internal_command.generation_time = current_time
+                self.internal_command.set_refreshed(current_time)
                 self.internal_dm.check_ready(current_time)
                 self.internal_dm.trigger_code()
+                self.internal_dm.post_trigger()
 
                 # C. Propagate through the internal WFS to get the intensity pattern
                 self.internal_wfs.check_ready(current_time)
@@ -257,7 +258,7 @@ class SprintPyr(BaseSprintEstimator):
                 # Normalize and scale to 12-bit range
                 intensity_norm = intensity / intensity.max() * 2**12
                 self.internal_pixels.pixels[:] = intensity_norm
-                self.internal_pixels.generation_time = current_time
+                self.internal_pixels.set_refreshed(current_time)
 
                 # D. Calculate the slopes
                 self.internal_slopec.check_ready(current_time)

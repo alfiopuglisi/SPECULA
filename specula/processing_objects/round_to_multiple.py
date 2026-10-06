@@ -53,4 +53,4 @@ class RoundToMultiple(BaseProcessingObj):
     def trigger_code(self):
         in_value = self.local_inputs['in_value'].get_value()
         self.out_value.value[:] = self.gain * self.multiple * self.xp.round(in_value / self.multiple)
-        self.out_value.generation_time = self.current_time
+        self.out_value.set_refreshed(self.current_time)

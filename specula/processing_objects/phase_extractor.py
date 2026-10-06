@@ -50,4 +50,3 @@ class PhaseExtractor(BaseProcessingObj):
     def trigger_code(self):
         ef = self.local_inputs['in_ef']
         self.out_phase.value[:] = ef.phaseInNm
-        self.out_phase.generation_time = self.current_time

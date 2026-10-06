@@ -374,7 +374,6 @@ class ShSlopec(Slopec):
 
     def post_trigger(self):
         super().post_trigger()
-        self.outputs['out_subapdata'].generation_time = self.current_time
 
         # Here and not in trigger_code(), since it needs a CPU-GPU synchronization
         if self.logger.isEnabledFor(logging.DEBUG):

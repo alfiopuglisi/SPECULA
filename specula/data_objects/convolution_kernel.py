@@ -375,7 +375,7 @@ class ConvolutionKernel(BaseDataObj):
         kernel_fn = self.build()
 
         if current_time is not None:
-            self.generation_time = current_time
+            self.set_refreshed(current_time)
 
         # Only reload or recalculate if the kernel has changed
         if kernel_fn != self._kernel_fn:

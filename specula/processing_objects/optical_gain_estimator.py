@@ -82,6 +82,9 @@ class OpticalGainEstimator(BaseProcessingObj):
         self.current_demod_delta_cmd = self.local_inputs['in_demod_delta_command']
         self.current_demod_cmd = self.local_inputs['in_demod_command']
 
+        # Refreshed by _update_optical_gain() only when it is updated
+        self.optical_gain.set_not_refreshed()
+
         # Update optical gain if both inputs are ready
         if (self.current_demod_delta_cmd.generation_time == t and
             self.current_demod_cmd.generation_time == t):
@@ -110,7 +113,7 @@ class OpticalGainEstimator(BaseProcessingObj):
                 updated_gain = current_gain - (1.0 - ratio) * self.gain * current_gain
 
             self.optical_gain.value[:] = updated_gain
-            self.optical_gain.generation_time = self.current_time
+            self.optical_gain.set_refreshed(self.current_time)
             
             self.logger.info(f"Optical gain updated: {float(current_gain.squeeze()):.6f} -> {float(updated_gain.squeeze()):.6f}")
         else:
@@ -130,6 +133,5 @@ class OpticalGainEstimator(BaseProcessingObj):
 
         # Ensure output doesn't exceed 1.0 (as in IDL code)
         _ = self.xp.minimum(output, 1.0, out=self.output.value)
-        self.output.generation_time = t
 
         self.logger.info(f'Optical gain output: {output}')

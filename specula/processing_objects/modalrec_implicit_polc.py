@@ -33,8 +33,8 @@ class ModalrecImplicitPolc(BasePolcModalrec):
 
     def trigger_code(self):
         if not self.slopes_updated():
+            self.outputs_refreshed = False
             return
 
         # Memory pre-allocation optimization with self.recmat hosting C
         self.modes.value[:] = self.recmat.recmat @ self.slopes - self.h_mat.recmat @ self.commands
-        self.modes.generation_time = self.current_time

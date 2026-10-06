@@ -64,6 +64,9 @@ class Demodulator(BaseProcessingObj):
         self.data_history.append(mode_data.copy())
         self.time_history.append(t)
 
+        # The output is refreshed only when demodulated
+        self.outputs_refreshed = False
+
         # Check if it's time to demodulate
         if (t + self.loop_dt - self.demod_dt) % self.demod_dt == 0:
             self._perform_demodulation(t)
@@ -100,6 +103,6 @@ class Demodulator(BaseProcessingObj):
 
         # Set output
         self.output.value[:] = values
-        self.output.generation_time = t
+        self.output.set_refreshed(t)
 
         self.logger.info(f"Demodulated value at t={self.t_to_seconds(t):.3f}s: {values}")

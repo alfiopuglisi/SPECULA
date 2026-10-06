@@ -297,6 +297,7 @@ class BaseSprintEstimator(BaseProcessingObj):
 
         # Check if it's time to estimate
         if (t - self.last_estimation_time) < self.estimation_dt:
+            self.outputs_refreshed = False
             return
 
         self.logger.info(f"{'='*60}")
@@ -307,6 +308,7 @@ class BaseSprintEstimator(BaseProcessingObj):
         im_measured = self._demodulate_slopes()
         if im_measured is None:
             self.logger.info("  Not enough data for demodulation yet")
+            self.outputs_refreshed = False
             return
 
         # Iterative estimation
@@ -316,11 +318,8 @@ class BaseSprintEstimator(BaseProcessingObj):
         self.last_estimation_time = t
 
         # Update outputs
-        self.estimated_intmat.generation_time = t
         self.misreg_output.value = self.misreg_params.copy()
-        self.misreg_output.generation_time = t
         self.error_output.value = self.xp.array([self.current_error], dtype=self.dtype)
-        self.error_output.generation_time = t
 
     def _demodulate_slopes(self):
         """

@@ -240,5 +240,3 @@ class CiaoCiaoSensor(BaseProcessingObj):
             output_sum = self.xp.sum(self._out_i.i)
             if output_sum > 0:
                 self._out_i.i *= phot / output_sum
-
-        self._out_i.generation_time = self.current_time

@@ -261,5 +261,3 @@ class BaseOperation(BaseProcessingObj):
                 out += self.v2
             elif self.sub:
                 out -= self.v2
-
-        self.out_value.generation_time = self.current_time

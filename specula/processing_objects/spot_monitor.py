@@ -237,15 +237,6 @@ class SpotMonitor(BaseProcessingObj):
         out[7] = chi2
         out[8] = success
 
-    def post_trigger(self):
-        """Update generation times for all outputs."""
-        super().post_trigger()
-        # Propagate generation time
-        self.outputs['out_sum_pixels'].generation_time = self.current_time
-        self.outputs['out_model_pixels'].generation_time = self.current_time
-        self.outputs['out_residual_pixels'].generation_time = self.current_time
-        self.outputs['out_params'].generation_time = self.current_time
-
     @property
     def amplitude(self):
         """Get fitted Moffat amplitude."""

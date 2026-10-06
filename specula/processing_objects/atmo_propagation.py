@@ -424,12 +424,6 @@ class AtmoPropagation(BaseProcessingObj):
                                                   2 * self.xp.pi))
                 output_ef.A[:] = (abs(self.ef_fresnel[s_shifted[0]:s_shifted[0] + self.pixel_pupil, s_shifted[1]:s_shifted[1] + self.pixel_pupil]))
 
-    def post_trigger(self):
-        super().post_trigger()
-
-        for source_name in self.source_dict.keys():
-            self.outputs['out_'+source_name+'_ef'].generation_time = self.current_time
-
     @staticmethod
     def _pressure_nasa(h_asl):
         if h_asl < 11000.0:

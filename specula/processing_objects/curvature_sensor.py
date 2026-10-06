@@ -213,6 +213,3 @@ class CurvatureSensor(BaseProcessingObj):
             self._out_i1.i *= phot / sum1
         if sum2 > 0:
             self._out_i2.i *= phot / sum2
-
-        self._out_i1.generation_time = self.current_time
-        self._out_i2.generation_time = self.current_time

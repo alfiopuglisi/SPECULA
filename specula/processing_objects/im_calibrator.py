@@ -180,6 +180,7 @@ class ImCalibrator(BaseProcessingObj):
         # Slopes *must* have been refreshed. We could have been triggered
         # just by the commands, but we need to skip it
         if self.local_inputs['in_slopes'].generation_time != self.current_time:
+            self.outputs_refreshed = False
             return
 
         slopes = self.local_inputs['in_slopes'].slopes
@@ -208,11 +209,9 @@ class ImCalibrator(BaseProcessingObj):
                 self.single_im[mode].modes[0] = self.intmat.modes[mode]
                 self.single_im[mode].single_mask = in_slopes_object.single_mask
                 self.single_im[mode].display_map = in_slopes_object.display_map
-                self.single_im[mode].generation_time = self.current_time
 
         self.intmat.single_mask = in_slopes_object.single_mask
         self.intmat.display_map = in_slopes_object.display_map
-        self.intmat.generation_time = self.current_time
 
     def finalize(self):
         # normalize by counts

@@ -44,7 +44,6 @@ class BaseGenerator(BaseProcessingObj):
 
     def post_trigger(self):
         super().post_trigger()
-        self.output.generation_time = self.current_time
         self.iter_counter += 1
 
     def _validate_array_sizes(self, *arrays, names=None):

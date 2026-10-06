@@ -156,7 +156,7 @@ class Slopec(BaseProcessingObj):
 
         if (t % self.weight_int_pixel_dt) == 0 and t >= self.weight_int_pixel_dt:
             # Update generation time
-            self.int_pixels.generation_time = t
+            self.int_pixels.set_refreshed(t)
             self.do_reset_accumulation = True
 
     def __init_subclass__(cls, **kwargs):
@@ -262,13 +262,8 @@ class Slopec(BaseProcessingObj):
     def post_trigger(self):
         super().post_trigger()
 
-        if self.slopes_map.value is not None and not self._slopes_map_unavailable:
-            self.outputs['out_slopes_map'].generation_time = self.current_time
-
-        self.outputs['out_slopes'].generation_time = self.current_time
-        self.outputs['out_flux_per_subaperture'].generation_time = self.current_time
-        self.outputs['out_total_counts'].generation_time = self.current_time
-        self.outputs['out_subap_counts'].generation_time = self.current_time
+        if self.slopes_map.value is None or self._slopes_map_unavailable:
+            self.outputs['out_slopes_map'].set_not_refreshed()
 
         #rms = self.xp.sqrt(self.xp.mean(self.slopes.slopes**2))
         #self.logger.info('Slopes have been filtered. '

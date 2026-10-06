@@ -134,11 +134,9 @@ class BaseFilter(BaseProcessingObj):
                          (1 - remainder_delay) * self.output_buffer[:, delay_idx - 1])
 
         self.out_comm.value = output
-        self.out_comm.generation_time = self.current_time
 
         # No-delay output (for POLC)
         self.out_comm_no_delay.value = self.output_buffer[:, 0]
-        self.out_comm_no_delay.generation_time = self.current_time
 
     @abstractmethod
     def reset_states(self):

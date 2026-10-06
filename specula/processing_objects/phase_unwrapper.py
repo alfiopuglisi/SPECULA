@@ -345,12 +345,6 @@ class PhaseUnwrapper(BaseProcessingObj):
         self.estimate_history.append(self.xp.copy(self.out_pistonsU_array))
         self.confidence_history.append(self.xp.copy(self.confidences))
 
-    def post_trigger(self):
-        """Set generation time and synchronize if using CUDA graphs."""
-        super().post_trigger()
-        self.out_pistons_data.generation_time = self.current_time
-        self.out_pistonsU_data.generation_time = self.current_time
-
     @classmethod
     def input_names(cls):
         return {

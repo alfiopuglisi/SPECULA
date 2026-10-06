@@ -79,6 +79,7 @@ class ModalrecExplicitPolc(BasePolcModalrec):
     def trigger_code(self):
         # Check refresh based on slopes (standard POLC logic)
         if not self.slopes_updated():
+            self.outputs_refreshed = False
             return
 
         # (1) Compute pseudo open loop modes
@@ -89,8 +90,6 @@ class ModalrecExplicitPolc(BasePolcModalrec):
             # If no interaction matrix is provided, we assume the pseudo open-loop modes
             # are just the reconstruction of the measured slopes
             self.pseudo_ol_modes.value[:] = self.recmat.recmat @ self.slopes
-
-        self.pseudo_ol_modes.generation_time = self.current_time
 
         # (2) Project to output modes
         if self.projmat is None:
@@ -105,4 +104,3 @@ class ModalrecExplicitPolc(BasePolcModalrec):
 
         # Final update with memory-safe assignment
         self.modes.value[:] = output_modes
-        self.modes.generation_time = self.current_time

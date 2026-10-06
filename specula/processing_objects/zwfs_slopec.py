@@ -85,8 +85,3 @@ class ZwfsSlopec(Slopec):
 
         norm_factor = self.xp.sum(metaintensity) / self.nsubaps()
         self.slopes.slopes = metaintensity / norm_factor
-
-    def post_trigger(self):
-        super().post_trigger()
-
-        self.outputs['out_pupdata'].generation_time = self.current_time

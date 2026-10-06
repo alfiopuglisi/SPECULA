@@ -154,7 +154,7 @@ class ModalrecMultirate(BaseProcessingObj):
         if not any(validity):
             for i in range(self.n_sensors):
                 self.out_modes_list[i].value[:] = 0
-                self.out_modes_list[i].generation_time = self.current_time
+                self.out_modes_list[i].set_refreshed(self.current_time)
             return
 
         # 2. Fetch the correct matrix from the Look-Up Table
@@ -178,4 +178,4 @@ class ModalrecMultirate(BaseProcessingObj):
                 # Sensor is inactive, output M zeros
                 self.out_modes_list[i].value[:] = 0
 
-            self.out_modes_list[i].generation_time = self.current_time
+            self.out_modes_list[i].set_refreshed(self.current_time)

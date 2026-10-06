@@ -45,6 +45,8 @@ class DataBuffer(BaseProcessingObj):
 
         self.step_counter += 1
 
+        # Outputs are refreshed only by emit_buffered_data()
+        self.outputs_refreshed = False
         if self.step_counter >= self.buffer_size:
             self.emit_buffered_data()
             self.reset_buffers()
@@ -57,7 +59,7 @@ class DataBuffer(BaseProcessingObj):
             values = self.xp.array(list(data_dict.values()))
             if output_name in self.buffered_outputs:
                 self.buffered_outputs[output_name].value = values
-                self.buffered_outputs[output_name].generation_time = self.current_time
+                self.buffered_outputs[output_name].set_refreshed(self.current_time)
                 self.logger.debug(f"DataBuffer: emitted {len(values)} samples for {input_name}")
 
     def setup(self):

@@ -697,6 +697,8 @@ class ExtendedSource(BaseProcessingObj):
 
     def trigger(self):
         """Update PSF if new data is available and recompute if needed"""
+        # coeff is refreshed only when it is recomputed
+        self.outputs_refreshed = False
         if self.source_type == 'FROM_PSF':
             psf = self.local_inputs.get('psf')
             if np.sum(self.xp.abs(psf.value)) > 0:
@@ -720,7 +722,7 @@ class ExtendedSource(BaseProcessingObj):
 
                 self.psf.set_value(psf_temp)
                 self.compute()  # Recompute all coefficients with new PSF
-                self.outputs['coeff'].generation_time = self.current_time
+                self.outputs['coeff'].set_refreshed(self.current_time)
 
     def plot_source(self):
         """Plot the extended source distribution"""

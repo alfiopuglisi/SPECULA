@@ -230,7 +230,7 @@ class PSF(BaseProcessingObj):
 
         profile, radial_dist, _ = radial_profile_data
         profile_output.value = self.xp.vstack([radial_dist, profile])
-        profile_output.generation_time = self.current_time
+        profile_output.set_refreshed(self.current_time)
 
     def _set_profile_outputs(self, psf, profile_output, fwhm_output,
                              ee_output, ee_at_radius_output):
@@ -242,10 +242,10 @@ class PSF(BaseProcessingObj):
         ee_output.value = self.xp.vstack([radial_dist, ee])
         ee_at_radius_output.value = ee_at_radius
 
-        profile_output.generation_time = self.current_time
-        fwhm_output.generation_time = self.current_time
-        ee_output.generation_time = self.current_time
-        ee_at_radius_output.generation_time = self.current_time
+        profile_output.set_refreshed(self.current_time)
+        fwhm_output.set_refreshed(self.current_time)
+        ee_output.set_refreshed(self.current_time)
+        ee_at_radius_output.set_refreshed(self.current_time)
 
     def post_trigger(self):
         super().post_trigger()
@@ -254,8 +254,6 @@ class PSF(BaseProcessingObj):
             self.int_sr.value += self.sr.value
             self.int_psf.value += self.psf.value
             self._sum_psf_squared += self.psf.value ** 2
-        self.psf.generation_time = self.current_time
-        self.sr.generation_time = self.current_time
 
         if self.compute_profile_metrics and self.compute_metrics_in_trigger:
             self._set_profile_outputs(
@@ -265,6 +263,16 @@ class PSF(BaseProcessingObj):
                 self.encircled_energy,
                 self.encircled_energy_at_radius,
             )
+        else:
+            for out in (self.psf_profile, self.psf_fwhm,
+                        self.encircled_energy, self.encircled_energy_at_radius):
+                out.set_not_refreshed()
+
+        # Integrated outputs are only refreshed in finalize()
+        for out in (self.int_sr, self.int_psf, self.std_psf,
+                    self.int_psf_profile, self.int_psf_fwhm,
+                    self.int_encircled_energy, self.int_encircled_energy_at_radius):
+            out.set_not_refreshed()
 
     def finalize(self):
         if self.count > 0:
@@ -281,6 +289,6 @@ class PSF(BaseProcessingObj):
                     self.int_encircled_energy_at_radius,
                 )
 
-        self.int_psf.generation_time = self.current_time
-        self.int_sr.generation_time = self.current_time
-        self.std_psf.generation_time = self.current_time
+        self.int_psf.set_refreshed(self.current_time)
+        self.int_sr.set_refreshed(self.current_time)
+        self.std_psf.set_refreshed(self.current_time)

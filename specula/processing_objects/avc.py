@@ -25,3 +25,8 @@ class AVC(BaseProcessingObj):
     @classmethod
     def output_names(cls):
         return {'out_comm': OutputDesc(BaseValue, 'Output correction command')}
+
+    def post_trigger(self):
+        super().post_trigger()
+        # Placeholder object: the output is never computed
+        self._out_comm.set_not_refreshed()

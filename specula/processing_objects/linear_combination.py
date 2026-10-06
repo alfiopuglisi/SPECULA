@@ -75,7 +75,6 @@ class LinearCombination(BaseProcessingObj):
 
         self.out_vector.value *= 0.0
         self.out_vector.value[:len(lgs)] = lgs
-        self.out_vector.generation_time = self.current_time
 
     def setup(self):
         super().setup()

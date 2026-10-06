@@ -71,10 +71,12 @@ class SpeculaInput(BaseProcessingObj):
         """
         Apply all values queued by put_input() since the last trigger.
         """
+        # Only outputs with a queued value are refreshed
+        self.outputs_refreshed = False
         while True:
             try:
                 name, value = self.q.get_nowait()
             except queue.Empty:
                 break
             self.outputs[name].value = value
-            self.outputs[name].generation_time = self.current_time
+            self.outputs[name].set_refreshed(self.current_time)

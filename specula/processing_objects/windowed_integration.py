@@ -49,6 +49,8 @@ class WindowedIntegration(BaseProcessingObj):
         return {'output': OutputDesc(BaseValue, 'Windowed time-integrated output signal')}
 
     def trigger_code(self):
+        # Output not refreshed before start_time
+        self.outputs_refreshed = False
         if self.current_time >= self.start_time:
             input = self.local_inputs['input']
             self.output.value *= 0.0
@@ -59,8 +61,8 @@ class WindowedIntegration(BaseProcessingObj):
                 self.integrated_value *= 0.0
                 # update generation time only when output is produced
                 if self.update_time_on_dt:
-                    self.output.generation_time = self.current_time
+                    self.outputs_refreshed = True
 
             # update generation time at every step
             if not self.update_time_on_dt:
-                self.output.generation_time = self.current_time
+                self.outputs_refreshed = True

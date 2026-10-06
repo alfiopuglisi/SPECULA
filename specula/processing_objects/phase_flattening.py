@@ -67,6 +67,3 @@ class PhaseFlattening(BaseProcessingObj):
 
             # Remove mean phase from all pixels
             phase[valid_mask] -= mean_phase
-
-        # Set the generation time to the current time
-        self._out_ef.generation_time = self.current_time

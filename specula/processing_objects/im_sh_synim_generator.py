@@ -238,7 +238,6 @@ class ImShSynimGenerator(BaseProcessingObj):
 
     def trigger_code(self):
         """Generate IM and optionally REC when input changes or on demand"""
-        t = self.current_time
 
         # Get mis-registration parameters
         in_misreg = self.local_inputs.get('in_misreg_params')
@@ -260,7 +259,6 @@ class ImShSynimGenerator(BaseProcessingObj):
 
         # Update output IM
         self.output_intmat.intmat = self.to_xp(im, dtype=self.dtype)
-        self.output_intmat.generation_time = t
 
         # Generate REC if requested
         if self.compute_rec:
@@ -270,7 +268,6 @@ class ImShSynimGenerator(BaseProcessingObj):
 
             # Update output REC
             self.output_recmat.set_value(rec.recmat)
-            self.output_recmat.generation_time = t
 
             self.logger.info(f"  REC matrix shape: {rec.recmat.shape}")
 

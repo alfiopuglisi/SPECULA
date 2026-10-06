@@ -175,7 +175,7 @@ class DynamicDarkCalibrator(BaseProcessingObj):
             raise ValueError(f'Dark frame {fullpath} has shape {restored.pixels.shape}, '
                              f'expected {self.darkframe.pixels.shape}')
         self.darkframe.pixels[:] = restored.pixels
-        self.darkframe.generation_time = self.current_time
+        self.darkframe.set_refreshed(self.current_time)
         self.counter = 0  # Disable integration
         self.logger.info(f'Loaded dark frame from {fullpath}')
 
@@ -186,7 +186,6 @@ class DynamicDarkCalibrator(BaseProcessingObj):
 
         # In place, since consumers with a CUDA graph read it at a fixed address
         self.xp.subtract(value, self.darkframe.pixels, out=self.subtracted_pixels.pixels)
-        self.subtracted_pixels.generation_time = self.current_time
 
         if self.counter == 0:
             return
@@ -196,11 +195,13 @@ class DynamicDarkCalibrator(BaseProcessingObj):
 
         if self.counter == 0:
             self.darkframe.pixels[:] = (self.integrated_pixels / self.nframes).astype(self.darkframe.pixels.dtype)
-            self.darkframe.generation_time = self.current_time
+            self.darkframe.set_refreshed(self.current_time)
             self.integrated_pixels *= 0
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
+        # Refreshed only when loaded or at the end of an integration
+        self.darkframe.set_not_refreshed()
 
         # Check if new trigger or nframes value is received at this time step
         input_reset = self.local_inputs['in_reset']

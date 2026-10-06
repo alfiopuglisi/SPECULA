@@ -169,8 +169,6 @@ class PyrSlopec(Slopec):
     def post_trigger(self):
         super().post_trigger()
 
-        self.outputs['out_pupdata'].generation_time = self.current_time
-
         # Raw (pre-threshold) 2d sub-images of the 4 pupils, and their sum.
         # Deliberately NOT computed in trigger_code(): trigger_code may be
         # captured once into a CUDA graph and then only replayed (see
@@ -192,6 +190,3 @@ class PyrSlopec(Slopec):
         self.xp.put(self.pixels_subap.value[2], self.subap_map_idx, raw_C)
         self.xp.put(self.pixels_subap.value[3], self.subap_map_idx, raw_D)
         self.xp.put(self.pixels_subap_sum.value, self.subap_map_idx, raw_A + raw_B + raw_C + raw_D)
-
-        self.outputs['out_pixels_subap'].generation_time = self.current_time
-        self.outputs['out_pixels_subap_sum'].generation_time = self.current_time

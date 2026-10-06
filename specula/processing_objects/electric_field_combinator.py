@@ -99,5 +99,3 @@ class ElectricFieldCombinator(BaseProcessingObj):
             self._out_ef.phaseInNm += in_ef.phaseInNm
             self._out_ef.A *= in_ef.A
             self._out_ef.S0 += in_ef.S0
-            
-        self._out_ef.generation_time = self.current_time

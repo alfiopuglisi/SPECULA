@@ -129,7 +129,3 @@ class CurWfsSlopec(Slopec):
         total_int = self.xp.sum(sum_i)
         self.total_counts.value[0] = total_int
         self.subap_counts.value[0] = total_int / self.nsubaps()
-
-    def post_trigger(self):
-        super().post_trigger()
-        self.outputs['out_pupdata'].generation_time = self.current_time

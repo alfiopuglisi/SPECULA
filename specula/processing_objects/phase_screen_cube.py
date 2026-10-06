@@ -147,12 +147,5 @@ class PhaseScreenCube(BaseProcessingObj):
 
     def trigger_code(self):
         current_phase = self.ef_interpolator.interpolated_ef().phaseInNm
-        for output_name, layer in self.layer_outputs.items():
+        for layer in self.layer_outputs.values():
             layer.phaseInNm[:] = current_phase
-            layer.generation_time = self.current_time
-
-            # Update the corresponding electric field output generation time
-            # Note: the electric field output shares the same array (ef.field)
-            #       as the layer output (layer.field)
-            ef_output_name = output_name.replace('_layer', '_ef')
-            self.outputs[ef_output_name].generation_time = self.current_time

@@ -253,7 +253,6 @@ class DM(BaseProcessingObj):
                 limited_commands, n_keep = self._limit_forces(self.m2c_commands)
                 self.m2c_commands[:] = limited_commands
                 self.force_nmodes.value[0] = n_keep
-                self.force_nmodes.generation_time = self.current_time
             cmd = self.m2c[:, self._valid_modes] @ self.m2c_commands
         else:
             cmd = input_commands
@@ -267,12 +266,13 @@ class DM(BaseProcessingObj):
         else:
             self.layer.phaseInNm[self._ifunc.idx_inf_func] = \
                 self.if_commands[self.if_commands_selector] @ self._ifunc.influence_function[self._valid_modes, :]
-        self.layer.generation_time = self.current_time
         self.clip_command.value[:len(cmd)] = cmd
-        self.clip_command.generation_time = self.current_time
         if self.stiffness is not None:
             self.forces.value[:] = self.stiffness @ self.clip_command.value
-            self.forces.generation_time = self.current_time
+        else:
+            self.forces.set_not_refreshed()
+        if self.max_force is None:
+            self.force_nmodes.set_not_refreshed()
 
     def _limit_forces(self, commands):
         '''

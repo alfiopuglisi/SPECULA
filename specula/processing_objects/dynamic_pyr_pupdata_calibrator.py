@@ -149,6 +149,7 @@ class DynamicPyrPupdataCalibrator(PyrPupdataCalibrator):
         except (ValueError, TypeError) as e:
             # Skip iterations in case of errors
             self.status_string = f'{e.__class__.__name__}: {e}'
+            self.outputs_refreshed = False
 
     def post_trigger(self):
         super().post_trigger()
@@ -171,7 +172,7 @@ class DynamicPyrPupdataCalibrator(PyrPupdataCalibrator):
             'output_tag': self.filename,
         }.items())
         self.outputs['out_params'].set_value(params_str)
-        self.outputs['out_params'].generation_time = self.current_time
+        self.outputs['out_params'].set_refreshed(self.current_time)
 
 
 

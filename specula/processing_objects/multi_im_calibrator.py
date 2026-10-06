@@ -132,9 +132,10 @@ class MultiImCalibrator(BaseProcessingObj):
                         im.modes[mode] += ss / cc[idx]
                         self.count_commands[i][mode] += 1
 
-        # Update generation time for all IMs
-        for im in self.outputs['out_intmat_list']:
-            im.generation_time = self.current_time
+    def post_trigger(self):
+        super().post_trigger()
+        # The full IM is only computed in finalize()
+        self.outputs['out_intmat_full'].set_not_refreshed()
 
     def finalize(self):
         os.makedirs(self.data_dir, exist_ok=True)
@@ -146,7 +147,7 @@ class MultiImCalibrator(BaseProcessingObj):
                     im.modes[mode] /= self.count_commands[i][mode]
             if self.im_paths[i]:
                 im.save(os.path.join(self.data_dir, self.im_paths[i]), overwrite=self.overwrite)
-            im.generation_time = self.current_time
+            im.set_refreshed(self.current_time)
 
         if self.full_im_path:
             if not self.outputs['out_intmat_list']:
@@ -155,7 +156,7 @@ class MultiImCalibrator(BaseProcessingObj):
                 full_im = self.xp.vstack([im.intmat for im in self.outputs['out_intmat_list']])
 
             self.outputs['out_intmat_full'].intmat = full_im
-            self.outputs['out_intmat_full'].generation_time = self.current_time
+            self.outputs['out_intmat_full'].set_refreshed(self.current_time)
             if self.full_im_path:
                 self.outputs['out_intmat_full'].save(
                     os.path.join(self.data_dir, self.full_im_path), overwrite=self.overwrite)

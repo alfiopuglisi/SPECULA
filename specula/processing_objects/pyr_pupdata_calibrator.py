@@ -161,6 +161,7 @@ class PyrPupdataCalibrator(BaseProcessingObj):
         # if dt is set, only trigger on multiples of dt, otherwise trigger on every frame
         if self.dt is not None:
             if self.current_time % self.dt != 0:
+                self.outputs_refreshed = False
                 return
 
         image = self.integrated_pixels
@@ -187,7 +188,6 @@ class PyrPupdataCalibrator(BaseProcessingObj):
         self.pupdata.cy = centers[pup_order, 1]
         self.pupdata.framesize = image.shape
         self.pupdata.slopes_from_intensity = self.slopes_from_intensity
-        self.pupdata.generation_time = self.current_time
 
         # Reset integrated intensity
         self.integrated_pixels *= 0.0

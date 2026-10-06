@@ -89,8 +89,9 @@ class DataSource(BaseProcessingObj):
             # Check if data exists for current time
             if self.current_time in storage_dict:
                 self.outputs[k].set_value(self.outputs[k].xp.array(storage_dict[self.current_time]))
-                self.outputs[k].generation_time = self.current_time
+                self.outputs[k].set_refreshed(self.current_time)
             else:
+                self.outputs[k].set_not_refreshed()
                 self.logger.info(f'Warning: no data for key {k} at time {self.current_time}')
 
     def check_output_names(self):

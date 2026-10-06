@@ -136,8 +136,3 @@ class CloseGainOptimizer(BaseProcessingObj):
 
             # Store updated gains
             self.optimized_gain.value[:] = new_gain
-
-    def post_trigger(self):
-        super().post_trigger()
-        # Update generation time for down-stream processing
-        self.optimized_gain.generation_time = self.current_time

@@ -128,8 +128,3 @@ class SoftLimiter(BaseProcessingObj):
 
         self.outputs['out_comm'].set_value(out_comm_val)
         self.outputs['out_ost'].set_value(out_ost_val)
-
-    def post_trigger(self):
-        super().post_trigger()
-        self.outputs['out_comm'].generation_time = self.current_time
-        self.outputs['out_ost'].generation_time = self.current_time

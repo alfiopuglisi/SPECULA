@@ -209,14 +209,19 @@ class PsfCoronagraph(PSF):
             self.int_coronagraph_psf.value += self.coronagraph_psf.value
             self._sum_coronagraph_psf_squared += self.coronagraph_psf.value ** 2
 
-        self.coronagraph_psf.generation_time = self.current_time
-
         if self.compute_profile_metrics and self.compute_metrics_in_trigger:
             self._set_radial_profile_output(
                 self.coronagraph_psf.value,
                 self.coronagraph_psf_profile,
                 norm_peak=self.psf.value.max()
             )
+        else:
+            self.coronagraph_psf_profile.set_not_refreshed()
+
+        # Integrated outputs are only refreshed in finalize()
+        for out in (self.int_coronagraph_psf, self.std_coronagraph_psf,
+                    self.int_coronagraph_psf_profile, self.std_coronagraph_psf_profile):
+            out.set_not_refreshed()
 
     def finalize(self):
         super().finalize()
@@ -237,5 +242,5 @@ class PsfCoronagraph(PSF):
                     norm_peak=1.0, # do NOT normalize to 1
                 )
 
-        self.int_coronagraph_psf.generation_time = self.current_time
-        self.std_coronagraph_psf.generation_time = self.current_time
+        self.int_coronagraph_psf.set_refreshed(self.current_time)
+        self.std_coronagraph_psf.set_refreshed(self.current_time)

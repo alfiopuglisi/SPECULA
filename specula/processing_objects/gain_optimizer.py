@@ -388,5 +388,6 @@ class GainOptimizer(BaseProcessingObj):
         super().post_trigger()
 
         if self.optimization_done:
-            self.optimized_gain.generation_time = self.current_time
             self.iir_filter_data.set_gain(self.optimized_gain.value)
+        else:
+            self.optimized_gain.set_not_refreshed()

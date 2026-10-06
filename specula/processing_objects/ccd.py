@@ -247,6 +247,7 @@ class CCD(BaseProcessingObj):
 
     def trigger_code(self):
         if self.current_time < self.start_time:
+            self.outputs_refreshed = False
             return
 
         self._integrated_i.sum(self.local_inputs['in_i'],
@@ -256,12 +257,13 @@ class CCD(BaseProcessingObj):
             self.apply_binning()
             self.apply_qe()
             self.apply_noise()
-            self._pixels.generation_time = self.current_time
 
             # Copy integrated intensity into output and then reset it.
             self._output_integrated_i.i[:] = self._integrated_i.i
-            self._output_integrated_i.generation_time = self.current_time
             self._integrated_i.i *= 0.0
+        else:
+            # Still integrating: no new frame
+            self.outputs_refreshed = False
 
     def apply_noise(self):
         pixels = self._pixels.pixels  # Name change, same reference

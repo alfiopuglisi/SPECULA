@@ -535,9 +535,9 @@ class Lift(BaseProcessingObj):
 
         coeffs_xp = self.to_xp(coeffs)
         self.outputs['out_pistons'].value = coeffs_xp[:self.nPistons]
-        self.outputs['out_pistons'].generation_time = self.current_time
+        self.outputs['out_pistons'].set_refreshed(self.current_time)
         self.outputs['out_zern'].value = coeffs_xp[self.nPistons:]
-        self.outputs['out_zern'].generation_time = self.current_time
+        self.outputs['out_zern'].set_refreshed(self.current_time)
 
         # self.outputs["phase_estimate"] = currentPhaseEstimate
         self.logger.info(f"Trigger done, coeffs={coeffs[:5]}...")
