@@ -605,15 +605,13 @@ class TestAtmoEvolution(unittest.TestCase):
             np.testing.assert_allclose(cpuArray(layer.phaseInNm), expected, rtol=1e-10,
                                        atol=1e-10 * np.abs(expected).max())
 
-    @cpu_and_gpu
-    def test_reallocated_input_raises_with_cuda_graph(self, target_device_idx, xp):
-        """With a CUDA graph, an input reallocated by its producer (here a slicer
-        that rebinds its output value at each step) raises an error, instead of
-        being silently ignored. Without a graph (CPU) it works."""
+    def _slicer_wind_speed_loop(self, slicer, target_device_idx):
+        """AtmoEvolution with the wind speed coming from *slicer*
+        (selecting 2 of 3 values), after loop setup"""
         simul_params = SimulParams(pixel_pupil=32, pixel_pitch=0.05, time_step=0.01)
         seeing = WaveGenerator(constant=0.8, target_device_idx=target_device_idx)
         all_speeds = WaveGenerator(constant=[25.5, 30.0, 12.0], target_device_idx=target_device_idx)
-        wind_speed = ReallocatingSlicer(indices=[0, 1], target_device_idx=target_device_idx)
+        wind_speed = slicer
         wind_direction = WaveGenerator(constant=[90, 33.3], target_device_idx=target_device_idx)
         wind_speed.inputs['in_value'].set(all_speeds.output)
         atmo = AtmoEvolution(simul_params, L0=23, data_dir=self.data_dir, heights=[0, 10000],
@@ -629,6 +627,15 @@ class TestAtmoEvolution(unittest.TestCase):
         loop.add(wind_speed, idx=1)
         loop.add(atmo, idx=2)
         loop.start(run_time=0.03, dt=simul_params.time_step)
+        return loop, atmo
+
+    @cpu_and_gpu
+    def test_reallocated_input_raises_with_cuda_graph(self, target_device_idx, xp):
+        """With a CUDA graph, an input reallocated by its producer (here a slicer
+        that rebinds its output value at each step) raises an error, instead of
+        being silently ignored. Without a graph (CPU) it works."""
+        slicer = ReallocatingSlicer(indices=[0, 1], target_device_idx=target_device_idx)
+        loop, atmo = self._slicer_wind_speed_loop(slicer, target_device_idx)
         if atmo.cuda_graph:
             with self.assertRaisesRegex(RuntimeError, 'wind_speed has been reallocated'):
                 for _ in range(3):
@@ -637,4 +644,16 @@ class TestAtmoEvolution(unittest.TestCase):
             for _ in range(3):
                 loop.iter()
             self.assertTrue(np.any(cpuArray(atmo.layer_list[0].phaseInNm) != 0))
+        self.assertEqual(atmo.cuda_graph is not None, target_device_idx >= 0)
+
+    @cpu_and_gpu
+    def test_slicer_input_with_cuda_graph(self, target_device_idx, xp):
+        """BaseSlicer allocates its output in setup() and writes it in place,
+        so a consumer capturing a CUDA graph in its setup() can use it, also
+        when the output size is not known in advance (open slice)"""
+        slicer = BaseSlicer(slice_args=[None, 2], target_device_idx=target_device_idx)
+        loop, atmo = self._slicer_wind_speed_loop(slicer, target_device_idx)
+        for _ in range(3):
+            loop.iter()
+        self.assertTrue(np.any(cpuArray(atmo.layer_list[0].phaseInNm) != 0))
         self.assertEqual(atmo.cuda_graph is not None, target_device_idx >= 0)

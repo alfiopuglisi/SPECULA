@@ -40,6 +40,8 @@ class BaseSlicer(BaseProcessingObj):
         # ----------------------------------
         self.out_value = BaseValue(value=value,
                                    target_device_idx=target_device_idx, precision=precision)
+        # Set by setup(), where the output is allocated
+        self._allocate_at_trigger = True
         self.inputs['in_value'] = InputValue(type=BaseValue)
         self.outputs['out_value'] = self.out_value
 
@@ -51,22 +53,36 @@ class BaseSlicer(BaseProcessingObj):
     def output_names(cls):
         return {'out_value': OutputDesc(BaseValue, 'Output sliced vector')}
 
-    def trigger_code(self):
-        value = self.local_inputs['in_value'].value
+    def _slice(self, value):
         if self.indices is not None:
-            sliced = value[self.indices]
+            return value[self.indices]
         elif self.slice_obj is not None:
             # Use slice object to extract the desired values
-            sliced = value[self.slice_obj]
+            return value[self.slice_obj]
         else:
-            # No slicing, copy the whole value
-            sliced = value
-        # In place, so that consumers can read the output at a fixed address.
-        # Allocated only at the first trigger, if the output shape or dtype
-        # was not known in advance
-        out = self.out_value.value
-        if out.shape == sliced.shape and out.dtype == sliced.dtype:
-            out[...] = sliced
+            # No slicing, the whole value
+            return value
+
+    def setup(self):
+        super().setup()
+        # The output is allocated here, with the shape and dtype of the sliced input,
+        # and then written in place: consumers can read it at a fixed address,
+        # including those capturing a CUDA graph in their setup()
+        value = self.local_inputs['in_value'].value
+        if value is None:
+            # Input not available yet (e.g. a delayed input, whose producer is set up later)
+            self.logger.warning('Input in_value has no value at setup: '
+                                'the output will be allocated at the first trigger')
+            self._allocate_at_trigger = True
         else:
+            self.out_value.value = self.xp.array(self._slice(value))
+            self._allocate_at_trigger = False
+
+    def trigger_code(self):
+        sliced = self._slice(self.local_inputs['in_value'].value)
+        if self._allocate_at_trigger:
             self.out_value.value = self.xp.array(sliced)
+            self._allocate_at_trigger = False
+        else:
+            self.out_value.value[...] = sliced
         self.out_value.generation_time = self.current_time
