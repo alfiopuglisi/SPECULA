@@ -273,14 +273,14 @@ class Simul():
             if pars['class'] == 'DataBuffer':
                 self.objs[key].setOutputs()
 
-    def restore_object(self, cm, klass, subdir, tag, target_device_idx, name=None):
+    def restore_object(self, klass, tag, target_device_idx, name=None):
         '''
         Restore a data object of class *klass* from the calibration
-        file *tag*, found in the calibration subdirectory *subdir*.
+        file *tag*, found in the calibration subdirectory for the class name.
         Data objects are restored into each process (multiple copies),
         target_rank is not checked.
         '''
-        filename = cm.filename(subdir, tag)
+        filename = self.cm.filename(klass.__name__, tag)
         self.logger.info(f'Restoring: {filename}')
         obj = klass.restore(filename, target_device_idx=target_device_idx)
         if name is not None:
@@ -294,7 +294,7 @@ class Simul():
 
         self.setSimulParams(params)
 
-        cm = CalibManager(self.mainParams['root_dir'])
+        self.cm = CalibManager(self.mainParams['root_dir'])
         skip_pars = 'class inputs outputs gui_pos'.split()
         if 'add_modules' in self.mainParams:
             additional_modules = self.mainParams['add_modules']
@@ -343,8 +343,7 @@ class Simul():
                 extra_pars = set(pars.keys()) - {'class', 'tag', 'gui_pos'}
                 if extra_pars:
                     raise ValueError(f'Extra parameters with "tag" are not allowed: {sorted(extra_pars)}')
-                self.objs[key] = self.restore_object(cm, klass, classname, pars['tag'],
-                                                     target_device_idx, name=key)
+                self.objs[key] = self.restore_object(klass, pars['tag'], target_device_idx, name=key)
                 continue
 
             pars2 = {}
@@ -397,8 +396,7 @@ class Simul():
                             partype = resolve_type(hints[parname], require_list=True)
                         except TypeError:
                             raise ValueError(f'Parameter {parname} must be typed as List[DataObjType]')
-                        pars2[parname] = [self.restore_object(cm, partype, partype.__name__,
-                                                              tag, target_device_idx)
+                        pars2[parname] = [self.restore_object(partype, tag, target_device_idx)
                                           for tag in value]
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
@@ -414,8 +412,7 @@ class Simul():
                             partype = resolve_type(hints[parname], require_dict=True)
                         except TypeError:
                             raise ValueError(f'Parameter {parname} must be typed as Dict[str, DataObjType]')
-                        pars2[parname] = {dict_key: self.restore_object(cm, partype, partype.__name__,
-                                                                        tag, target_device_idx)
+                        pars2[parname] = {dict_key: self.restore_object(partype, tag, target_device_idx)
                                           for dict_key, tag in value.items()}
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
@@ -431,7 +428,7 @@ class Simul():
                     if value is None:
                         pars2[parname] = None
                     else:
-                        data = cm.read_data(value)
+                        data = self.cm.read_data(value)
                         pars2[parname] = data
 
                 # object fields are data objects which are loaded from a fits file
@@ -443,10 +440,7 @@ class Simul():
                     elif parname in hints:
                         partype = resolve_type(hints[parname])
 
-                        # The calibration subdirectory comes from the parameter name,
-                        # not from its type: e.g. sn_object is a Slopes in slopenulls/
-                        pars2[parname] = self.restore_object(cm, partype, parname, value,
-                                                             target_device_idx)
+                        pars2[parname] = self.restore_object(partype, value, target_device_idx)
                     else:
                         raise ValueError(f'No type hint for parameter {parname} of class {classname}')
 
@@ -461,7 +455,7 @@ class Simul():
             my_params = {}
 
             if 'data_dir' in args and 'data_dir' not in my_params:  # TODO special case
-                my_params['data_dir'] = cm.root_subdir(classname)
+                my_params['data_dir'] = self.cm.root_subdir(classname)
 
             if 'params_dict' in args:
                 my_params['params_dict'] = params
