@@ -191,6 +191,63 @@ class Simul():
             self.logger.warning(f'the following objects will not be triggered: {params.keys()}')
         return order, order_index
 
+    def build_setup_order(self, params, trigger_order):
+        '''
+        Order in which the objects in *trigger_order* are set up.
+
+        The trigger order ignores delayed inputs (:-1 syntax), since they come
+        from the previous iteration. Setup instead must follow them too:
+        objects read their inputs in setup(), for example to allocate outputs
+        with the input size or to capture a CUDA graph, so the producer of a
+        delayed input must be set up first. Delayed inputs are skipped only
+        when they would close a cycle (a feedback loop): in that case, the
+        consumer is set up before the producer, and must not depend on that
+        input in its setup().
+
+        Ties are broken by trigger order, so without delayed inputs
+        the setup order is the same as the trigger order.
+        '''
+        position = {name: i for i, name in enumerate(trigger_order)}
+        deps = {name: set() for name in trigger_order}
+        delayed = []
+
+        for name in trigger_order:
+            for output_name in params[name].get('inputs', {}).values():
+                outputs_list = output_name if isinstance(output_name, list) else [output_name]
+                for x in outputs_list:
+                    owner = self.output_owner(x)
+                    if owner not in deps or owner == name:
+                        continue
+                    if self.output_delay(x) < 0:
+                        delayed.append((name, owner))
+                    else:
+                        deps[name].add(owner)
+
+        def depends_on(name, other):
+            '''True if *name* depends on *other*, directly or indirectly'''
+            stack, seen = [name], set()
+            while stack:
+                n = stack.pop()
+                if n == other:
+                    return True
+                if n not in seen:
+                    seen.add(n)
+                    stack.extend(deps[n])
+            return False
+
+        for name, owner in delayed:
+            # Skip delayed inputs that would close a cycle
+            if not depends_on(owner, name):
+                deps[name].add(owner)
+
+        order = []
+        remaining = sorted(trigger_order, key=position.get)
+        while remaining:
+            name = next(n for n in remaining if deps[n].isdisjoint(remaining))
+            order.append(name)
+            remaining.remove(name)
+        return order
+
     def validate_section_names(self, params):
         '''
         Reject section (object) names that use characters reserved by the
@@ -1012,6 +1069,12 @@ class Simul():
         
         self.loop.max_global_order = max(self.trigger_order_idx)
         self.logger.debug(f'{self.loop.max_global_order=}')
+
+        setup_order = self.build_setup_order(params, self.trigger_order)
+        self.logger.info(f'{setup_order=}')
+        self.loop.set_setup_order([self.objs[name] for name in setup_order
+                                   if name not in self.remote_objs_ranks
+                                   and isinstance(self.objs.get(name), BaseProcessingObj)])
 
         # Default display web server
         if 'display_server' in self.mainParams and self.mainParams['display_server'] and process_rank in [0, None]:
