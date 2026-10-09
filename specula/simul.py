@@ -199,51 +199,45 @@ class Simul():
         from the previous iteration. Setup instead must follow them too:
         objects read their inputs in setup(), for example to allocate outputs
         with the input size or to capture a CUDA graph, so the producer of a
-        delayed input must be set up first. Delayed inputs are skipped only
-        when they would close a cycle (a feedback loop): in that case, the
-        consumer is set up before the producer, and must not depend on that
-        input in its setup().
+        delayed input must be set up first, except when the producer itself
+        depends on the consumer: then the delayed input closes a feedback loop,
+        and the objects in the loop are set up in trigger order. Objects in
+        a feedback loop must not depend on their delayed inputs in setup().
 
         Ties are broken by trigger order, so without delayed inputs
         the setup order is the same as the trigger order.
         '''
-        position = {name: i for i, name in enumerate(trigger_order)}
-        deps = {name: set() for name in trigger_order}
-        delayed = []
+        inputs = {name: [(self.output_owner(x), self.output_delay(x) < 0)
+                         for v in params[name].get('inputs', {}).values()
+                         for x in (v if isinstance(v, list) else [v])]
+                  for name in trigger_order}
 
-        for name in trigger_order:
-            for output_name in params[name].get('inputs', {}).values():
-                outputs_list = output_name if isinstance(output_name, list) else [output_name]
-                for x in outputs_list:
-                    owner = self.output_owner(x)
-                    if owner not in deps or owner == name:
-                        continue
-                    if self.output_delay(x) < 0:
-                        delayed.append((name, owner))
-                    else:
-                        deps[name].add(owner)
-
-        def depends_on(name, other):
-            '''True if *name* depends on *other*, directly or indirectly'''
-            stack, seen = [name], set()
+        def upstream(name):
+            '''Objects that *name* depends on, directly or indirectly, delayed inputs included'''
+            found, stack = set(), [name]
             while stack:
-                n = stack.pop()
-                if n == other:
-                    return True
-                if n not in seen:
-                    seen.add(n)
-                    stack.extend(deps[n])
-            return False
+                for owner, _ in inputs.get(stack.pop(), []):
+                    if owner not in found:
+                        found.add(owner)
+                        stack.append(owner)
+            return found
 
-        for name, owner in delayed:
-            # Skip delayed inputs that would close a cycle
-            if not depends_on(owner, name):
-                deps[name].add(owner)
+        up = {name: upstream(name) for name in trigger_order}
 
-        order = []
-        remaining = sorted(trigger_order, key=position.get)
+        def ready(name):
+            '''
+            True if *name* can be set up now, that is, if the producers
+            of all its inputs have already been set up. A delayed input is
+            not waited for if its producer depends on *name*: the input
+            closes a feedback loop (or is the object's own delayed output),
+            and waiting for it would never end.
+            '''
+            return not any(owner in remaining and not (delayed and name in up[owner])
+                           for owner, delayed in inputs[name])
+
+        order, remaining = [], list(trigger_order)
         while remaining:
-            name = next(n for n in remaining if deps[n].isdisjoint(remaining))
+            name = next(n for n in remaining if ready(n))
             order.append(name)
             remaining.remove(name)
         return order

@@ -269,6 +269,21 @@ class TestSimul(unittest.TestCase):
         assert cycle == [name for name in trigger_order if name != 'slicer']
         assert setup_order.index('integ') < setup_order.index('slicer')
 
+    def test_setup_order_delayed_input_from_feedback_loop_triggered_first(self):
+        # As above, but the slicer outside the loop comes first in
+        # trigger order: it must still wait for its delayed producer
+        pars = {
+            'slicer': {'class': 'BaseSlicer', 'inputs': {'in_value': 'integ.out_comm:-1'}},
+            'dm': {'class': 'DM', 'inputs': {'in_command': 'integ.out_comm:-1'}},
+            'wfs': {'class': 'SH', 'inputs': {'in_ef': 'dm.out_layer'}},
+            'integ': {'class': 'Integrator', 'inputs': {'delta_comm': 'wfs.out_i'}},
+        }
+        simul = Simul('dummy.yaml')
+        trigger_order, _ = simul.build_trigger_order(pars)
+        setup_order = simul.build_setup_order(pars, trigger_order)
+        assert trigger_order.index('slicer') < trigger_order.index('integ')
+        assert setup_order == ['dm', 'wfs', 'integ', 'slicer']
+
     def test_loop_control_setup_order(self):
         calls = []
 
