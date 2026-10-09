@@ -7,6 +7,7 @@ from specula.lib.modal_base_generator import compute_ifs_covmat
 from specula.lib.mmse_reconstructor import compute_mmse_reconstructor
 from specula.base_data_obj import BaseDataObj
 from specula.data_objects.recmat import Recmat
+from specula.data_objects.ifunc import IFunc
 
 
 class _ColsView:
@@ -182,11 +183,8 @@ class Intmat(BaseDataObj):
         rec.im_tag = self.norm_factor  # TODO wrong
         return rec
 
-    def generate_rec_mmse(self, r0, L0, diameter, modal_base, c_noise, nmodes=None):
-        '''
-        MMSE reconstructor. modal_base (IFunc) row j must be the shape of the mode
-        of the interaction matrix column j, e.g. from DM.modal_ifunc().
-        '''
+    def generate_rec_mmse(self, r0: float, L0: float, diameter: float, modal_base: IFunc,
+                          c_noise: float | np.ndarray | list, nmodes: int = None) -> Recmat:
         if nmodes is not None:
             intmat = self.modes[:nmodes]
         else:
