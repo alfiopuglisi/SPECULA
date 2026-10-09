@@ -182,18 +182,18 @@ class Intmat(BaseDataObj):
         rec.im_tag = self.norm_factor  # TODO wrong
         return rec
 
-    def generate_rec_mmse(self, r0, L0, diameter, modal_base, c_noise, nmodes=None, m2c=None):
+    def generate_rec_mmse(self, r0, L0, diameter, modal_base, c_noise, nmodes=None):
+        '''
+        MMSE reconstructor. modal_base (IFunc) row j must be the shape of the mode
+        of the interaction matrix column j, e.g. from DM.modal_ifunc().
+        '''
         if nmodes is not None:
             intmat = self.modes[:nmodes]
         else:
             intmat = self.intmat
         # atmosphere covariance matrix
-        if m2c is not None:
-            influence_function = m2c.m2c.T @ modal_base.influence_function
-        else:
-            influence_function = modal_base.influence_function
         c_atm = compute_ifs_covmat(
-            modal_base.mask_inf_func, diameter, influence_function, r0, L0,
+            modal_base.mask_inf_func, diameter, modal_base.influence_function, r0, L0,
             oversampling=2, xp=self.xp, dtype=self.dtype
         )
         if c_atm.shape[0] > intmat.shape[1]:

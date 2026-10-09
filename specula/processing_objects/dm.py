@@ -312,17 +312,30 @@ class DM(BaseProcessingObj):
         """Return the IFunc object (not just the array)"""
         return self._ifunc
 
-    @property
-    def ifunc_applied(self):
-        """Influence function rows that are applied: all of them with m2c,
-        the selected modes without m2c"""
-        return self._ifunc_act
+    def modal_ifunc(self, start_mode=0, idx_modes=None, target_device_idx=None):
+        """Return the basis of the DM input command as an IFunc: row j is the
+        shape produced by a unit command on input element start_mode + j (or
+        idx_modes[j]), after the mode selection and the m2c, if any. The sign
+        is not applied.
 
-    @property
-    def m2c_selected(self):
-        """m2c columns of the selected modes (None without m2c): column j is
-        driven by the input command element j"""
-        return self._m2c_sel
+        The basis is a new n_modes x n_pixels array (as large as the influence
+        function): build it where it is needed and drop it after use.
+        """
+        sel = idx_modes if idx_modes is not None else slice(start_mode, None)
+        if self._m2c_sel is not None:
+            modes = self._m2c_sel[:, sel].T @ self._ifunc_act
+        else:
+            modes = self._ifunc_act[sel]
+            if isinstance(sel, slice):
+                # A view: the basis must not share memory with the DM
+                modes = modes.copy()
+        if modes.shape[0] == 0:
+            raise ValueError(f'Empty modal basis selection (start_mode={start_mode}, '
+                             f'idx_modes={idx_modes}, {self.nmodes} input modes)')
+        if target_device_idx is None:
+            target_device_idx = self.target_device_idx
+        return IFunc(ifunc=modes, mask=self.mask.copy(), type_str=self.type_str,
+                     target_device_idx=target_device_idx, precision=self.precision)
 
     @ifunc.setter
     def ifunc(self, value):
