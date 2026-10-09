@@ -47,6 +47,16 @@ class CompositeWFS(BaseProcessingObj):
         return ready
 
     def prepare_trigger(self, t):
+        '''
+        The internal WFSs are not called here: their prepare_trigger()
+        is called by their own check_ready() (see check_ready() above),
+        which also sets their inputs_changed flag and refreshes their inputs.
+        Calling it here as well would run it twice per step.
+
+        BaseProcessingObj is called explicitly to skip the prepare_trigger()
+        of a WFS base class (e.g. SH for DistributedSH), since the composite
+        object does not compute anything itself.
+        '''
         BaseProcessingObj.prepare_trigger(self, t)
 
     def trigger(self):
