@@ -1,11 +1,12 @@
 from specula import RAD2ASEC
-from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
+from specula.base_processing_obj import InputDesc, OutputDesc
 from specula.connections import InputValue
 from specula.data_objects.electric_field import ElectricField
 from specula.data_objects.intensity import Intensity
 from specula.lib.make_xy import make_xy
+from specula.processing_objects.composite_wfs import CompositeWFS
 
-class PolyChromWFS(BaseProcessingObj):
+class PolyChromWFS(CompositeWFS):
     """     
     Poly-chromatic WFS abstract processing object.    
     Base class for polychromatic wavefront sensors which handles 
@@ -82,9 +83,7 @@ class PolyChromWFS(BaseProcessingObj):
 
         return unit_tilt_x_nm, unit_tilt_y_nm
 
-    def setup(self):
-        super().setup()
-
+    def connect_wfs_inputs(self):
         # Get input electric field to determine size
         in_ef = self.local_inputs['in_ef']
 
@@ -103,10 +102,12 @@ class PolyChromWFS(BaseProcessingObj):
             )
             self._modified_efs.append(modified_ef)
 
-        # Setup all SH instances with their modified EFs
+        # Connect all WFS instances to their modified EFs
         for i, wfs in enumerate(self._wfs_instances):
             wfs.inputs['in_ef'].set(self._modified_efs[i])
-            wfs.setup()
+
+    def setup(self):
+        super().setup()
 
         # Normalize flux factors
         total_flux = self.xp.sum(self.flux_factor)
@@ -114,13 +115,6 @@ class PolyChromWFS(BaseProcessingObj):
             self.flux_factor_normalized = self.flux_factor / total_flux
         else:
             self.flux_factor_normalized = self.flux_factor
-
-    def check_ready(self, t):
-        super().check_ready(t)
-
-        # Check if all SH are ready
-        for wfs in self._wfs_instances:
-            wfs.check_ready(t)
 
     def prepare_trigger(self, t):
         super().prepare_trigger(t)
@@ -146,24 +140,9 @@ class PolyChromWFS(BaseProcessingObj):
             # update generation time
             modified_ef.generation_time = in_ef.generation_time
 
-        # Prepare all SH instances
-        for wfs in self._wfs_instances:
-            wfs.prepare_trigger(t)
-
-    def trigger_code(self):
+    def combine_wfs_outputs(self):
         # Reset output intensity
         self._out_i.i[:] = 0.0
-
-        # Trigger each SH
-        for wfs in self._wfs_instances:
-            wfs.trigger_code()
-
-    def post_trigger(self):
-        super().post_trigger()
-
-        # Post-process all SH instances
-        for wfs in self._wfs_instances:
-            wfs.post_trigger()
 
         # Accumulate results on output intensity
         for i, wfs in enumerate(self._wfs_instances):

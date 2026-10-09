@@ -41,7 +41,7 @@ sh = DistributedSH(wavelengthInNm=500,
         subap_npx=6,
         n_slices=2,
         target_device_idx=0)
-print(f'{sh.sub_sh[0].target_device_idx},{sh.sub_sh[1].target_device_idx}')
+print(f'{sh._wfs_instances[0].target_device_idx},{sh._wfs_instances[1].target_device_idx}')
 ''')
             script_path = f.name
 
@@ -191,5 +191,5 @@ print(f'{sh.sub_sh[0].target_device_idx},{sh.sub_sh[1].target_device_idx}')
         sh2.setup()
         sh3.setup()
         
-        assert id(sh1.sub_sh[0]._wf3) == id(sh2.sub_sh[0]._wf3) 
-        assert id(sh1.sub_sh[1]._wf3) != id(sh3.sub_sh[1]._wf3) 
+        assert id(sh1._wfs_instances[0]._wf3) == id(sh2._wfs_instances[0]._wf3) 
+        assert id(sh1._wfs_instances[1]._wf3) != id(sh3._wfs_instances[1]._wf3) 
