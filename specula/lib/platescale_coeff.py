@@ -31,6 +31,8 @@ def platescale_coeff(dm_list, pixel_pupil):
     n_modes_ps = 3
     idx0 = 2
 
+    # dm.modal_ifunc() cannot be used: it only has the modes of the DM input command,
+    # and with start_mode > 0 the plate scale modes may not be among them
     def ps_modes(dm):
         # Plate scale modes of the full DM basis
         n_basis = dm.m2c.shape[1] if dm.m2c is not None else dm.ifunc.shape[0]
