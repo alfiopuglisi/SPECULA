@@ -1,7 +1,6 @@
 import logging
 import math
 from collections import namedtuple
-from functools import lru_cache
 
 from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.connections import InputValue
@@ -101,15 +100,8 @@ class Lift(BaseProcessingObj):
         self.fft_res = fft_res
         self.ron = ron
         self.fix = bool(fix)
-
-        # Derived parameters
-        self.modes = None
-        self.phase_ref = None
-        self._img_norm = None
         self.ref_tip = 0.0
         self.ref_tilt = 0.0
-        self.padded = None
-        self.radians_per_pixel = None
 
         self.inputs['in_pixels'] = InputValue(type=Pixels)
 
@@ -125,8 +117,6 @@ class Lift(BaseProcessingObj):
         )
         self.outputs['out_pistons'] = self.out_pistons
         self.outputs['out_zern'] = self.out_zern
-
-        # self.outputs['phase_estimate'] = None
 
         self.logger.info(f"LIFT initialized with {self.nmodes} modes")
 
@@ -170,22 +160,12 @@ class Lift(BaseProcessingObj):
         return airef
 
     def ft_ft2(self, x):
-        pad = (self.fftSize - self.gridSize) // 2
-        if self.padded is None:
-            self.padded = self.xp.zeros((self.fftSize, self.fftSize), dtype=x.dtype)
-        self.padded[pad:pad+self.gridSize, pad:pad+self.gridSize] = x
-        result = self.xp.fft.fftshift(self.xp.fft.fft2(self.padded)) * (1.0 / self.fftSize)
-        return result
+        self.padded[self.pupil_slice, self.pupil_slice] = x
+        return self.xp.fft.fftshift(self.xp.fft.fft2(self.padded, norm='ortho'))
 
     def computeCoG(self, frame, thFactor = 0.05):
-        thValue = thFactor * self.xp.max(frame)
-        thImage = self.xp.where( frame < thValue, 0., frame-thValue)
+        thImage = self.xp.maximum(frame - thFactor * self.xp.max(frame), 0)
         return self.ndimage_center_of_mass(thImage)
-
-    def computeReconstructor(self, H, Rdiag):
-        Rinv = 1 / Rdiag
-        htrinv = H.T * Rinv.T
-        return Rinv, self.xp.linalg.inv(htrinv @ H) @ htrinv
 
     def setRefTT(self, center_x, center_y, image_size):
         image_center = 0.5 * (image_size-1)
@@ -196,19 +176,13 @@ class Lift(BaseProcessingObj):
         if self.fix:
             return (0.5 * frame.shape[0], 0.5 * frame.shape[1])
         yc, xc = self.computeCoG(frame)
-        return (xc, yc)
+        return (float(xc), float(yc))
 
-    def crop(self, frame, center, side=None):
-        if side is None:
-            side = self.cropped_size
-        row_start = int(math.ceil(float(center[1]) - side//2))
-        row_end = int(math.ceil(float(center[1]) + side//2))
-        col_start = int(math.ceil(float(center[0]) - side//2))
-        col_end = int(math.ceil(float(center[0]) + side//2))
-        return frame[row_start:row_end, col_start:col_end]
-
-    def calcCroppedFlux(self, frame, center):
-        return self.crop(frame, center).sum()
+    def crop(self, frame, center):
+        half = self.cropped_size // 2
+        row_start = math.ceil(center[1] - half)
+        col_start = math.ceil(center[0] - half)
+        return frame[row_start:row_start + 2 * half, col_start:col_start + 2 * half]
 
     @staticmethod
     def calc_geometry(phase_sampling, pixel_pitch, wavelengthInNm,
@@ -217,7 +191,7 @@ class Lift(BaseProcessingObj):
         rad2arcsec = 206264.806247
         D = phase_sampling * pixel_pitch
         lmbda = wavelengthInNm * 1e-9
-        sampling_ratio = ((lmbda / D) * rad2arcsec) / pix_scale 
+        sampling_ratio = ((lmbda / D) * rad2arcsec) / pix_scale
         ref_samp = np.max([2,np.ceil(sampling_ratio+1e-6)])
         if fft_res is not None:
             if fft_res > ref_samp: ref_samp = fft_res
@@ -237,9 +211,12 @@ class Lift(BaseProcessingObj):
 
     def set_modalbase(self, modalbase, mask2d):
 
-        self.fftSize = self.settings.fft_sampling + self.settings.fft_padding
+        self.fftSize = self.settings.fft_size
         self.gridSize = self.settings.fft_sampling
         self.radians_per_pixel = float(np.pi / (2.0 * self.settings.fft_res))
+        pad = (self.fftSize - self.gridSize) // 2
+        self.pupil_slice = slice(pad, pad + self.gridSize)
+        self.padded = self.xp.zeros((self.fftSize, self.fftSize), dtype=self.complex_dtype)
 
         mask2d = cpuArray(mask2d)
         modalbase = cpuArray(modalbase)
@@ -252,20 +229,19 @@ class Lift(BaseProcessingObj):
         )
 
         valid_idx = np.nonzero(mask2d)
-        f = np.zeros_like(mask2d.astype(cpu_dtype))
-
-        self.modes = []
+        f = np.zeros(mask2d.shape, dtype=cpu_dtype)
+        modes = np.empty((self.nmodes, self.gridSize, self.gridSize), dtype=cpu_dtype)
         for i in range(self.nmodes):
             f[valid_idx] = modalbase[i, :]
-            f2 = resize_interp.interpolate(f.astype(cpu_dtype, copy=False))
-            self.modes.append(self.xp.array(f2, dtype=self.dtype))
-        self.modesCube = self.xp.stack(self.modes)
+            modes[i] = resize_interp.interpolate(f)
+        self.modesCube = self.xp.asarray(modes, dtype=self.dtype)
 
         mask2d = resize_interp.interpolate(mask2d.astype(cpu_dtype, copy=False))
         self.mask = self.xp.array(mask2d, dtype=self.dtype)
         self._img_norm = self.dtype(1.0) / self.xp.sqrt(self.mask.sum(dtype=self.dtype))
         self._check_tip_tilt_coherence(mask2d)
-        self.phase_ref = self.phaseFromCoeffs(self.airef)
+        # Reference phase, including the half-pixel tilt
+        self.phase_ref = self.phaseFromCoeffs(self.airef) + self._get_tlt_f(self.gridSize, self.fftSize)
 
         self.logger.info(f"Modal base set, gridSize={self.gridSize}, fftSize={self.fftSize}")
 
@@ -279,7 +255,7 @@ class Lift(BaseProcessingObj):
         x_flat = x_ramp[valid]
         y_flat = y_ramp[valid]
         for label, mode_idx in (('tip', self.nPistons), ('tilt', self.nPistons + 1)):
-            mode_flat = cpuArray(self.modes[mode_idx])[valid].astype(float)
+            mode_flat = cpuArray(self.modesCube[mode_idx])[valid].astype(float)
             if mode_flat.std() == 0:
                 raise ValueError(
                     f"Mode {mode_idx} (expected {label}) is flat — "
@@ -297,32 +273,25 @@ class Lift(BaseProcessingObj):
     def phaseFromCoeffs(self, coeffs):
         """Phase reconstruction from modal coefficients"""
         coeffs = self.to_xp(coeffs, dtype=self.dtype)
-        cv = coeffs[:, None, None]
-        return (cv * self.modesCube).sum(axis=0)
+        return self.xp.tensordot(coeffs, self.modesCube, axes=1)
 
-    def phaseLIFT(self, p):
-        return p + self.phase_ref + \
-            self.modes[0 + self.nPistons] * self.ref_tip + \
-            self.modes[1 + self.nPistons] * self.ref_tilt
-
-    def abs2(self, x):
+    @staticmethod
+    def abs2(x):
         return x.real**2 + x.imag**2
 
-    def IK_prime(self, index, Pd, conjPdTilde, center):
-        resultFull = 2.0 * (conjPdTilde *
-                               self.ft_ft2(Pd * self.modes[index])).real
-        new_shape = (round(resultFull.shape[0]/self.settings.bin_fact), 
-                    round(resultFull.shape[1]/self.settings.bin_fact))
-        binned_result = toccd(resultFull, new_shape,xp = self.xp, set_total = 0)*self.settings.bin_fact**2
-        resultFull = self.crop_or_enlarge_around_peak(binned_result, self.npix_side, peak_index=(new_shape[0]//2, new_shape[1]//2))
-        return self.crop(resultFull, center)
-
     def complexField(self, phase):
-        phase_lift = self.phaseLIFT(phase)
-        tt_hpx = self._get_tlt_f(phase.shape[0],self.settings.fft_size)
-        complexField = self.mask * self.xp.exp(self.complex_dtype(1j) * (phase_lift+tt_hpx))
-        complexFieldFFT = self.ft_ft2(complexField)
-        return complexField, complexFieldFFT
+        phase_lift = phase + self.phase_ref + \
+            self.modesCube[0 + self.nPistons] * self.ref_tip + \
+            self.modesCube[1 + self.nPistons] * self.ref_tilt
+        complexField = self.mask * self.xp.exp(self.complex_dtype(1j) * phase_lift)
+        return complexField, self.ft_ft2(complexField)
+
+    def _bin_and_crop(self, img, set_total=None):
+        '''Bin a FFT-sampled image to the detector sampling and crop it to npix_side'''
+        new_shape = (round(img.shape[0] / self.settings.bin_fact), round(img.shape[1] / self.settings.bin_fact))
+        binned = toccd(img, new_shape, set_total=set_total, xp=self.xp)
+        return self.crop_or_enlarge_around_peak(binned, self.npix_side,
+                                                peak_index=(new_shape[0] // 2, new_shape[1] // 2))
 
     def focalPlaneImageFromFFT(self, complexFieldFFT, set_flux=None):
         if set_flux is not None:
@@ -333,62 +302,43 @@ class Lift(BaseProcessingObj):
             img *= set_flux / img.sum()
         else:
             img = self.abs2(complexFieldFFT * self._img_norm)
-        new_shape = (round(img.shape[0]/self.settings.bin_fact), round(img.shape[1]/self.settings.bin_fact))
-        binned_img = toccd(img,new_shape,xp = self.xp)
-        img = self.crop_or_enlarge_around_peak(binned_img, self.npix_side, peak_index=(new_shape[0]//2, new_shape[1]//2))
-        return img
+        return self._bin_and_crop(img)
 
     def calcDerivatives(self, complexField, complexFieldFFT, roi):
-        # Precalculate some data for IK_prime
+        '''Interaction matrix: derivative of the ROI image w.r.t. each mode'''
         conjPdTilde = self.xp.conj(complexFieldFFT) * self.complex_dtype(1j)
-        IK_p_list = []
-        for i in range(self.nmodes):
-            IK_p_list.append(self.IK_prime(i, complexField, conjPdTilde, roi).ravel())
-        H = self.xp.vstack(IK_p_list).transpose()
-        return H
+        columns = []
+        for mode in self.modesCube:
+            dI = 2.0 * (conjPdTilde * self.ft_ft2(complexField * mode)).real
+            dI = self._bin_and_crop(dI, set_total=0) * self.settings.bin_fact**2
+            columns.append(self.crop(dI, roi).ravel())
+        return self.xp.stack(columns, axis=1)
 
     def computeNoiseCovarianceDiag(self, image):
         '''
         Compute noise covariance matrix.
         Only return the diagonal to avoid allocating a big matrix.
         '''
-        nCov = image.ravel()+self.ron**2
-        cMinTh = nCov.max() * 1e-6
-        nCovDiag = self.xp.where(nCov < cMinTh, cMinTh, nCov)
-        return nCovDiag
-
-    def applyReconstructor(self, P_ML, DeltaI):
-        return P_ML @ DeltaI.ravel()
-
-    def getError(self, DeltaI, Rinv):
-        return (DeltaI.ravel()**2 * Rinv).sum() / (self.gridSize**2)
+        nCov = image.ravel() + self.ron**2
+        return self.xp.maximum(nCov, nCov.max() * 1e-6)
 
     def setPsf(self, psf):
-        psf = self.xp.array(psf)
-        center = self.computeCoG(psf)
-        frame = self.crop_or_enlarge_around_peak(psf, int(self.npix_side),
-                                               peak_index=(self.xp.round(center[0]).astype(int), self.xp.round(center[1]).astype(int)))
-        return self.xp.array(frame)
+        psf = self.xp.asarray(psf)
+        yc, xc = self.computeCoG(psf)
+        return self.crop_or_enlarge_around_peak(psf, int(self.npix_side),
+                                                peak_index=(int(round(float(yc))), int(round(float(xc)))))
 
     def phaseEstimation(self, psf_orig, relTol=1e-3, absTol=1e-3):
-        if not self.modes:
-            raise Exception('Modal base has not been set yet')
-
         psf = self.setPsf(psf_orig)
         total_A_ML = self.xp.zeros(self.nmodes, dtype=self.dtype)
         currentPhaseEstimate = self.xp.zeros_like(self.mask)
         olderror = float(1e18)
-        errors = []
-        currentPhaseEstimates = []
-        total_A_MLs = []
-        errors.append(olderror)
-        currentPhaseEstimates.append(currentPhaseEstimate)
-        total_A_MLs.append(total_A_ML)
+        n_estimates = 1
         # Estimate initial ROI and flux
         center = self.calcCenter(psf)
-        flux = self.calcCroppedFlux(psf, center)
+        flux = self.crop(psf, center).sum()
         # Set reference TT based on initial ROI
-        self.setRefTT(float(center[0]), float(center[1]), float(psf.shape[0]))
+        self.setRefTT(center[0], center[1], float(psf.shape[0]))
         for i in range(self.n_iter):
             # Store current ROI from original PSF
             psfRoi = self.crop(psf, center)
@@ -399,93 +349,66 @@ class Lift(BaseProcessingObj):
             newCenter = self.calcCenter(I0)
             I0roi = self.crop(I0, newCenter)
             # Renormalize flux and EF based on new ROI
-            flux *= self.calcCroppedFlux(psf, newCenter) / I0roi.sum()
+            flux *= self.crop(psf, newCenter).sum() / I0roi.sum()
             norm = self.xp.sqrt(flux) / self.xp.sqrt(self.abs2(complexFieldFFT).sum())
             complexField *= norm
             complexFieldFFT *= norm
-            # Calculate derivatives and reconstructor
+            # Calculate derivatives and the weighted least-squares reconstructor
             H = self.calcDerivatives(complexField, complexFieldFFT, newCenter)
             Rdiag = self.computeNoiseCovarianceDiag(I0roi)
-            Rinv, P_ML = self.computeReconstructor(H, Rdiag)
+            Rinv = 1 / Rdiag
+            htrinv = H.T * Rinv
+            P_ML = self.xp.linalg.inv(htrinv @ H) @ htrinv
             # Use reconstructor to get the delta zernike estimate
-            DeltaI = psfRoi - I0roi
-            DeltaZ = self.applyReconstructor(P_ML, DeltaI)
+            DeltaI = (psfRoi - I0roi).ravel()
+            DeltaZ = P_ML @ DeltaI
             currentPhaseEstimate += self.phaseFromCoeffs(DeltaZ)
-            # Accumulate delta modes
-            DeltaZ_cpu = cpuArray(DeltaZ)
-            total_A_ML += self.to_xp(DeltaZ_cpu, dtype=self.dtype)
+            total_A_ML += DeltaZ
+            n_estimates += 1
             # Update PSF window
             center = newCenter
             # Compute convergence criteria
-            newerror = float(cpuArray(self.getError(DeltaI, Rinv)))
+            DeltaZ_cpu = cpuArray(DeltaZ)
+            newerror = float((DeltaI**2 * Rinv).sum()) / (self.gridSize**2)
             improvement = (olderror - newerror) / olderror
-            # Store convergence history
-            errors.append(newerror)
-            currentPhaseEstimates.append(currentPhaseEstimate.copy())
-            total_A_MLs.append(total_A_ML.copy())
-            if logging.root.level <= logging.INFO:
-                logging.debug(f"Iteration: {i}")
-                logging.debug(f"estimated flux: {flux}")
-                logging.debug(f"center_x, center_y: {center[0]}, {center[1]}")
-                logging.debug(f"min R, max R: {Rdiag.min()}, {Rdiag.max()}")
-                logging.debug(f"Current step of modal coefficients: {DeltaZ_cpu}")
-                logging.debug(f"Current estimate of modal coefficients: {total_A_ML}")
-                logging.debug(f"Criterion value: {newerror}")
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(f"Iteration: {i}, estimated flux: {flux}, center_x, center_y: {center}, "
+                                  f"min R, max R: {Rdiag.min()}, {Rdiag.max()}, "
+                                  f"modal step: {DeltaZ_cpu}, modal estimate: {total_A_ML}, criterion: {newerror}")
             if abs(improvement) < relTol or np.mean(np.abs(DeltaZ_cpu)) < absTol:
-                logging.debug(f'criterion reached at the {i+1} iteration')
+                self.logger.debug(f'criterion reached at the {i+1} iteration')
                 break
 
-        lastAML = self.to_xp(total_A_MLs[-1], dtype=self.dtype, force_copy=True)
-        lastAML[0 + self.nPistons] += self.ref_tip
-        lastAML[1 + self.nPistons] += self.ref_tilt
+        total_A_ML[0 + self.nPistons] += self.ref_tip
+        total_A_ML[1 + self.nPistons] += self.ref_tilt
 
-        # *** Convert to physical units (microns) ***
-        final_coeffs = lastAML * self.wavelengthInNm / (2 * np.pi)
-
-        # *** Wrap coefficients to [-lambda/2, +lambda/2] for all modes ***
+        # Convert to nm and wrap to [-lambda/2, +lambda/2)
+        final_coeffs = total_A_ML * self.wavelengthInNm / (2 * np.pi)
         final_coeffs = self._wrap_coefficients(final_coeffs, self.wavelengthInNm)
 
-        return currentPhaseEstimates[-1], final_coeffs, len(total_A_MLs)
+        return currentPhaseEstimate, final_coeffs, n_estimates
 
     def _wrap_coefficients(self, coeffs, wavelengthInNm):
         """
         Wrap all modal coefficients to [-wavelength/2, +wavelength/2] range.
-        
+
         This ensures estimates are always within one wavelength period,
         which is critical for multi-wavelength phase unwrapping.
-        
-        Parameters
-        ----------
-        coeffs : ndarray
-            Modal coefficients in physical units (microns)
-        wavelengthInNm : float
-            Wavelength in nanometers
-            
-        Returns
-        -------
-        wrapped_coeffs : ndarray
-            Coefficients wrapped to [-lambda/2, +lambda/2]
-        """  
+        """
         half_lambda = wavelengthInNm / 2.0
-
-        # Wrap to [-lambda/2, +lambda/2)
-        wrapped = ((coeffs + half_lambda) % wavelengthInNm) - half_lambda
-
-        return wrapped
-
+        return ((coeffs + half_lambda) % wavelengthInNm) - half_lambda
 
     def focalPlaneImageLIFT(self, phase, set_flux=None):
         '''
         Backward compatibility, called from example/test
         '''
-        phase = self.xp.array(phase)
-        complexField, complexFieldFFT = self.complexField(phase)
+        _, complexFieldFFT = self.complexField(self.xp.asarray(phase))
         return self.focalPlaneImageFromFFT(complexFieldFFT, set_flux=set_flux)
 
     def crop_or_enlarge_around_peak(self, in_array, desired_width, peak_index=None):
         '''
         Function to crop a PSF frame or enlarge it around the peak,
-        depending on whether it is larger or smaller than the desired width.        
+        depending on whether it is larger or smaller than the desired width.
 
         peak_index: tuple with the (r,c) integer coordinates of the
                     image center. If None, it will be found with np.argmax
@@ -516,30 +439,24 @@ class Lift(BaseProcessingObj):
                             'constant', constant_values=0)
         return cropped
 
-    @lru_cache
     def _get_tlt_f(self, pupil_size, fft_size):
         '''
         Half-pixel tilt
         '''
-
         xx, yy = self.xp.meshgrid(self.xp.arange(-pupil_size // 2, pupil_size // 2), self.xp.arange(-pupil_size // 2, pupil_size // 2))
-        tlt_g = xx + yy
-        tlt_f = -2 * self.xp.pi * tlt_g / (2*fft_size)
+        tlt_f = -2 * self.xp.pi * (xx + yy) / (2*fft_size)
         # Object precision, otherwise the whole LIFT iteration runs in complex128
         return tlt_f.astype(self.dtype)
 
     def trigger(self):
-
         psf = self.local_inputs['in_pixels'].get_value()
-        currentPhaseEstimate, coeffs, niters = self.phaseEstimation(psf) 
+        _, coeffs, _ = self.phaseEstimation(psf)
 
-        coeffs_xp = self.to_xp(coeffs)
-        self.outputs['out_pistons'].value = coeffs_xp[:self.nPistons]
+        self.outputs['out_pistons'].value = coeffs[:self.nPistons]
         self.outputs['out_pistons'].generation_time = self.current_time
-        self.outputs['out_zern'].value = coeffs_xp[self.nPistons:]
+        self.outputs['out_zern'].value = coeffs[self.nPistons:]
         self.outputs['out_zern'].generation_time = self.current_time
 
-        # self.outputs["phase_estimate"] = currentPhaseEstimate
         self.logger.info(f"Trigger done, coeffs={coeffs[:5]}...")
 
     def finalize(self):
