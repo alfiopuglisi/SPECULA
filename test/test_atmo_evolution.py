@@ -474,13 +474,13 @@ class TestAtmoEvolution(unittest.TestCase):
             loop.add(atmo, idx=1)
             loop.start(run_time=0.2, dt=simul_params.time_step)
             atmo.build_stream(allow_parallel=allow_parallel)
-            assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
             if target_device_idx >= 0:
                 assert (atmo.stream is BaseProcessingObj.device_stream(0)) == (not allow_parallel)
             layers[allow_parallel] = []
             for _ in range(20):
                 loop.iter()
                 layers[allow_parallel] += [cpuArray(l.phaseInNm).copy() for l in atmo.layer_list]
+            assert (atmo.cuda_graph is not None) == (target_device_idx >= 0)
 
         # Not bit-identical: if the phase screens are not cached, the first object
         # generates them and the second one loads them from file
@@ -623,7 +623,7 @@ class TestAtmoEvolution(unittest.TestCase):
         loop.add(wind_speed, idx=1)
         loop.add(atmo, idx=2)
         loop.start(run_time=0.03, dt=simul_params.time_step)
-        if atmo.cuda_graph:
+        if target_device_idx >= 0:
             with self.assertRaisesRegex(RuntimeError, 'wind_speed has been reallocated'):
                 for _ in range(3):
                     loop.iter()

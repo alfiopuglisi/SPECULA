@@ -351,7 +351,7 @@ class TestBaseProcessingObj(unittest.TestCase):
         '''
         With a stateful trigger_code() (like an integrator), each trigger() must
         advance the state exactly once, also in the steps where the CUDA graph
-        is captured: at the first trigger() with build_stream(capture=False),
+        is captured: at the first trigger() after build_stream(),
         and after invalidate_graph().
         '''
         class Integrator(BaseProcessingObj):
@@ -369,7 +369,7 @@ class TestBaseProcessingObj(unittest.TestCase):
             return float(obj.state[0])
 
         obj = Integrator()
-        obj.build_stream(allow_parallel=False, capture=False)
+        obj.build_stream(allow_parallel=False)
         self.assertIsNone(obj.cuda_graph)
         self.assertEqual(run(obj), 1.0)     # captured here
         self.assertIsNotNone(obj.cuda_graph)

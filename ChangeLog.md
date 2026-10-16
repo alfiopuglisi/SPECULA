@@ -36,6 +36,7 @@
 
 ### Other
 
+- `BaseProcessingObj.build_stream()` no longer captures the CUDA graph, which is always captured at the next `trigger()` (the `capture` argument has been removed). Capturing in `setup()` ran `trigger_code()` once more, before the first step, on the initial inputs: on GPU, objects whose state advances at each step made one extra step, and the outputs were written before the first step. Also fixes the extra step of `ExtSourcePyramid` when it recaptures the graph after a change of the number of chunks.
 - Fixed the circular loop error of `Simul.build_trigger_order()` (#807): the message printed the literal text `{leaves}` instead of the names of the objects involved.
 - Fixed `ModulatedDoubleRoof` (#798): the focal plane PSF was accumulated once per roof, so `out_psf_bfm` and `out_psf_tot` were twice the ones of `ModulatedPyramid`. Pixels, slopes and `out_transmission` are unchanged.
 - `ModalrecExplicitPolc` and `ModalrecImplicitPolc` share the command inputs and the slopes update check in the new base class `BasePolcModalrec`.

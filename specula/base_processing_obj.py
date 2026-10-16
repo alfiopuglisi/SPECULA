@@ -226,11 +226,12 @@ class BaseProcessingObj(BaseTimeObj):
             cls._streams[target_device_idx] = cp.cuda.Stream(non_blocking=False)
         return cls._streams[target_device_idx]
 
-    def build_stream(self, allow_parallel=True, capture=True):
+    def build_stream(self, allow_parallel=True):
         '''
-        Create the CUDA stream and capture the CUDA graph.
-        If *capture* is False, the graph is captured at the first trigger() instead,
-        for objects whose trigger_code() needs data that is only available then.
+        Create the CUDA stream. The CUDA graph is captured at the next trigger(),
+        where the warm-up run of capture_stream() computes that step: capturing
+        here would run trigger_code() one extra time, advancing the state of the
+        object and writing its outputs before the first step.
         '''
         if self.target_device_idx >= 0:
             self._target_device.use()
@@ -238,10 +239,7 @@ class BaseProcessingObj(BaseTimeObj):
                 self.stream = cp.cuda.Stream(non_blocking=False)
             else:
                 self.stream = self.device_stream(self.target_device_idx)
-            if capture:
-                self.capture_stream()
-            else:
-                self._cuda_graph_invalid = True
+            self._cuda_graph_invalid = True
             default_target_device.use()
 
     def capture_stream(self):

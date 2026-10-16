@@ -766,7 +766,7 @@ class TestShSlopec(unittest.TestCase):
         class GraphShSlopec(DerivedShSlopec):
             def setup(self):
                 super().setup()
-                self.build_stream(capture=False)
+                self.build_stream()
 
         subapdata, _, frames = self._frames_and_subapdata(target_device_idx, xp)
         sn = Slopes(slopes=np.random.default_rng(2).normal(size=2 * subapdata.n_subaps),

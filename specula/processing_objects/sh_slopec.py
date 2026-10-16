@@ -44,7 +44,7 @@ class ShSlopec(Slopec):
 
     Derived classes do not use a CUDA graph, since their compute_slopes()
     may have host-side logic. Those with GPU-only code can opt in calling
-    self.build_stream(capture=False) in their setup().
+    self.build_stream() in their setup().
     """
 
     def __init__(self,
@@ -137,7 +137,7 @@ class ShSlopec(Slopec):
         # pixels are only available then. Derived classes must opt in, see
         # the class docstring.
         if type(self) is ShSlopec:
-            self.build_stream(capture=False)
+            self.build_stream()
 
     def set_xy_weights(self):
         if self.subapdata:
