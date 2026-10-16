@@ -3,7 +3,8 @@ import contextlib
 import fnmatch
 import re
 
-from specula import cpuArray, default_target_device, cp
+import specula
+from specula import cpuArray, cp
 from specula.tracing import tracer
 from specula import process_comm
 from specula.base_time_obj import BaseTimeObj
@@ -242,7 +243,10 @@ class BaseProcessingObj(BaseTimeObj):
                 self.capture_stream()
             else:
                 self._cuda_graph_invalid = True
-            default_target_device.use()
+            # Read at call time: specula.init() may have been called after this module was imported.
+            # None if the default device is the CPU
+            if specula.default_target_device is not None:
+                specula.default_target_device.use()
 
     def capture_stream(self):
         # The temporary arrays allocated by trigger_code() are released when it
