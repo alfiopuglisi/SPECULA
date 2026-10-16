@@ -52,6 +52,9 @@ class TestSpeculaDisableGPU(unittest.TestCase):
         self.original_value = os.environ.get("SPECULA_DISABLE_GPU")
         if 'specula' in sys.modules:    # pragma: no cover
             self.orig_specula = sys.modules['specula']
+            # reload() executes the module again in the same object:
+            # its globals must be restored, not only sys.modules
+            self.orig_specula_globals = dict(self.orig_specula.__dict__)
         else:                           # pragma: no cover
             self.orig_specula = None
 
@@ -64,6 +67,7 @@ class TestSpeculaDisableGPU(unittest.TestCase):
 
         # Reset imported module state
         if self.orig_specula:     # pragma: no cover
+            self.orig_specula.__dict__.update(self.orig_specula_globals)
             sys.modules['specula'] = self.orig_specula
         else:                     # pragma: no cover
             if "specula" in sys.modules:

@@ -5,7 +5,6 @@ from inspect import signature
 
 import specula
 from specula import np, cp, to_xp
-from specula import global_precision, default_target_device, default_target_device_idx
 from specula import cpu_float_dtype_list, gpu_float_dtype_list
 from specula import cpu_complex_dtype_list, gpu_complex_dtype_list
 from specula.log import get_specula_logger, INIT_PLACEHOLDER_NAME
@@ -159,13 +158,6 @@ def _check_specula_initialized():
         raise RuntimeError(
             'SPECULA is not initialized: call specula.init(device_idx, precision) '
             'before creating any SPECULA object')
-    if global_precision is None:
-        # init() was called, but after this module was imported, so the
-        # names imported above from specula are stale
-        raise RuntimeError(
-            'specula.init() was called after importing SPECULA submodules. '
-            'Call specula.init() right after "import specula", before any other '
-            'specula.* import')
 
 
 class BaseTimeObj:
@@ -190,12 +182,12 @@ class BaseTimeObj:
         self._time_resolution = int(1e9)
 
         if precision is None:
-            self.precision = global_precision
+            self.precision = specula.global_precision
         else:
             self.precision = precision
 
         if target_device_idx is None:
-            self.target_device_idx = default_target_device_idx
+            self.target_device_idx = specula.default_target_device_idx
         else:
             self.target_device_idx = target_device_idx
 
@@ -211,7 +203,7 @@ class BaseTimeObj:
             self.xp = cp
             self.xp_str = 'cp'
         else:
-            self._target_device = default_target_device                # CPU case
+            self._target_device = specula.default_target_device        # CPU case
             self.dtype = cpu_float_dtype_list[self.precision]
             self.complex_dtype = cpu_complex_dtype_list[self.precision]
             self.xp = np
@@ -310,7 +302,7 @@ class BaseTimeObj:
             # already used or about to be: reading the memory pool of any other GPU
             # would create a CUDA context (hundreds of MB) on it.
             devices = set(_used_devices)
-            for d in (default_target_device_idx, device_hint):
+            for d in (specula.default_target_device_idx, device_hint):
                 if d is not None and d >= 0:
                     devices.add(d)
             self._mem_before = {d: _pool_used_bytes(d) for d in devices}

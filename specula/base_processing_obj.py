@@ -3,9 +3,9 @@ import contextlib
 import fnmatch
 import re
 
-from specula import cpuArray, default_target_device, cp
+import specula
+from specula import cpuArray, cp
 from specula.tracing import tracer
-from specula import process_comm
 from specula.base_time_obj import BaseTimeObj
 from specula.connections import InputList, InputValue
 from specula.data_objects.layer import Layer
@@ -173,7 +173,7 @@ class BaseProcessingObj(BaseTimeObj):
             self.logger.mpi_send_debug(f'SEND with Pickle: {dest_tag=}')
             xp_orig = item.xp
             item.xp = 0            
-            process_comm.ibsend(item, dest=dest_rank, tag=dest_tag)
+            specula.process_comm.ibsend(item, dest=dest_rank, tag=dest_tag)
             item.xp = xp_orig
         else:
             buffer = item.get_value()
@@ -181,9 +181,9 @@ class BaseProcessingObj(BaseTimeObj):
             self.logger.mpi_send_debug(f'SEND with Buffe {dest_tag=}, {type(buffer)=}, {buffer=}')
             self.logger.mpi_send_debug(f'SEND with Buffer type {dest_tag=} {buffer.dtype=}')
 
-            process_comm.Ibsend(cpuArray(buffer), dest=dest_rank, tag=dest_tag)
+            specula.process_comm.Ibsend(cpuArray(buffer), dest=dest_rank, tag=dest_tag)
 
-            process_comm.ibsend(item.generation_time, dest=dest_rank, tag=dest_tag+1)
+            specula.process_comm.ibsend(item.generation_time, dest=dest_rank, tag=dest_tag+1)
         if item.get_value() is not None:
             self.sent_valid[dest_tag] = True
 
@@ -242,7 +242,9 @@ class BaseProcessingObj(BaseTimeObj):
                 self.capture_stream()
             else:
                 self._cuda_graph_invalid = True
-            default_target_device.use()
+            # None if the default device is the CPU
+            if specula.default_target_device is not None:
+                specula.default_target_device.use()
 
     def capture_stream(self):
         # The temporary arrays allocated by trigger_code() are released when it

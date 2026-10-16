@@ -36,6 +36,7 @@
 
 ### Other
 
+- `specula.init()` can be called after importing SPECULA submodules, and called again with a different device or precision: the objects created afterwards use the new defaults. cupy is now imported by `import specula` (unless `SPECULA_DISABLE_GPU` is set at that time), so `cp`, `gpuEnabled` and `array_types` do not change after it; the values set by `init()` (default device, precision, `xp`, MPI rank and communicator) are read from `specula` when used, instead of being copied by `from specula import ...` at import time. Before, a second `init()` (for example by test modules sharing a process) left them stale: GPU objects were created on the CPU, and `build_stream()` failed with `'NoneType' object has no attribute 'use'`, as it also did on GPU objects with a CPU default device.
 - Fixed the circular loop error of `Simul.build_trigger_order()` (#807): the message printed the literal text `{leaves}` instead of the names of the objects involved.
 - Fixed `ModulatedDoubleRoof` (#798): the focal plane PSF was accumulated once per roof, so `out_psf_bfm` and `out_psf_tot` were twice the ones of `ModulatedPyramid`. Pixels, slopes and `out_transmission` are unchanged.
 - `ModalrecExplicitPolc` and `ModalrecImplicitPolc` share the command inputs and the slopes update check in the new base class `BasePolcModalrec`.

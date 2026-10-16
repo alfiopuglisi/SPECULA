@@ -5,7 +5,7 @@ import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-from specula.loop_control import LoopControl, process_rank
+from specula.loop_control import LoopControl
 from specula.base_processing_obj import BaseProcessingObj
 
 from test.specula_testlib import cpu_and_gpu

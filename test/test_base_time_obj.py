@@ -36,7 +36,7 @@ class TestBaseValue(unittest.TestCase):
     @cpu_and_gpu
     def test_init_uses_global_precision_if_none(self, target_device_idx, xp):
         """If precision is None, global_precision should be used."""
-        with patch("specula.base_time_obj.global_precision", 1):
+        with patch("specula.global_precision", 1):
             obj = BaseTimeObj(target_device_idx=target_device_idx)
             self.assertEqual(obj.precision, 1)
 
@@ -228,11 +228,30 @@ class TestBaseValue(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('SPECULA is not initialized', r.stderr, r.stderr)
 
-    def test_init_after_import_raises(self):
+    def test_init_after_import_works(self):
         r = self._run_python('import specula; from specula.base_time_obj import BaseTimeObj; '
                              'specula.init(-1); BaseTimeObj()')
-        self.assertNotEqual(r.returncode, 0)
-        self.assertIn('called after importing', r.stderr, r.stderr)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    @unittest.skipIf(specula.cp is None, 'GPU not available')
+    def test_init_again_changes_the_defaults(self):
+        '''
+        The defaults set by a second init() are used by the objects created afterwards,
+        and build_stream() works on GPU with a CPU default device
+        '''
+        r = self._run_python(
+            'import specula; specula.init(-1, precision=0)\n'
+            'from specula.base_processing_obj import BaseProcessingObj\n'
+            'obj = BaseProcessingObj(target_device_idx=0)\n'
+            'obj.trigger_code = lambda: None\n'
+            'obj.build_stream()\n'
+            'assert BaseProcessingObj().target_device_idx == -1\n'
+            'specula.init(0, precision=1)\n'
+            'obj = BaseProcessingObj()\n'
+            'assert (obj.target_device_idx, obj.precision) == (0, 1), (obj.target_device_idx, obj.precision)\n'
+            'obj.trigger_code = lambda: None\n'
+            'obj.build_stream()\n')
+        self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_init_before_import_works(self):
         r = self._run_python('import specula; specula.init(-1); '
@@ -244,11 +263,6 @@ class TestBaseValue(unittest.TestCase):
     def test_uninitialized_raises_inprocess(self):
         with patch('specula.global_precision', None):
             with self.assertRaisesRegex(RuntimeError, 'SPECULA is not initialized'):
-                BaseTimeObj()
-
-    def test_init_after_import_raises_inprocess(self):
-        with patch('specula.base_time_obj.global_precision', None):
-            with self.assertRaisesRegex(RuntimeError, 'called after importing'):
                 BaseTimeObj()
 
     def test_gpu_without_cupy_raises(self):

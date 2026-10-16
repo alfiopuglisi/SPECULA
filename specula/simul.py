@@ -6,7 +6,6 @@ import itertools
 from copy import deepcopy
 from pathlib import Path
 import specula
-from specula import process_rank
 from specula.base_processing_obj import BaseProcessingObj
 from specula.base_data_obj import BaseDataObj
 from specula.base_time_obj import gpu_mem_report, mem_registry_mark, top_level_objs
@@ -312,10 +311,10 @@ class Simul():
             # on all ranks (processes) by default, unless a specific rank has been specified.
             self.is_dataobj[key] = issubclass(klass, BaseDataObj)
 
-            build_this_object = (process_rank == target_rank) or \
+            build_this_object = (specula.process_rank == target_rank) or \
                                 (issubclass(klass, BaseDataObj) and (par_target_rank == None)) or \
-                                (issubclass(klass, BaseDataObj) and (par_target_rank == process_rank)) or \
-                                (process_rank == None)
+                                (issubclass(klass, BaseDataObj) and (par_target_rank == specula.process_rank)) or \
+                                (specula.process_rank == None)
 
             # If not build, remember the remote rank of this object (needed for connections setup)
             if not build_this_object:
@@ -552,7 +551,7 @@ class Simul():
                     else:
                         # remote object case
                         # TODO these checks are almost all redundant
-                        if not ( self.all_objs_ranks[dest_object] != process_rank \
+                        if not ( self.all_objs_ranks[dest_object] != specula.process_rank \
                              and 'outputs' in params[dest_object] \
                              and output_name in params[dest_object]['outputs'] ):
                             raise ValueError(f'Remote Object {dest_object} does not have an output called {output_name}')
@@ -976,7 +975,7 @@ class Simul():
         self.create_input_list_inputs(params)
         self.connect_objects(params)
 
-        if (process_rank == 0 or process_rank is None) and self.diagram:
+        if (specula.process_rank == 0 or specula.process_rank is None) and self.diagram:
             self.diagram.build(trigger_order = self.trigger_order,
                                trigger_order_idx = self.trigger_order_idx,
                                all_target_device_idxs=self.all_target_device_idxs,
@@ -1010,7 +1009,7 @@ class Simul():
         self.logger.debug(f'{self.loop.max_global_order=}')
 
         # Default display web server
-        if 'display_server' in self.mainParams and self.mainParams['display_server'] and process_rank in [0, None]:
+        if 'display_server' in self.mainParams and self.mainParams['display_server'] and specula.process_rank in [0, None]:
             from specula.processing_objects.display_server import DisplayServer
             disp = DisplayServer(params, self.input_ref, self.output_ref, self.get_info)
             disp.name = 'display_server'

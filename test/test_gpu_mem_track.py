@@ -94,12 +94,12 @@ class TestDevicesRead(unittest.TestCase):
              patch.object(bto, '_used_devices', {1}):
 
             # Before __init__ the device is not known
-            with patch.object(bto, 'default_target_device_idx', 0):
+            with patch.object(specula, 'default_target_device_idx', 0):
                 BaseTimeObj.__new__(BaseTimeObj).startMemUsageCount(device_hint=3)
             self.assertEqual({c.args[0] for c in read.call_args_list}, {0, 1, 3})
 
             read.reset_mock()
-            with patch.object(bto, 'default_target_device_idx', -1):
+            with patch.object(specula, 'default_target_device_idx', -1):
                 BaseTimeObj.__new__(BaseTimeObj).startMemUsageCount(device_hint=-1)
             self.assertEqual({c.args[0] for c in read.call_args_list}, {1})
 
@@ -115,7 +115,7 @@ class TestGpuMemTrack(unittest.TestCase):
     def test_device_not_read_is_counted_from_base_init(self):
         # Device neither hinted nor used yet: counting starts in BaseTimeObj.__init__
         with patch.object(bto, '_used_devices', set()), \
-             patch.object(bto, 'default_target_device_idx', -1):
+             patch.object(specula, 'default_target_device_idx', -1):
             obj = DeviceNotHinted(0)
         self.assertEqual(obj.gpu_bytes_used, 1 * MB)
 

@@ -9,16 +9,37 @@ from specula.log import get_specula_logger, init_logging
 
 cpu_float_dtype_list = [np.float64, np.float32]
 cpu_complex_dtype_list = [np.complex128, np.complex64]
-array_types = []
 
-gpuEnabled = False
+# cupy is imported here and not in init(), so that cp, gpuEnabled, array_types
+# and the GPU dtype lists never change after "import specula", and modules
+# can import them with "from specula import ...", whatever the order of
+# the imports and of the init() calls.
+# The values set by init() must instead be read as specula.<name>
+# when they are used (e.g. specula.default_target_device_idx).
+_cupy_disabled = os.environ.get('SPECULA_DISABLE_GPU', 'FALSE') != 'FALSE'
 cp = None
+if not _cupy_disabled:
+    try:
+        import cupy as cp
+    except Exception:
+        cp = None
+
+gpuEnabled = cp is not None
+if cp is not None:
+    array_types = [np.ndarray, cp.ndarray]
+    gpu_float_dtype_list = [cp.float64, cp.float32]
+    gpu_complex_dtype_list = [cp.complex128, cp.complex64]
+    # Patch cupy's missing RandomState.random() method
+    cp.random.RandomState.random = cp.random.RandomState.random_sample
+else:
+    array_types = [np.ndarray]
+    gpu_float_dtype_list = cpu_float_dtype_list
+    gpu_complex_dtype_list = cpu_complex_dtype_list
+
 xp = None
 global_precision = None
 float_dtype_list = None
 complex_dtype_list = None
-gpu_float_dtype_list = cpu_float_dtype_list
-gpu_complex_dtype_list = cpu_complex_dtype_list
 float_dtype = None
 complex_dtype = None
 default_target_device_idx = None
@@ -48,14 +69,9 @@ def init(device_idx=-1,
          log_level=logging.INFO,
          ):
     global xp
-    global cp
-    global gpuEnabled
     global global_precision
     global float_dtype_list
     global complex_dtype_list
-    global gpu_float_dtype_list
-    global gpu_complex_dtype_list
-    global array_types
     global float_dtype
     global complex_dtype
     global default_target_device_idx
@@ -70,28 +86,17 @@ def init(device_idx=-1,
     logger = get_specula_logger(__name__)
 
     default_target_device_idx = device_idx
-    systemDisable = os.environ.get('SPECULA_DISABLE_GPU', 'FALSE')
-    if systemDisable == 'FALSE':
-        try:
-            import cupy as cp
-            logger.info("Cupy import successfull. Installed version is: "+ cp.__version__)
-            gpuEnabled = True
-            cp = cp
-        except:
-            logger.warning("Cupy import failed. SPECULA will fall back to CPU use.")
-            cp = None
-            xp = np
-            default_target_device_idx = -1
-    else:
+    if _cupy_disabled:
         logger.info("env variable SPECULA_DISABLE_GPU prevents using the GPU.")
-        cp = None
-        xp = np
         default_target_device_idx = -1
+    elif cp is None:
+        logger.warning("Cupy import failed. SPECULA will fall back to CPU use.")
+        default_target_device_idx = -1
+    else:
+        logger.info("Cupy import successfull. Installed version is: "+ cp.__version__)
 
     if default_target_device_idx >= 0:
         xp = cp
-        gpu_float_dtype_list = [cp.float64, cp.float32]
-        gpu_complex_dtype_list = [cp.complex128, cp.complex64]
         default_target_device = cp.cuda.Device(default_target_device_idx)
         default_target_device.use()
         logger.info(f'Default device is GPU number {default_target_device_idx}')
@@ -103,21 +108,13 @@ def init(device_idx=-1,
     else:
         logger.info('Default device is CPU')
         xp = np
-
-    if cp is not None:
-        array_types = [np.ndarray, cp.ndarray]
-    else:
-        array_types = [np.ndarray]
+        default_target_device = None
 
     float_dtype_list = [xp.float64, xp.float32]
     complex_dtype_list = [xp.complex128, xp.complex64]
     global_precision = precision
     float_dtype = float_dtype_list[global_precision]
     complex_dtype = complex_dtype_list[global_precision]
-
-    # Patch cupy's missing RandomState.random() method
-    if cp is not None:
-        cp.random.RandomState.random = cp.random.RandomState.random_sample
 
 
 # should be used as less as a possible and preferably outside time critical computations

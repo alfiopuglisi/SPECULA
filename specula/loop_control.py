@@ -4,7 +4,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 
 from specula.base_time_obj import BaseTimeObj
-from specula import process_comm, process_rank
+import specula
 from specula.tracing import tracer
 
 
@@ -64,7 +64,7 @@ class LoopControl(BaseTimeObj):
         self.start(run_time, dt, t0=t0, speed_report=speed_report, preroll_objs=preroll_objs)
         self.next_time_to_stop = 0
         while self.run_time < 0 or self.t < self.t0 + self.run_time:
-            if not process_rank and self.stepping and self.t > self.next_time_to_stop:
+            if not specula.process_rank and self.stepping and self.t > self.next_time_to_stop:
                 nnStr = input("Press Enter to advance one timestep, or enter the number of timesteps to advance:")
                 try:
                     nn = int(nnStr)
@@ -91,8 +91,8 @@ class LoopControl(BaseTimeObj):
             for element in self.trigger_lists[i]:
                 element.send_outputs(skip_delayed=False, first_mpi_send=True)
 
-        if process_comm is not None:
-            process_comm.barrier()
+        if specula.process_comm is not None:
+            specula.process_comm.barrier()
         self.logger.mpi_debug(f'Starting setups')
 
         self.logger.mpi_debug(f'{self.trigger_lists=}')
@@ -124,8 +124,8 @@ class LoopControl(BaseTimeObj):
         self._report_mem('after setup')
         self._mem_pending = {el for lst in self.trigger_lists.values() for el in lst}
         self._mem_first_trigger_report = True
-        if process_comm is not None:
-            process_comm.barrier()
+        if specula.process_comm is not None:
+            specula.process_comm.barrier()
         
         if preroll_objs:
             self.preroll(preroll_objs)
