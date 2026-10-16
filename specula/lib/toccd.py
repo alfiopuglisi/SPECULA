@@ -110,15 +110,20 @@ def toccd_gpu(a, newshape, set_total=None):
     f = 1.0 / (dx_out * dy_out)
 
     block = (16, 16)
-    numBlocks2d = int(outx // block[1])
-    if outx % block[1]:
-        numBlocks2d += 1
-    grid = (numBlocks2d, numBlocks2d)
+    numBlocks2d_x = int(outx // block[0])
+    if outx % block[0]:
+        numBlocks2d_x += 1
+    numBlocks2d_y = int(outy // block[1])
+    if outy % block[1]:
+        numBlocks2d_y += 1
+    grid = (numBlocks2d_x, numBlocks2d_y)
 
-    numBlocks2d_tmp = int(inx // block[0])
-    if inx % block[0]:
+    numBlocks2d_tmp = int(iny // block[1])
+    if iny % block[1]:
         numBlocks2d_tmp += 1
-    grid_tmp = (numBlocks2d, numBlocks2d_tmp)  # Note second element is different
+    grid_tmp = (numBlocks2d_x, numBlocks2d_tmp)  # step 1 iterates on the input rows
+
+    a = cp.ascontiguousarray(a)  # the kernels assume a C-contiguous input
 
     tmp = cp.empty_like(a, shape=(iny, outx))  # TODO this is a reallocation and could give problems with streams
     out = cp.empty_like(a, shape=(outy, outx))

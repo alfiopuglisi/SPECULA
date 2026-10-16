@@ -36,6 +36,7 @@
 
 ### Other
 
+- Fixed `toccd()`: wrong GPU results for non-square arrays (the launch grid used the x size for both axes) and for non-contiguous inputs (`CurvatureSensor` passes a view), and the CPU `ValueError` for some non-square shapes, coming from a typo in `rebin2d()` (the column count was compared with the row count).
 - Fixed the circular loop error of `Simul.build_trigger_order()` (#807): the message printed the literal text `{leaves}` instead of the names of the objects involved.
 - Fixed `ModulatedDoubleRoof` (#798): the focal plane PSF was accumulated once per roof, so `out_psf_bfm` and `out_psf_tot` were twice the ones of `ModulatedPyramid`. Pixels, slopes and `out_transmission` are unchanged.
 - `ModalrecExplicitPolc` and `ModalrecImplicitPolc` share the command inputs and the slopes update check in the new base class `BasePolcModalrec`.
