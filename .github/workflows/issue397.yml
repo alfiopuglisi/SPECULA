@@ -16,12 +16,21 @@ jobs:
       matrix:
         os: [macos-latest, macos-15-intel]
         install: [brew, conda]
+        code: [main, fix]
     defaults:
       run:
         shell: bash -el {0}
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Use unfixed code from main
+      if: ${{ matrix.code == 'main' }}
+      run: |
+        git checkout origin/main -- specula
+        git diff --stat HEAD -- specula
 
     - name: Python + cairo from Homebrew
       if: ${{ matrix.install == 'brew' }}
@@ -53,4 +62,4 @@ jobs:
         python -c "import cairo, matplotlib; print('pycairo', cairo.version, 'cairo', cairo.cairo_version_string(), 'mpl', matplotlib.__version__)"
 
     - name: Repro
-      run: bash ci_issue397/run_all.sh control cairo orthogram specula
+      run: bash ci_issue397/run_all.sh ${{ matrix.code }} control cairo specula specula_then_plot specula_nsimul2

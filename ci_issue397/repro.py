@@ -50,4 +50,19 @@ elif mode == 'specula':
     specula.main_simul(yml_files=[os.path.join(HERE, 'p.yml')], cpu=True,
                        diagram_filename=os.path.join(HERE, 'diagram.png'))
 
+elif mode == 'specula_then_plot':
+    # Simulation with diagram, then plot results in the same script
+    import specula
+    specula.main_simul(yml_files=[os.path.join(HERE, 'p.yml')], cpu=True,
+                       diagram_filename=os.path.join(HERE, 'diagram.png'))
+    show_window()
+
+elif mode == 'specula_nsimul2':
+    # The second simulation creates its display windows after the first diagram
+    import specula
+    specula.main_simul(yml_files=[os.path.join(HERE, 'p.yml')], cpu=True, nsimul=2,
+                       diagram_filename=os.path.join(HERE, 'diagram.png'))
+
+if mode.startswith('specula'):
+    print('diagram size:', os.path.getsize(os.path.join(HERE, 'diagram.png')), flush=True)
 print(f'REPRO {mode}: no crash', flush=True)
