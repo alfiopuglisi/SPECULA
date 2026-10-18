@@ -1,0 +1,56 @@
+# Temporary workflow to reproduce issue #397 on macOS runners (not for merge).
+
+name: Issue 397
+
+on:
+  push:
+    branches: [ ci-issue-397 ]
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+        install: [brew, conda]
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Python + cairo from Homebrew
+      if: ${{ matrix.install == 'brew' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install cairo (brew)
+      if: ${{ matrix.install == 'brew' }}
+      run: brew install cairo pkg-config
+
+    - name: Python + cairo from conda-forge (like the reporter's miniforge)
+      if: ${{ matrix.install == 'conda' }}
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        python-version: "3.11"
+
+    - name: Install pycairo (conda)
+      if: ${{ matrix.install == 'conda' }}
+      run: conda install -y -c conda-forge "pycairo=1.21.0" || conda install -y -c conda-forge pycairo
+
+    - name: Install
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install orthogram || pip install --no-deps orthogram "PyYAML>=6" "Shapely<3" "cassowary<0.6" "networkx<3"
+        pip install -e .
+        python -c "import cairo, matplotlib; print('pycairo', cairo.version, 'cairo', cairo.cairo_version_string(), 'mpl', matplotlib.__version__)"
+
+    - name: Repro
+      run: bash ci_issue397/run_all.sh control cairo orthogram specula
