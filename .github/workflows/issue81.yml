@@ -5,8 +5,6 @@
 name: Issue 81
 
 on:
-  push:
-    branches: [ ci-issue-81 ]
   workflow_dispatch:
 
 jobs:
