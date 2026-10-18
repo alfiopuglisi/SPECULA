@@ -1,0 +1,67 @@
+# Temporary workflow (not for merge): issue #397 fix on all platforms,
+# diagram unit tests plus the macOS crash repro.
+
+name: Issue 397 all platforms
+
+on:
+  push:
+    branches: [ ci-issue-397-all ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, install: apt}
+          - {os: windows-latest, install: conda}
+          - {os: macos-latest, install: brew}
+          - {os: macos-15-intel, install: conda}
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Python
+      if: ${{ matrix.install != 'conda' }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install cairo (apt)
+      if: ${{ matrix.install == 'apt' }}
+      run: sudo apt-get update && sudo apt-get install -y libcairo2-dev pkg-config
+
+    - name: Install cairo (brew)
+      if: ${{ matrix.install == 'brew' }}
+      run: brew install cairo pkg-config
+
+    - name: Python + pycairo from conda-forge
+      if: ${{ matrix.install == 'conda' }}
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        python-version: "3.11"
+
+    - name: Install pycairo (conda)
+      if: ${{ matrix.install == 'conda' }}
+      run: conda install -y -c conda-forge "pycairo=1.21.0" || conda install -y -c conda-forge pycairo
+
+    - name: Install
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install orthogram || pip install --no-deps orthogram "PyYAML>=6" "Shapely<3" "cassowary<0.6" "networkx<3"
+        pip install -e .
+        python -c "import cairo, matplotlib; print('pycairo', cairo.version, 'cairo', cairo.cairo_version_string(), 'mpl', matplotlib.__version__, matplotlib.get_backend())"
+
+    - name: Diagram unit tests
+      run: pytest -v test/test_diagram.py
+
+    - name: Repro
+      run: bash ci_issue397/run_all.sh fix control specula specula_then_plot specula_nsimul2 specula_nodisp_then_plot
