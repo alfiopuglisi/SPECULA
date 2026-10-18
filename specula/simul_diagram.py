@@ -1,4 +1,7 @@
 
+import sys
+import pickle
+import subprocess
 from collections import Counter
 from specula.log import get_specula_logger
 
@@ -69,7 +72,17 @@ class SimulDiagram:
 
         return rows
 
-    def build(self,
+    def build(self, **kwargs):
+        # On macOS, drawing text with cairo (used by orthogram) crashes any
+        # matplotlib window created afterwards in the same process (issue #397):
+        # build the diagram in a separate process.
+        if sys.platform == 'darwin':
+            code = 'import pickle, sys; d, kw = pickle.load(sys.stdin.buffer); d._build(**kw)'
+            subprocess.run([sys.executable, '-c', code], input=pickle.dumps((self, kwargs)), check=True)
+        else:
+            self._build(**kwargs)
+
+    def _build(self,
               trigger_order: list,
               trigger_order_idx: list,
               all_target_device_idxs: dict,
