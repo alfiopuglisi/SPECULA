@@ -62,4 +62,4 @@ jobs:
         python -c "import cairo, matplotlib; print('pycairo', cairo.version, 'cairo', cairo.cairo_version_string(), 'mpl', matplotlib.__version__)"
 
     - name: Repro
-      run: bash ci_issue397/run_all.sh ${{ matrix.code }} control cairo specula specula_then_plot specula_nsimul2
+      run: bash ci_issue397/run_all.sh ${{ matrix.code }} control cairo specula specula_then_plot specula_nsimul2 specula_nodisp_then_plot

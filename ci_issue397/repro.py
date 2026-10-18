@@ -57,6 +57,13 @@ elif mode == 'specula_then_plot':
                        diagram_filename=os.path.join(HERE, 'diagram.png'))
     show_window()
 
+elif mode == 'specula_nodisp_then_plot':
+    # Simulation with diagram and no displays: the first window comes after the diagram
+    import specula
+    specula.main_simul(yml_files=[os.path.join(HERE, 'p_nodisp.yml')], cpu=True,
+                       diagram_filename=os.path.join(HERE, 'diagram.png'))
+    show_window()
+
 elif mode == 'specula_nsimul2':
     # The second simulation creates its display windows after the first diagram
     import specula
