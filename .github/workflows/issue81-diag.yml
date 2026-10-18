@@ -25,5 +25,5 @@ jobs:
         pip install -r requirements.txt
         pip install -e .
 
-    - name: Diagnose frontend
-      run: python ci_issue81/diag_frontend.py
+    - name: Isolate network vs flask vs frontend
+      run: bash ci_issue81/diag2.sh
