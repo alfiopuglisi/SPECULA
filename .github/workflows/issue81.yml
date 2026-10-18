@@ -1,0 +1,47 @@
+# Temporary workflow to test issue #81 on macOS and Windows runners.
+# "main" runs the checks on the unfixed code (bug expected to be reproduced),
+# "fix" on the code of this branch.
+
+name: Issue 81
+
+on:
+  push:
+    branches: [ ci-issue-81 ]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        code: [fix, main]
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Use unfixed code from main
+      if: ${{ matrix.code == 'main' }}
+      shell: bash
+      run: |
+        git fetch origin main
+        git checkout origin/main -- specula
+        git diff --stat HEAD -- specula
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+
+    - name: Run checks
+      run: python ci_issue81/check.py ${{ matrix.code }}
