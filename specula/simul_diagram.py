@@ -1,4 +1,5 @@
 
+import os
 import sys
 import pickle
 import subprocess
@@ -76,8 +77,10 @@ class SimulDiagram:
         # On macOS, drawing text with cairo (used by orthogram) crashes any
         # matplotlib window created afterwards in the same process (issue #397):
         # build the diagram in a separate process.
+        # The child gets our sys.path, in case specula is not installed
         code = 'import pickle, sys; d, kw = pickle.load(sys.stdin.buffer); d._build(**kw)'
-        subprocess.run([sys.executable, '-c', code], input=pickle.dumps((self, kwargs)), check=True)
+        env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+        subprocess.run([sys.executable, '-c', code], input=pickle.dumps((self, kwargs)), env=env, check=True)
 
     def _build(self,
               trigger_order: list,
