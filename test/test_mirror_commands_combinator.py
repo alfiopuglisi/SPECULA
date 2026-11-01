@@ -32,3 +32,46 @@ class TestMirrorCommandsCombinator(unittest.TestCase):
             precision=0, target_device_idx=target_device_idx
         )
         self.assertEqual(comb64.k_vector.dtype, xp.float64)
+
+
+@unittest.skipIf(specula.cp is None, 'Cupy not found')
+class TestMirrorCommandsCombinatorAccelerated(unittest.TestCase):
+    '''The product uses graph_matmul.matmul(): the combinator is captured in a CUDA graph'''
+
+    def _run(self, accelerate):
+        from specula import cpuArray
+        from specula.base_value import BaseValue
+        from iteras.accelerator import Accelerator
+        from iteras.data_objects.accelerator import Accelerator as AcceleratorOptions
+        rng = np.random.default_rng(2)
+        recmat = Recmat(rng.standard_normal((6, 2)).astype(np.float32), target_device_idx=0)
+        comb = MirrorCommandsCombinator(k_vector=[0.5], recmat=recmat,
+                                        dims_LO=[1, 0, 1], dims_P=2, dims_F=1,
+                                        out_dims=[4, 2, 2], target_device_idx=0)
+        sizes = {'HO': 5, 'LO': 2, 'F': 1, 'P': 2}
+        values = {name: BaseValue(value=np.zeros(n, dtype=np.float32), target_device_idx=0)
+                  for name, n in sizes.items()}
+        for name, value in values.items():
+            comb.inputs[f'in_commands{name}'].set(value)
+        if accelerate:
+            Accelerator(AcceleratorOptions()).apply([comb])
+        comb.setup()
+        outputs = []
+        for step in range(5):
+            t = comb.seconds_to_t(0.001 * step)
+            for name, value in values.items():
+                value.value[:] = specula.cp.asarray(rng.standard_normal(sizes[name]).astype(np.float32))
+                value.generation_time = t
+            comb.check_ready(t)
+            comb.trigger()
+            comb.post_trigger()
+            outputs.append(np.concatenate([cpuArray(comb.outputs[f'out_result_commands{i}'].value)
+                                           for i in (1, 2, 3)]))
+        return np.array(outputs), comb
+
+    def test_accelerated(self):
+        ref, _ = self._run(False)
+        with self.assertNoLogs('iteras.accelerator', level='WARNING'):
+            out, comb = self._run(True)
+        np.testing.assert_allclose(out, ref, rtol=1e-5, atol=1e-5)
+        self.assertEqual(comb._accel.status, 'accelerated')

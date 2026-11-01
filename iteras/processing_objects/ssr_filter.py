@@ -1,5 +1,6 @@
 from iteras.processing_objects.base_filter import BaseFilter
 from iteras.data_objects.ssr_filter_data import SsrFilterData
+from iteras.lib.graph_matmul import matmul
 
 
 class SsrFilter(BaseFilter):
@@ -57,6 +58,11 @@ class SsrFilter(BaseFilter):
     def output_names(cls):
         return super().output_names()
 
+    def can_accelerate(self):
+        # The products use graph_matmul.matmul(), which can be captured,
+        # and the state is updated in place
+        return True
+
     def trigger_code(self):
         """State-space filter computation."""
         A = self.ssr_filter_data.A
@@ -68,14 +74,14 @@ class SsrFilter(BaseFilter):
         u = self.delta_comm * self._gain_mod
 
         # State update
-        x_new = A @ self._x + B @ u
+        x_new = matmul(A, self._x, self.xp) + matmul(B, u, self.xp)
 
         # Output
         x_for_output = x_new if self.output_uses_new_state else self._x
-        y = C @ x_for_output + D @ u
+        y = matmul(C, x_for_output, self.xp) + matmul(D, u, self.xp)
 
-        # Update state
-        self._x = x_new
+        # Update state, in place: the CUDA graph of an accelerated object keeps using it
+        self._x[:] = x_new
 
         # Store in buffer
         self.output_buffer[:, 0] = y

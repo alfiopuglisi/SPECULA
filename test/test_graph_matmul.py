@@ -130,8 +130,10 @@ class TestMatmul(unittest.TestCase):
                     stream.begin_capture()
                     out = matmul(a, b, xp)
                     graph = stream.end_capture()
-                a *= 2              # the graph uses the current values
-                graph.launch(stream=stream)
-                stream.synchronize()
+                    # On the same stream as the graph: the non-blocking stream
+                    # does not wait for work on the default stream
+                    a *= 2          # the graph uses the current values
+                    graph.launch(stream=stream)
+                    stream.synchronize()
                 np.testing.assert_allclose(cpuArray(out), cpuArray(a @ b), rtol=1e-4, atol=1e-4)
 

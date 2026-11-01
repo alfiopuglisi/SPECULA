@@ -3,6 +3,7 @@ from specula.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from specula.base_value import BaseValue
 from specula.connections import InputValue
 from specula.data_objects.recmat import Recmat
+from specula.lib.graph_matmul import matmul
 
 
 class MirrorCommandsCombinator(BaseProcessingObj):
@@ -77,6 +78,10 @@ class MirrorCommandsCombinator(BaseProcessingObj):
                 'out_result_commands2': OutputDesc(BaseValue, 'Second chunk of combined output commands'),
                 'out_result_commands3': OutputDesc(BaseValue, 'Third chunk of combined output commands')}
 
+    def can_accelerate(self):
+        # The product uses graph_matmul.matmul(), which can be captured
+        return True
+
     def trigger_code(self):
         x_HO = self.local_inputs['in_commandsHO'].value
         x_LO = self.local_inputs['in_commandsLO'].value
@@ -97,7 +102,7 @@ class MirrorCommandsCombinator(BaseProcessingObj):
 
         y1 = v11 + v12
         if self.dims_P > 0:
-            y1 += self.A_matrix.recmat[:self.out_dims[0],:] @ x_P        
+            y1 += matmul(self.A_matrix.recmat[:self.out_dims[0],:], x_P, self.xp)        
         y2 = x_HO2
         y3 = self.xp.concatenate( ( x_LO3, x_HO3 ) )
 

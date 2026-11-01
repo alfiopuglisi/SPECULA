@@ -424,3 +424,48 @@ class TestSsrFilterData(unittest.TestCase):
                          target_device_idx=target_device_idx)
 
         self.assertIn("ambiguous", str(context.exception).lower())
+
+
+@unittest.skipIf(specula.cp is None, 'Cupy not found')
+class TestSsrFilterAccelerated(unittest.TestCase):
+    '''
+    The products use graph_matmul.matmul() and the state is updated in place:
+    SsrFilter is captured in a CUDA graph
+    '''
+
+    def _run(self, accelerate, output_uses_new_state):
+        from iteras.accelerator import Accelerator
+        from iteras.data_objects.accelerator import Accelerator as AcceleratorOptions
+        from iteras.base_value import BaseValue
+        from iteras.processing_objects.ssr_filter import SsrFilter
+        # Two filters with two coupled states each
+        A = np.array([[0.9, 0.1], [-0.2, 0.7]])
+        B = np.array([[0.5], [0.3]])
+        C = np.array([[1.0, -0.4]])
+        D = np.array([[0.2]])
+        data = SsrFilterData([A, 0.5 * A], [B, B], [C, C], [D, D], target_device_idx=0)
+        delta_comm = BaseValue(value=np.zeros(2, dtype=np.float32), target_device_idx=0)
+        filt = SsrFilter(data, output_uses_new_state=output_uses_new_state, target_device_idx=0)
+        filt.inputs['delta_comm'].set(delta_comm)
+        if accelerate:
+            Accelerator(AcceleratorOptions()).apply([filt])
+        filt.setup()
+        outputs = []
+        for step in range(6):
+            t = filt.seconds_to_t(0.001 * step)
+            delta_comm.value[:] = specula.cp.asarray([1.0 + step, -0.5 * step], dtype=np.float32)
+            delta_comm.generation_time = t
+            filt.check_ready(t)
+            filt.trigger()
+            filt.post_trigger()
+            outputs.append(cpuArray(filt.outputs['out_comm'].value).copy())
+        return np.array(outputs), filt
+
+    def test_accelerated(self):
+        for output_uses_new_state in (True, False):
+            with self.subTest(output_uses_new_state=output_uses_new_state):
+                ref, _ = self._run(False, output_uses_new_state)
+                with self.assertNoLogs('iteras.accelerator', level='WARNING'):
+                    out, filt = self._run(True, output_uses_new_state)
+                np.testing.assert_allclose(out, ref, rtol=1e-5, atol=1e-5)
+                self.assertEqual(filt._accel.status, 'accelerated')

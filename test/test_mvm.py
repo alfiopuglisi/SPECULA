@@ -309,3 +309,42 @@ class TestMVMParameterFiles(unittest.TestCase):
                     Simul(yml, speed_report=False).run()
                     with storage.read_object(os.path.join(store_dir, 'out.npz')) as f:
                         np.testing.assert_allclose(f.read('data', 0)[-1], [1, 4, 3])
+
+
+@unittest.skipIf(specula.cp is None, 'Cupy not found')
+class TestMVMAccelerated(unittest.TestCase):
+    '''The product uses graph_matmul.matmul(): MVM is captured in a CUDA graph'''
+
+    def _run(self, accelerate):
+        import numpy as np
+        from iteras import cpuArray
+        from iteras.accelerator import Accelerator
+        from iteras.data_objects.accelerator import Accelerator as AcceleratorOptions
+        rng = np.random.default_rng(1)
+        matrix = Matrix(rng.standard_normal((30, 70)).astype(np.float32), target_device_idx=0)
+        vector = BaseValue(value=np.zeros(70, dtype=np.float32), target_device_idx=0)
+        mvm = MVM(matrix=matrix, target_device_idx=0)
+        mvm.inputs['in_vector'].set(vector)
+        accelerator = None
+        if accelerate:
+            accelerator = Accelerator(AcceleratorOptions())
+            accelerator.apply([mvm])
+        mvm.setup()
+        outputs = []
+        for step in range(5):
+            t = mvm.seconds_to_t(0.001 * step)
+            vector.value[:] = specula.cp.asarray(rng.standard_normal(70).astype(np.float32))
+            vector.generation_time = t
+            mvm.check_ready(t)
+            mvm.trigger()
+            mvm.post_trigger()
+            outputs.append(cpuArray(mvm.output.value).copy())
+        return np.array(outputs), mvm
+
+    def test_accelerated(self):
+        import numpy as np
+        ref, _ = self._run(False)
+        with self.assertNoLogs('iteras.accelerator', level='WARNING'):
+            out, mvm = self._run(True)
+        np.testing.assert_allclose(out, ref, rtol=1e-5, atol=1e-5)
+        self.assertEqual(mvm._accel.status, 'accelerated')

@@ -2,6 +2,7 @@ from iteras.base_processing_obj import BaseProcessingObj, InputDesc, OutputDesc
 from iteras.base_value import BaseValue
 from iteras.connections import InputValue
 from iteras.data_objects.matrix import Matrix
+from iteras.lib.graph_matmul import matmul
 
 
 class MVM(BaseProcessingObj):
@@ -66,9 +67,13 @@ class MVM(BaseProcessingObj):
             raise ValueError(f"Input vector size mismatch: got {input_size}"
                              f", expected {expected_size}")
 
+    def can_accelerate(self):
+        # The product uses graph_matmul.matmul(), which can be captured
+        return True
+
     def trigger_code(self):
         vector = self.local_inputs['in_vector']
 
         # Simple matrix multiplication
-        self.output.value[:] = self.matrix.matrix @ vector.get_value()
+        self.output.value[:] = matmul(self.matrix.matrix, vector.get_value(), self.xp)
         self.output.generation_time = self.current_time
