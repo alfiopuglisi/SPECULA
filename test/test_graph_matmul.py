@@ -6,7 +6,7 @@ import unittest
 from specula import np
 from specula import cpuArray
 
-from specula.lib.graph_matmul import left_mul, matmul, matvec, vecmat
+from specula.lib.graph_matmul import left_mul, matmul, matvec, vecmat, dot_rows
 from test.specula_testlib import cpu_and_gpu
 
 
@@ -140,4 +140,50 @@ class TestMatmul(unittest.TestCase):
                     graph.launch(stream=stream)
                     stream.synchronize()
                 np.testing.assert_allclose(cpuArray(out), cpuArray(a @ b), rtol=1e-4, atol=1e-4)
+
+
+class TestDotRows(unittest.TestCase):
+
+    @cpu_and_gpu
+    def test_matches_matmul(self, target_device_idx, xp):
+        '''a @ b.T, with rows longer than a warp and not a multiple of it'''
+        rng = np.random.default_rng(12)
+        a = rng.standard_normal((37, 101))
+        b = rng.standard_normal((6, 101))
+        for dtype, tol in ((np.float64, 1e-12), (np.float32, 1e-4)):
+            with self.subTest(dtype=dtype):
+                out = xp.zeros((37, 6), dtype=dtype)
+                dot_rows(xp.asarray(a, dtype=dtype), xp.asarray(b, dtype=dtype), out, xp)
+                np.testing.assert_allclose(cpuArray(out), a @ b.T, rtol=tol, atol=tol)
+
+    @cpu_and_gpu
+    def test_captured_in_cuda_graph(self, target_device_idx, xp):  # pragma: gpu
+        if xp is np:
+            self.skipTest('CUDA graphs are GPU only')
+        rng = np.random.default_rng(13)
+        stream = xp.cuda.Stream(non_blocking=True)
+        with stream:
+            a = xp.asarray(rng.standard_normal((20, 50)))
+            b = xp.asarray(rng.standard_normal((4, 50)))
+            out = xp.zeros((20, 4))
+            dot_rows(a, b, out, xp)    # compiles the kernel outside the capture
+            stream.begin_capture()
+            dot_rows(a, b, out, xp)
+            graph = stream.end_capture()
+            out[:] = 0
+            a *= 2
+            graph.launch(stream)
+            stream.synchronize()
+        np.testing.assert_allclose(cpuArray(out), cpuArray(a @ b.T), rtol=1e-12, atol=1e-12)
+
+    @cpu_and_gpu
+    def test_rejects_unsupported_layouts(self, target_device_idx, xp):  # pragma: gpu
+        if xp is np:
+            self.skipTest('the checks apply to the GPU kernel only')
+        a = xp.zeros((8, 10), dtype=np.float32)
+        b = xp.zeros((3, 10), dtype=np.float32)
+        with self.assertRaises(ValueError):
+            dot_rows(a[:, ::2], b[:, :5], xp.zeros((8, 3), dtype=np.float32), xp)
+        with self.assertRaises(ValueError):
+            dot_rows(a, b, xp.zeros((8, 3), dtype=np.float64), xp)
 

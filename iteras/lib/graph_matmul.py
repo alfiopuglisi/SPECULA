@@ -11,7 +11,8 @@ it uses the raw kernels of this module, chosen by the shapes and memory layout:
 
 * `matvec()`: matrix @ vector(s), one warp per row of the matrix;
 * `vecmat()`: a few vectors @ matrix, partial sums over chunks of rows;
-* `left_mul()`: matrix @ matrix (or a batch of them), a standard tiled product.
+* `left_mul()`: matrix @ matrix (or a batch of them), a standard tiled product;
+* `dot_rows()`: a @ b.T for a short output with long rows, one warp per element.
 
 The first two are deterministic and as fast as cuBLAS on the matrices of the
 simulations (influence functions, reconstructors), without copying a
@@ -111,6 +112,71 @@ def _left_mul_gpu(a, x, out, xp):  # pragma: gpu
                             np.int64(x.strides[0] // item), np.int64(x.strides[1] // item),
                             np.int64(x.strides[2] // item)))
 
+
+
+_DOT_ROWS_SRC = r'''
+// Y[i, c] = sum_j A[i, j] B[c, j], i.e. Y = A @ B.T, A (n x J) and B (nc x J)
+// C-contiguous: one warp per element of Y. The threads of the warp read
+// consecutive elements of the two rows, then add their sums with warp
+// shuffles, in a fixed order (deterministic).
+template<typename T>
+__global__ void dot_rows(const T* A, const T* B, T* Y, int n, int nc, int J) {
+    long long w = ((long long)blockIdx.x * blockDim.x + threadIdx.x) / 32;
+    int lane = threadIdx.x % 32;
+    if (w >= (long long)n * nc) return;
+    int i = (int)(w / nc);
+    int c = (int)(w - (long long)i * nc);
+    const T* a = A + (long long)i * J;
+    const T* b = B + (long long)c * J;
+    T acc = 0;
+    for (int j = lane; j < J; j += 32)
+        acc += a[j] * b[j];
+    for (int off = 16; off > 0; off /= 2)
+        acc += __shfl_down_sync(0xffffffff, acc, off);
+    if (lane == 0)
+        Y[w] = acc;
+}
+'''
+_dot_rows_kernels = {}
+
+
+def dot_rows(a, b, out, xp):
+    """
+    out = a @ b.T, the dot products of all the rows of *a* (n, J) with all
+    the rows of *b* (nc, J). Suited to short outputs with long rows (e.g.
+    nc of a few tens), where a tiled product has too few blocks. On GPU,
+    one warp per output element, in a raw kernel that can be captured in
+    a CUDA graph.
+
+    Parameters
+    ----------
+    a : array (n, J), C-contiguous
+    b : array (nc, J), C-contiguous
+    out : array (n, nc), C-contiguous, same dtype as a and b (float32 or float64)
+    xp : module
+        numpy or cupy.
+    """
+    if xp is np:
+        np.matmul(a, b.T, out=out)
+        return
+    _dot_rows_gpu(a, b, out, xp)  # pragma: gpu
+
+
+def _dot_rows_gpu(a, b, out, xp):  # pragma: gpu
+    if not (a.flags.c_contiguous and b.flags.c_contiguous and out.flags.c_contiguous):
+        raise ValueError('dot_rows: a, b and out must be C-contiguous')
+    if not a.dtype == b.dtype == out.dtype:
+        raise ValueError(f'dot_rows: a, b and out must have the same dtype, '
+                         f'got {a.dtype}, {b.dtype}, {out.dtype}')
+    key = (out.dtype.str, xp.cuda.Device().id)
+    if key not in _dot_rows_kernels:
+        ctype = 'float' if out.dtype == np.float32 else 'double'
+        mod = xp.RawModule(code=_DOT_ROWS_SRC, options=_CXX_STD, name_expressions=[f'dot_rows<{ctype}>'])
+        _dot_rows_kernels[key] = mod.get_function(f'dot_rows<{ctype}>')
+    n, J = a.shape
+    nc = b.shape[0]
+    _dot_rows_kernels[key](((n * nc * 32 + 255) // 256,), (256,),
+                           (a, b, out, np.int32(n), np.int32(nc), np.int32(J)))
 
 _VECMAT_SRC = r'''
 // Partial sums of Y[k, j] = sum_i V[k, i] M[i, j] over the chunk s of i:

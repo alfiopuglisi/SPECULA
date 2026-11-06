@@ -6,7 +6,8 @@ import numpy as np
 from specula import fuse, RAD2ASEC, cpuArray
 from specula.tracing import tracer
 from specula.lib.extrapolation_2d import EFInterpolator
-from specula.lib.pixel_integration import pixel_integration_matrix, integrate_pixels
+from specula.lib.pixel_integration import (pixel_integration_matrix, integrate_pixels,
+                                           fourier_integration_matrices, integrate_pixels_fourier)
 from specula.connections import InputValue
 from specula.data_objects.electric_field import ElectricField
 from specula.data_objects.intensity import Intensity
@@ -187,7 +188,9 @@ class SH(BaseProcessingObj):
         self._yShiftPhInPixel = yShiftPhInPixel
         self._laser_launch_tel = laser_launch_tel
         self._pix_int_matrix = None
-        self._pix_int_matrix_kernel = None
+        self._fourier_a = None
+        self._fourier_r = None
+        self._fourier_tmp = None
         self._intensity = None
         self._int_tmp = None
         self._int_img = None
@@ -333,9 +336,6 @@ class SH(BaseProcessingObj):
         g = pixel_integration_matrix(fft_size, self._fft_period_arcsec, self._sensor_pxscale_arcsec,
                                      npx, stop=stop)
         self._pix_int_matrix = self.to_xp(g, dtype=self.dtype)
-        # The convolution kernels move the axis from sample 0 to sample fft_size / 2
-        # (their impulse response is centred there), so their output uses G rolled by half
-        self._pix_int_matrix_kernel = self.to_xp(np.roll(g, fft_size // 2, axis=1), dtype=self.dtype)
 
         # Padded subaperture cube extracted from full pupil (one row of subapertures,
         # i.e. dimx of them). Only the top-left n x n corner of each subap is ever
@@ -353,6 +353,17 @@ class SH(BaseProcessingObj):
         # names are a hash of the exact pixel scale value
         fp4_pixel_pitch = self.wavelength_in_nm / 1e9 / (in_ef.pixel_pitch / self._fov_ovs * fft_size)
         self._make_kernel_object(in_ef, fp4_pixel_pitch, fft_size)
+
+        # With convolution kernels, the pixels are integrated in Fourier space, from
+        # the convolved half spectra, without the inverse FFT. The kernels move the
+        # axis from sample 0 to sample fft_size / 2 (their impulse response is centred
+        # there), so their output uses G rolled by half.
+        if self._kernelobj is not None:
+            a, r = fourier_integration_matrices(np.roll(g, fft_size // 2, axis=1), fft_size)
+            self._fourier_a = self.to_xp(a, dtype=self.dtype)
+            self._fourier_r = self.to_xp(r, dtype=self.dtype)
+            self._fourier_tmp = self._zeros_common((dimx, 2 * npx, 2 * (fft_size // 2 + 1)),
+                                                   dtype=self.dtype)
 
     def _make_kernel_object(self, in_ef, fp4_pixel_pitch, fft_size):
         '''Convolution kernel object for a laser launch telescope (LGS), if any'''
@@ -467,11 +478,13 @@ class SH(BaseProcessingObj):
            subap cube, is written into the top-left corner of the zero-padded
            cube _wf3 (padding by 2, or more with a laser launch telescope);
         2. a batched 2D FFT and ``|.|^2`` give the PSF samples of each subap.
-           With a convolution kernel (LGS), they are convolved with the subap
-           kernels in Fourier space (rfft2/irfft2, the kernels are stored as
-           half spectra);
+           With a convolution kernel (LGS), they are multiplied by the subap
+           kernels in Fourier space (rfft2, the kernels are stored as half
+           spectra);
         3. each detector pixel is the exact integral of the PSF over the pixel,
-           G @ PSF @ G.T, written directly into the output image.
+           G @ PSF @ G.T, written directly into the output image. With a
+           convolution kernel, it is computed from the half spectra, without
+           the inverse FFT (integrate_pixels_fourier()).
 
         The flux normalization is done in post_trigger().
 
@@ -501,17 +514,18 @@ class SH(BaseProcessingObj):
             fp4 = self.fft.fft2(self._wf3, axes=(1, 2))
             abs2(fp4, self._intensity, xp=xp)
 
+            # Detector pixels: G @ PSF @ G.T for each subaperture
             if self._kernelobj is None:
-                psf, g = self._intensity, self._pix_int_matrix
+                image = integrate_pixels(self._pix_int_matrix, self._intensity,
+                                         self._int_tmp, self._int_img, xp)
             else:
                 subap_kern_fft = self._kernelobj.kernels[i * dimx: (i + 1) * dimx]
                 psf_fft = self.fft.rfft2(self._intensity)
                 psf_fft *= subap_kern_fft
-                psf = self.fft.irfft2(psf_fft, s=(self._fft_size, self._fft_size), norm='forward')
-                g = self._pix_int_matrix_kernel
-
-            # Detector pixels: G @ PSF @ G.T for each subaperture
-            out_view[:] = integrate_pixels(g, psf, self._int_tmp, self._int_img, xp)
+                # PSF = irfft2(psf_fft, norm='forward'), integrated without computing it
+                image = integrate_pixels_fourier(self._fourier_a, self._fourier_r, psf_fft,
+                                                 self._fourier_tmp, self._int_img, xp)
+            out_view[:] = image
             # G has oscillating weights: rounding can make dark pixels slightly
             # negative, which a Poisson noise generator would reject
             xp.maximum(out_view, 0, out=out_view)

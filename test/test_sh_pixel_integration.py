@@ -11,7 +11,8 @@ from specula import cpuArray
 from specula.data_objects.electric_field import ElectricField
 from specula.data_objects.laser_launch_telescope import LaserLaunchTelescope
 from specula.processing_objects.sh import SH
-from specula.lib.pixel_integration import pixel_integration_matrix, integrate_pixels
+from specula.lib.pixel_integration import (pixel_integration_matrix, integrate_pixels,
+                                           fourier_integration_matrices, integrate_pixels_fourier)
 from test.specula_testlib import cpu_and_gpu
 
 WAVELENGTH_NM = 500.0
@@ -214,6 +215,35 @@ class TestSHPixelIntegration(unittest.TestCase):
         np.testing.assert_allclose(subaps, subaps[:, :, ::-1], atol=1e-12)
         np.testing.assert_allclose(subaps, subaps[:, ::-1, :], atol=1e-12)
         np.testing.assert_allclose(img.sum(), float(ef.S0 * ef.masked_area()), rtol=1e-12)
+
+
+class TestFourierPixelIntegration(unittest.TestCase):
+
+    @cpu_and_gpu
+    def test_matches_inverse_fft_and_integrate_pixels(self, target_device_idx, xp):
+        '''From half spectra, as integrate_pixels() after irfft2 (norm='forward'),
+        with a rolled G as for the LGS kernels and a square field stop'''
+        rng = np.random.default_rng(11)
+        n_fft, npx, nb = 24, 5, 3
+        g = np.roll(pixel_integration_matrix(n_fft, 10.0, 1.7, npx, stop=7.0), n_fft // 2, axis=1)
+        a, r = fourier_integration_matrices(g, n_fft)
+        psf = rng.random((nb, n_fft, n_fft))
+        x_half = np.fft.rfft2(psf) * (1 + 0.3j * rng.standard_normal((nb, n_fft, n_fft // 2 + 1)))
+        expected = np.einsum('ay,byx,cx->bac', g,
+                             np.fft.irfft2(x_half, s=(n_fft, n_fft), norm='forward'), g)
+        for dtype, cdtype, tol in ((np.float64, np.complex128, 1e-10), (np.float32, np.complex64, 1e-4)):
+            with self.subTest(dtype=dtype):
+                tmp = xp.zeros((nb, 2 * npx, 2 * (n_fft // 2 + 1)), dtype=dtype)
+                work = xp.zeros((nb, npx, npx), dtype=dtype)
+                out = integrate_pixels_fourier(xp.asarray(a, dtype=dtype), xp.asarray(r, dtype=dtype),
+                                               xp.asarray(x_half, dtype=cdtype), tmp, work, xp)
+                self.assertIs(out, work)
+                np.testing.assert_allclose(cpuArray(out), expected, rtol=tol,
+                                           atol=tol * np.abs(expected).max())
+
+    def test_odd_fft_size_raises(self):
+        with self.assertRaises(ValueError):
+            fourier_integration_matrices(np.ones((3, 9)), 9)
 
 
 if __name__ == '__main__':
