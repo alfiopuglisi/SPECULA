@@ -167,12 +167,12 @@ class DM(BaseProcessingObj):
         self._apply_mode_selection()
 
         # Input command length (the input does not include the modes before start_mode)
-        self.nmodes = self._m2c_sel.shape[1] if self.m2c is not None else self._ifunc_act.shape[0]
+        self.nmodes = self._m2c_sel.shape[1] if self.m2c is not None else self._n_act
         if self.nmodes == 0:
             raise ValueError(f'The mode selection is empty (start_mode={start_mode}, nmodes={nmodes}, '
                              f'idx_modes={idx_modes})')
         # Number of actuators, i.e. of applied influence function rows
-        n_act = self._ifunc_act.shape[0]
+        n_act = self._n_act
         self._modes = self.xp.zeros(self.nmodes, dtype=self.dtype)
 
         s = self._ifunc.mask_inf_func.shape
@@ -304,16 +304,34 @@ class DM(BaseProcessingObj):
         influence function rows are applied; without m2c only the selected rows are.
         _ifunc_act is a view or a copy of the influence function: it is kept in sync
         by the ifunc setter, not by direct changes to ifunc_obj.influence_function.
+
+        Zonal or segmented influence functions are mostly zeros: then only their
+        non-zero elements are read by the trigger (_ifunc_sparse). When all the
+        rows are applied, only the sparse form is kept, also in the IFunc object
+        (IFunc.make_sparse()): e.g. 3 GB less for M4, whose dense form is
+        rebuilt only on request (modal_ifunc(), the ifunc property).
         '''
+        n_rows = self._ifunc.nmodes()
+        # Number of applied influence function rows
         if self.m2c is not None:
             self._m2c_sel = self.xp.ascontiguousarray(self.to_xp(self.m2c[:, self._sel]))
-            self._ifunc_act = self.to_xp(self._ifunc.influence_function)
+            self._n_act = n_rows
         else:
             self._m2c_sel = None
+            self._n_act = len(range(n_rows)[self._sel]) if isinstance(self._sel, slice) else len(self._sel)
+        all_rows = self.m2c is not None or (isinstance(self._sel, slice) and
+                                            range(n_rows)[self._sel] == range(n_rows))
+        self._ifunc_sparse = None
+        if all_rows and self._ifunc.target_device_idx == self.target_device_idx:
+            self._ifunc_sparse = self._ifunc.make_sparse()
+        if self._ifunc_sparse is not None:
+            self._ifunc_act = None
+            return
+        if self.m2c is not None:
+            self._ifunc_act = self.to_xp(self._ifunc.influence_function)
+        else:
             self._ifunc_act = self.xp.ascontiguousarray(
                 self.to_xp(self._ifunc.influence_function[self._sel]))
-        # Zonal or segmented influence functions are mostly zeros: then only
-        # the non-zero elements are read by the trigger (None if dense)
         self._ifunc_sparse = SparseColumns.from_dense(self._ifunc_act, self.xp)
 
     # Getters and Setters for the attributes
@@ -341,15 +359,17 @@ class DM(BaseProcessingObj):
             target_device_idx = self.target_device_idx
         if precision is None:
             precision = self.precision
+        # Dense influence functions of the applied rows (rebuilt if only the sparse form is kept)
+        ifunc_act = self._ifunc_act if self._ifunc_act is not None else self._ifunc.influence_function
         if self._m2c_sel is not None:
             # The product is computed on the target device, where the influence functions are moved
-            modal = IFunc(ifunc=self._ifunc_act, mask=self.mask.copy(), type_str=self.type_str,
+            modal = IFunc(ifunc=ifunc_act, mask=self.mask.copy(), type_str=self.type_str,
                           target_device_idx=target_device_idx, precision=precision)
             m2c_sel = modal.to_xp(self._m2c_sel[:, sel], dtype=modal.dtype)
             modal.influence_function = m2c_sel.T @ modal.influence_function
         else:
-            modes = self._ifunc_act[sel]
-            if isinstance(sel, slice):
+            modes = ifunc_act[sel]
+            if isinstance(sel, slice) and ifunc_act is self._ifunc_act:
                 # A view: the basis must not share memory with the DM
                 modes = modes.copy()
             modal = IFunc(ifunc=modes, mask=self.mask.copy(), type_str=self.type_str,
@@ -370,9 +390,9 @@ class DM(BaseProcessingObj):
     @ifunc.setter
     def ifunc(self, value):
         # The selection, stroke, stiffness and outputs are sized on the current shape
-        if value.shape != self._ifunc.influence_function.shape:
+        if value.shape != self._ifunc.size:
             raise ValueError(f'ifunc has shape {value.shape}, but '
-                             f'{self._ifunc.influence_function.shape} is expected')
+                             f'{self._ifunc.size} is expected')
         self._ifunc.influence_function = value
         # This also builds again the sparse form of a mostly zero influence
         # function (about 1 s for the 4520 x 172988 M4 one)

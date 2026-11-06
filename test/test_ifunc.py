@@ -100,6 +100,39 @@ class TestIFunv(unittest.TestCase):
         self.assertEqual(inv.size, (self.data.shape[1], 1))
 
     @cpu_and_gpu
+    def test_make_sparse(self, target_device_idx, xp):
+        '''Mostly zero influence functions: only the sparse form is kept, the dense
+        one is rebuilt on request; dense ones are kept as they are'''
+        rng = np.random.default_rng(14)
+        zonal = np.zeros((9, 36), dtype=np.float32)
+        for a in range(9):
+            zonal[a, 4 * a:4 * a + 4] = rng.uniform(0.5, 1.5, 4)
+        ifunc = IFunc(zonal, mask=np.ones((6, 6)), target_device_idx=target_device_idx)
+        sparse = ifunc.make_sparse()
+        self.assertIsNotNone(sparse)
+        self.assertTrue(ifunc.is_sparse)
+        self.assertIs(ifunc.make_sparse(), sparse)
+        self.assertEqual(ifunc.size, (9, 36))
+        self.assertEqual((ifunc.nmodes(), ifunc.npoints()), (9, 36))
+        self.assertEqual(ifunc.type, ifunc.dtype)
+        np.testing.assert_array_equal(cpuArray(ifunc.influence_function), zonal)
+        np.testing.assert_array_equal(cpuArray(ifunc.get_value()), zonal)
+        # set_value() and the setter store a dense array again
+        ifunc.set_value(xp.asarray(zonal * 2))
+        self.assertFalse(ifunc.is_sparse)
+        np.testing.assert_array_equal(cpuArray(ifunc.influence_function), zonal * 2)
+
+        dense = IFunc(self.data, mask=self.mask, target_device_idx=target_device_idx)
+        self.assertIsNone(dense.make_sparse())
+        self.assertFalse(dense.is_sparse)
+        np.testing.assert_array_equal(cpuArray(dense.influence_function), self.data)
+        # A dense influence function is updated in place
+        array = dense.influence_function
+        dense.set_value(xp.asarray(self.data) * 3)
+        self.assertIs(dense.influence_function, array)
+        np.testing.assert_allclose(cpuArray(array), self.data * 3)
+
+    @cpu_and_gpu
     def test_nmodes_and_npoints(self, target_device_idx, xp):
         ifunc = IFunc(self.data, mask=self.mask, target_device_idx=target_device_idx)
 

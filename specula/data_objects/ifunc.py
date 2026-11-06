@@ -5,6 +5,7 @@ from astropy.io import fits
 from specula.lib.compute_zonal_ifunc import compute_zonal_ifunc
 from specula.lib.compute_zern_ifunc import compute_zern_ifunc
 from specula.lib.fast_pinv import fast_pinv
+from specula.lib.graph_matmul import SparseColumns
 from iteras.lib import storage
 
 
@@ -87,17 +88,44 @@ class IFunc(BaseDataObj):
         mask = self.to_xp(mask)
 
         self._influence_function = ifunc
+        self._sparse = None
         self._mask_inf_func = mask
         self._idx_inf_func = self.xp.where(self._mask_inf_func)
         self.cut(start_mode=start_mode, nmodes=nmodes, idx_modes=idx_modes)
 
     @property
     def influence_function(self):
+        '''
+        The influence functions (modes, pixels). After make_sparse(), they are
+        rebuilt from the sparse form at each access: a new full-size array,
+        meant for occasional use (e.g. calibrations), not at every step.
+        '''
+        if self._influence_function is None:
+            return self._sparse.to_dense()
         return self._influence_function
 
     @influence_function.setter
     def influence_function(self, ifunc):
         self._influence_function = self.to_xp(ifunc, dtype=self.dtype)
+        self._sparse = None
+
+    def make_sparse(self):
+        '''
+        If the influence functions are mostly zeros (zonal or segmented ones,
+        e.g. M4 or the ELT M1 segments), keep only their sparse form and drop
+        the dense array, and return the sparse form (a SparseColumns, built once).
+        Return None, and keep the dense array, if they are dense.
+        '''
+        if self._sparse is None:
+            self._sparse = SparseColumns.from_dense(self._influence_function, self.xp)
+            if self._sparse is not None:
+                self._influence_function = None
+        return self._sparse
+
+    @property
+    def is_sparse(self):
+        '''True if only the sparse form is kept (see make_sparse())'''
+        return self._influence_function is None
 
     @property
     def mask_inf_func(self):
@@ -114,28 +142,30 @@ class IFunc(BaseDataObj):
 
     @property
     def size(self):
-        return self._influence_function.shape
+        return self._sparse.shape if self.is_sparse else self._influence_function.shape
 
     def nmodes(self):
-        return self._influence_function.shape[0]
+        return self.size[0]
 
     def npoints(self):
-        return self._influence_function.shape[1]
+        return self.size[1]
 
     @property
     def type(self):
-        return self._influence_function.dtype
+        return self._sparse.w.dtype if self.is_sparse else self._influence_function.dtype
 
     def get_value(self):
-        return self._influence_function
+        return self.influence_function
 
     def set_value(self, v):
         '''Set a new influence function.
-        Arrays are not reallocated.'''
-        assert v.shape == self._influence_function.shape, \
-            f"Error: input array shape {v.shape} does not match influence function shape {self._influence_function.shape}"
-
-        self._influence_function[:] = self.to_xp(v)
+        Arrays are not reallocated, unless only the sparse form was kept.'''
+        assert v.shape == self.size, \
+            f"Error: input array shape {v.shape} does not match influence function shape {self.size}"
+        if self.is_sparse:
+            self.influence_function = v
+        else:
+            self._influence_function[:] = self.to_xp(v)
 
     def cut(self, start_mode=None, nmodes=None, idx_modes=None):
         self.influence_function = cut_modes(self.influence_function, start_mode=start_mode, nmodes=nmodes, idx_modes=idx_modes)
@@ -143,14 +173,15 @@ class IFunc(BaseDataObj):
     def ifunc_2d_to_3d(self, normalize=True):
         '''Convert a 2D influence function to a 3D array using a mask.'''
         npixels = self._mask_inf_func.shape[0]
-        nmodes = self._influence_function.shape[0]
+        ifunc = self.influence_function
+        nmodes = ifunc.shape[0]
         ifunc_3d = self.xp.zeros((npixels, npixels, nmodes), dtype=self.dtype)
         idx = self.xp.where(self._mask_inf_func > 0)
 
-        ifunc_3d[idx[0], idx[1], :] = self._influence_function.T
+        ifunc_3d[idx[0], idx[1], :] = ifunc.T
 
         if normalize:
-            ifunc_rms = self.xp.sqrt(self.xp.mean(self._influence_function**2, axis=1))
+            ifunc_rms = self.xp.sqrt(self.xp.mean(ifunc**2, axis=1))
             # Broadcasting: divide each mode by its rms value
             ifunc_3d[idx[0], idx[1], :] /= ifunc_rms[self.xp.newaxis, :]
 
@@ -162,7 +193,7 @@ class IFunc(BaseDataObj):
         When ``remove_piston`` is True, each mode is centered by subtracting
         its mean value before computing the pseudoinverse.
         """
-        ifunc = self._influence_function
+        ifunc = self.influence_function
         if nmodes is not None and nmodes != self.nmodes():
             ifunc = cut_modes(ifunc, nmodes=nmodes)
 
@@ -184,7 +215,7 @@ class IFunc(BaseDataObj):
 
     def save(self, filename, overwrite=False):
         storage.write_object(filename, self.get_fits_header(),
-                             {'influence_function': self._influence_function.T, 'mask_inf_func': self._mask_inf_func},
+                             {'influence_function': self.influence_function.T, 'mask_inf_func': self._mask_inf_func},
                              overwrite=overwrite)
 
     @staticmethod

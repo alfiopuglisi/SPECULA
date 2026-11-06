@@ -297,11 +297,28 @@ class SparseColumns:
     have about 2% of non-zeros, and v @ M is limited by the memory bandwidth.
     """
 
-    def __init__(self, idx, w, xp):
+    def __init__(self, idx, w, xp, nrows=None):
         self.idx = idx
         self.w = w
         self.kmax, self.n = w.shape
         self.xp = xp
+        # Number of rows of M (r): by default, up to the last row with a non-zero element
+        self.nrows = nrows if nrows is not None else int(idx.max()) + 1
+
+    @property
+    def shape(self):
+        '''Shape (r, n) of the matrix M'''
+        return (self.nrows, self.n)
+
+    def to_dense(self):
+        '''The dense matrix M (r, n), a new array'''
+        xp = self.xp
+        m = xp.zeros(self.shape, dtype=self.w.dtype)
+        # The padding has w == 0 (and idx == 0): only the stored non-zero elements are written
+        nz = self.w != 0
+        cols = xp.broadcast_to(xp.arange(self.n), self.w.shape)[nz]
+        m[self.idx[nz], cols] = self.w[nz]
+        return m
 
     @classmethod
     def from_dense(cls, m, xp, max_fraction=0.125, chunk_rows=None):
@@ -345,7 +362,7 @@ class SparseColumns:
         w = np.zeros((kmax, n), dtype=vals.dtype)
         idx[k, cols] = rows
         w[k, cols] = vals
-        return cls(xp.asarray(idx), xp.asarray(w), xp)
+        return cls(xp.asarray(idx), xp.asarray(w), xp, nrows=r)
 
     def vecmat(self, v):
         """v @ M for a vector v (r,)"""

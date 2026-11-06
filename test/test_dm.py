@@ -156,6 +156,34 @@ class TestDM(unittest.TestCase):
                 act = m2c_np @ cmd if use_m2c else cmd
                 expected = (-act @ ifunc_np).reshape(6, 6)
                 assert_array_almost_equal(cpuArray(dm.outputs['out_layer'].phaseInNm), expected, decimal=5)
+                # All the rows are applied: only the sparse form is kept, also in the IFunc
+                self.assertTrue(ifunc.is_sparse)
+                self.assertIsNone(dm._ifunc_act)
+                basis = m2c_np.T @ ifunc_np if use_m2c else ifunc_np
+                assert_array_almost_equal(cpuArray(dm.modal_ifunc().influence_function), basis, decimal=5)
+                assert_array_almost_equal(cpuArray(dm.ifunc), ifunc_np, decimal=6)
+
+    @cpu_and_gpu
+    def test_dm_sparse_ifunc_partial_selection(self, target_device_idx, xp):
+        '''Without m2c and with a part of the rows, the IFunc keeps its dense form'''
+        simul_params = SimulParams(time_step=1, pixel_pupil=6, pixel_pitch=1)
+        # One pixel per actuator: with 20 of the 36 rows, sparse enough for the DM
+        ifunc_np = np.eye(36) * np.arange(1.0, 37.0)[:, None]
+        ifunc = IFunc(xp.asarray(ifunc_np), mask=xp.ones((6, 6)), target_device_idx=target_device_idx)
+        cmd = np.arange(1.0, 21.0)
+        in_dm = BaseValue(value=xp.asarray(cmd), target_device_idx=target_device_idx)
+        in_dm.generation_time = 1
+        dm = DM(simul_params, height=0, ifunc=ifunc, nmodes=20, target_device_idx=target_device_idx)
+        dm.inputs['in_command'].set(in_dm)
+        dm.setup()
+        self.assertFalse(ifunc.is_sparse)
+        self.assertIsNotNone(dm._ifunc_sparse)
+        dm.check_ready(1)
+        dm.trigger()
+        dm.post_trigger()
+        assert_array_almost_equal(cpuArray(dm.outputs['out_layer'].phaseInNm),
+                                  (-cmd @ ifunc_np[:20]).reshape(6, 6), decimal=5)
+        assert_array_almost_equal(cpuArray(dm.modal_ifunc().influence_function), ifunc_np[:20], decimal=6)
 
     @cpu_and_gpu
     def test_dm_stroke_clipping(self, target_device_idx, xp):

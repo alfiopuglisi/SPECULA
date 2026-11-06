@@ -169,6 +169,16 @@ class TestSparseColumns(unittest.TestCase):
                 np.testing.assert_allclose(cpuArray(y), v @ m, rtol=tol, atol=tol)
 
     @cpu_and_gpu
+    def test_to_dense(self, target_device_idx, xp):
+        '''Exact round trip, also with non-zeros in row 0 (the row of the padding)'''
+        rng = np.random.default_rng(10)
+        m = self.sparse_matrix(rng)
+        m[0, :5] = rng.standard_normal(5)
+        sc = SparseColumns.from_dense(xp.asarray(m), xp)
+        self.assertEqual(sc.shape, m.shape)
+        np.testing.assert_array_equal(cpuArray(sc.to_dense()), m)
+
+    @cpu_and_gpu
     def test_dense_matrix_is_rejected(self, target_device_idx, xp):
         rng = np.random.default_rng(8)
         m = xp.asarray(rng.standard_normal((50, 300)))
