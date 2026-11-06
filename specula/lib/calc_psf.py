@@ -10,6 +10,16 @@ def psf_abs2(v, xp):
     return xp.real(v * xp.conj(v))
 
 
+@fuse(kernel_name='psf_abs2_out')
+def psf_abs2_out(v, out, xp):
+    out[...] = xp.real(v * xp.conj(v))
+
+
+@fuse(kernel_name='psf_pruned_input')
+def psf_pruned_input(amp, phase, sy, sx, iu, out, xp):
+    out[...] = amp * xp.exp(iu * phase) * (sy * sx)
+
+
 PsfGeometry = namedtuple('PsfGeometry', 'pixel_size_mas nd')
 
 
@@ -101,6 +111,13 @@ def calc_psf(phase, amp, xp=np, complex_dtype=np.complex64, imwidth=None, normal
         2D PSF  (same dimensions as phase) and PSF total intensity as a scalar number
     """
 
+    # Zero-padded field: pruned FFT, without the padded array.
+    # The (-1)^(x+y) centering requires an even size.
+    if imwidth is not None and (nocenter or imwidth % 2 == 0):
+        return _calc_psf_pruned(phase, amp, imwidth, xp=xp, complex_dtype=complex_dtype,
+                                normalize=normalize, nocenter=nocenter,
+                                return_total=return_total, out=out)
+
     # Set up the complex array based on input dimensions and data type
     if imwidth is not None:
         u_ef = xp.zeros((imwidth, imwidth), dtype=complex_dtype)
@@ -112,6 +129,63 @@ def calc_psf(phase, amp, xp=np, complex_dtype=np.complex64, imwidth=None, normal
 
     return calc_psf_from_ef(u_ef, xp=xp, out=out, normalize=normalize,
                             nocenter=nocenter, return_total=return_total)
+
+
+def _calc_psf_pruned(phase, amp, imwidth, xp, complex_dtype, normalize, nocenter,
+                     return_total, out):
+    """
+    calc_psf() of a field zero-padded to (imwidth, imwidth), with a pruned 2D FFT:
+
+    1. FFT along y, only on the ny non-zero columns of the padded field;
+    2. FFT along x, in chunks of ny rows (at most 16 MB), each one written
+       directly into the PSF as square modulus.
+
+    The full-size padded complex field is never allocated: the largest
+    buffers are an (nx, imwidth) complex array and the chunks.
+    Unless nocenter is set, the field is multiplied by (-1)^(x+y), so that
+    the PSF comes out already centered (imwidth must be even).
+    """
+    fft = xp_fft(xp)
+    n = imwidth
+    ny, nx = amp.shape
+    real_dtype = np.empty(0, dtype=complex_dtype).real.dtype
+    if nocenter:
+        sy = xp.ones(ny, dtype=real_dtype)
+        sx = xp.ones(nx, dtype=real_dtype)
+    else:
+        # Built on the device: no host transfers, so that it can be captured in a CUDA graph
+        sy = 1 - 2 * (xp.arange(ny, dtype=real_dtype) % 2)
+        sx = 1 - 2 * (xp.arange(nx, dtype=real_dtype) % 2)
+
+    # Field transposed (one line for each x, along y), zero-padded along y only
+    u_t = xp.zeros((nx, n), dtype=complex_dtype)
+    psf_pruned_input(amp.T, phase.T, sy[None, :], sx[:, None], complex_dtype(1j),
+                     u_t[:, :ny], xp=xp)
+    # FFT along y: (x, ky)
+    u_t = fft.fft(u_t, axis=-1, overwrite_x=True)
+
+    if out is None:
+        out = xp.empty((n, n), dtype=real_dtype)
+
+    # FFT along x, ny rows of ky at a time, at most 16 MB per chunk:
+    # larger chunks and their FFT output fall out of the GPU L2 cache (~2x slower at 8k)
+    rows = min(ny, max(1, (16 << 20) // (n * np.dtype(complex_dtype).itemsize)))
+    chunk = xp.zeros((rows, n), dtype=complex_dtype)
+    for r in range(0, n, rows):
+        m = min(rows, n - r)
+        chunk[:m, :nx] = u_t[:, r:r + m].T
+        psf_abs2_out(fft.fft(chunk[:m], axis=-1), out[r:r + m], xp=xp)
+    del u_t, chunk
+
+    # Normalize if required
+    total_psf = xp.sum(out)
+    if normalize:
+        out /= total_psf
+
+    if return_total:
+        return out, total_psf
+    else:
+        return out
 
 
 def calc_psf_geometry(pixel_pupil: int,
